@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="fa" dir="ltr">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self';" />
+  <title>PromptPad</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app">
+    <!-- Title bar (draggable) -->
+    <header class="titlebar">
+      <div class="brand">
+        <span class="brand-dot"></span>
+        <span class="brand-name">promptpad</span>
+      </div>
+      <div class="win-controls">
+        <button id="settingsBtn" class="win-btn" title="Settings">
+          <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+            <circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.7"/>
+            <path d="M12 2.5v2.2M12 19.3v2.2M21.5 12h-2.2M4.7 12H2.5M18.7 5.3l-1.6 1.6M6.9 17.1l-1.6 1.6M18.7 18.7l-1.6-1.6M6.9 6.9 5.3 5.3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+          </svg>
+        </button>
+        <button id="pinBtn" class="win-btn" title="Always on top">
+          <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+            <path d="M14 3l7 7-3 1-1 4-4 4-2-6-6-2 4-4 4-1 1-3z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
+          </svg>
+        </button>
+        <button id="minBtn" class="win-btn" title="Minimize">
+          <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+            <line x1="5" y1="12" x2="19" y2="12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          </svg>
+        </button>
+        <button id="closeBtn" class="win-btn win-btn--close" title="Close">
+          <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+            <line x1="6" y1="6" x2="18" y2="18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+            <line x1="18" y1="6" x2="6" y2="18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Body -->
+    <div class="body">
+      <!-- Left tab rail -->
+      <nav class="rail" id="rail">
+        <button id="addBtn" class="add-btn" title="New prompt (Ctrl+T)">
+          <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+            <line x1="12" y1="5" x2="12" y2="19" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <line x1="5" y1="12" x2="19" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+          <span>new</span>
+        </button>
+        <div class="tab-list" id="tabList"></div>
+      </nav>
+
+      <!-- Resize handle (left layout only) -->
+      <div id="railResizer" class="rail-resizer" title="Drag to resize tabs"></div>
+
+      <!-- Editor -->
+      <main class="editor">
+        <textarea id="editor" class="editor-area" spellcheck="false" dir="auto"
+          placeholder="Write your prompt here…"></textarea>
+        <footer class="statusbar">
+          <div class="counts">
+            <span id="charCount">0 chars</span>
+            <span class="dot-sep">·</span>
+            <span id="tokenCount">~0 tokens</span>
+          </div>
+          <button id="copyBtn" class="copy-btn" title="Copy prompt (Ctrl+Shift+C)">
+            <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
+              <rect x="9" y="9" width="11" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/>
+              <path d="M5 15V5a2 2 0 0 1 2-2h8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+            </svg>
+            <span id="copyLabel">copy</span>
+          </button>
+        </footer>
+      </main>
+    </div>
+
+    <!-- Settings overlay -->
+    <div id="settingsOverlay" class="overlay hidden">
+      <div class="settings-card">
+        <div class="settings-head">
+          <span class="settings-title">settings</span>
+          <button id="settingsClose" class="win-btn" title="Close">
+            <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+              <line x1="6" y1="6" x2="18" y2="18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+              <line x1="18" y1="6" x2="6" y2="18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+            </svg>
+          </button>
+        </div>
+
+        <div class="settings-body">
+          <!-- Appearance -->
+          <section class="set-group">
+            <h3 class="set-label">Theme</h3>
+            <div id="themeRow" class="theme-row"></div>
+          </section>
+
+          <section class="set-group">
+            <h3 class="set-label">Tab position</h3>
+            <div class="seg" id="layoutSeg">
+              <button class="seg-btn" data-layout="left">Left</button>
+              <button class="seg-btn" data-layout="top">Top</button>
+            </div>
+          </section>
+
+          <!-- Tabs -->
+          <section class="set-group">
+            <div class="set-toggle-row">
+              <div class="set-toggle-text">
+                <span>Pinning</span>
+                <small>Show the pin icon on tabs</small>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="togglePin" />
+                <span class="slider"></span>
+              </label>
+            </div>
+            <div class="set-toggle-row" id="resizeRow">
+              <div class="set-toggle-text">
+                <span>Resizable tab width</span>
+                <small>Drag the divider to resize (left layout)</small>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="toggleResize" />
+                <span class="slider"></span>
+              </label>
+            </div>
+          </section>
+
+          <!-- System -->
+          <section class="set-group">
+            <div class="set-toggle-row">
+              <div class="set-toggle-text">
+                <span>Launch at startup</span>
+                <small>Open PromptPad when Windows starts</small>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="toggleStartup" />
+                <span class="slider"></span>
+              </label>
+            </div>
+          </section>
+
+          <!-- About -->
+          <section class="set-group">
+            <h3 class="set-label">About</h3>
+            <div class="about-box">
+              <div class="about-brand">
+                <span class="brand-dot"></span>
+                <span>PromptPad <em id="aboutVersion">v1.2.0</em></span>
+              </div>
+              <p class="about-desc">A compact notepad for writing AI prompts.</p>
+              <div class="about-links">
+                <a href="#" class="about-link" data-url="https://github.com/raminturne">
+                  <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M12 2C6.48 2 2 6.58 2 12.25c0 4.53 2.87 8.37 6.84 9.73.5.1.68-.22.68-.49v-1.7c-2.78.62-3.37-1.22-3.37-1.22-.45-1.18-1.11-1.49-1.11-1.49-.91-.64.07-.63.07-.63 1 .07 1.53 1.06 1.53 1.06.9 1.57 2.36 1.12 2.94.85.09-.67.35-1.12.63-1.38-2.22-.26-4.55-1.14-4.55-5.07 0-1.12.39-2.03 1.03-2.75-.1-.26-.45-1.31.1-2.72 0 0 .84-.28 2.75 1.05a9.3 9.3 0 0 1 5 0c1.91-1.33 2.75-1.05 2.75-1.05.55 1.41.2 2.46.1 2.72.64.72 1.03 1.63 1.03 2.75 0 3.94-2.34 4.81-4.57 5.06.36.32.68.94.68 1.9v2.82c0 .27.18.6.69.49A10.26 10.26 0 0 0 22 12.25C22 6.58 17.52 2 12 2z"/></svg>
+                  github.com/raminturne
+                </a>
+                <a href="#" class="about-link" data-url="https://t.me/fast_amozesh">
+                  <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M21.94 4.3 18.6 20.1c-.25 1.1-.9 1.37-1.83.85l-5.06-3.73-2.44 2.35c-.27.27-.5.5-1.02.5l.36-5.16L17.9 6.1c.41-.36-.09-.56-.63-.2L5.7 13.05.74 11.5c-1.08-.34-1.1-1.08.23-1.6l18.4-7.1c.9-.33 1.69.22 1.4 1.5z"/></svg>
+                  t.me/fast_amozesh
+                </a>
+              </div>
+            </div>
+          </section>
+
+          <!-- Reset -->
+          <section class="set-group">
+            <button id="resetBtn" class="reset-btn">Reset settings to defaults</button>
+          </section>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>

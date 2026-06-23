@@ -1,0 +1,21 @@
+# dependencies
+node_modules/
+
+# build output
+release/
+dist/
+out/
+
+# logs
+*.log
+npm-debug.log*
+
+# skills tooling (not part of the app)
+.agents/
+skills-lock.json
+
+# os / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

@@ -401,18 +401,20 @@ body {
 
 .app.layout-top .tab-list {
   order: 1;
+  flex: 1;
+  min-width: 0;
   flex-direction: row;
-  overflow-x: auto;
-  overflow-y: hidden;
+  overflow: hidden;
   margin: 0;
   padding: 2px;
   gap: 5px;
 }
 
+/* Browser-style: tabs share the full width and shrink evenly as more are
+   added — never scroll. */
 .app.layout-top .tab {
-  flex-shrink: 0;
-  max-width: 168px;
-  min-width: 96px;
+  flex: 1 1 0;
+  min-width: 0;
   padding: 7px 8px 7px 10px;
   animation: tabInTop 0.2s ease;
 }

@@ -63,6 +63,25 @@ function activeTab() {
   return state.tabs.find((t) => t.id === state.activeId) || null;
 }
 
+// Any Hebrew/Arabic/Persian character → treat as RTL
+const RTL_RE = /[֐-׿؀-ۿ܀-ݏݐ-ݿࢠ-ࣿיִ-﷿ﹰ-﻿]/;
+
+function detectDir(text) {
+  return RTL_RE.test(text || '') ? 'rtl' : 'ltr';
+}
+
+// Apply the editor direction for the active tab.
+// Manual override (tab.dir === 'rtl' | 'ltr') wins; otherwise smart auto-detect.
+function applyEditorDir() {
+  const t = activeTab();
+  let d;
+  if (t && (t.dir === 'rtl' || t.dir === 'ltr')) d = t.dir;
+  else d = detectDir(editorEl.value);
+  editorEl.style.direction = '';
+  editorEl.setAttribute('dir', d);
+  editorEl.style.textAlign = d === 'rtl' ? 'right' : 'left';
+}
+
 // Auto-name a tab from its first non-empty line, else "Prompt N"
 function autoName(tab, index) {
   if (tab.custom && tab.name) return tab.name;
@@ -128,8 +147,9 @@ function renderTabs() {
 
     const nameEl = document.createElement('span');
     nameEl.className = 'tab-name';
-    nameEl.setAttribute('dir', 'auto');
-    nameEl.textContent = autoName(tab, i);
+    const dispName = autoName(tab, i);
+    nameEl.setAttribute('dir', detectDir(dispName));
+    nameEl.textContent = dispName;
     el.appendChild(nameEl);
 
     const closeEl = document.createElement('button');
@@ -233,8 +253,11 @@ function onDragEnd() {
 function startRename(tab, tabEl, nameEl, index) {
   const input = document.createElement('input');
   input.className = 'tab-name-input';
-  input.setAttribute('dir', 'auto');
   input.value = tab.custom && tab.name ? tab.name : autoName(tab, index);
+  input.setAttribute('dir', detectDir(input.value));
+  input.addEventListener('input', () => {
+    input.setAttribute('dir', detectDir(input.value));
+  });
   tabEl.replaceChild(input, nameEl);
   input.focus();
   input.select();
@@ -266,6 +289,7 @@ function switchTab(id) {
   state.activeId = id;
   const t = activeTab();
   editorEl.value = t ? t.content : '';
+  applyEditorDir();
   renderTabs();
   updateCounts();
   editorEl.focus();
@@ -274,10 +298,11 @@ function switchTab(id) {
 
 function addTab(focus = true) {
   syncEditorToState();
-  const tab = { id: uid(), name: '', custom: false, content: '' };
+  const tab = { id: uid(), name: '', custom: false, content: '', dir: 'auto' };
   state.tabs.push(tab);
   state.activeId = tab.id;
   editorEl.value = '';
+  applyEditorDir();
   renderTabs();
   updateCounts();
   if (focus) editorEl.focus();
@@ -330,11 +355,12 @@ async function loadState() {
       seq: saved.seq || 1
     };
   } else {
-    state.tabs = [{ id: uid(), name: '', custom: false, content: '' }];
+    state.tabs = [{ id: uid(), name: '', custom: false, content: '', dir: 'auto' }];
     state.activeId = state.tabs[0].id;
   }
   const t = activeTab();
   editorEl.value = t ? t.content : '';
+  applyEditorDir();
   renderTabs();
   updateCounts();
 }
@@ -347,6 +373,7 @@ editorEl.addEventListener('input', () => {
     // live update auto-name if not custom
     if (!t.custom) renderTabs();
   }
+  applyEditorDir();
   updateCounts();
   scheduleSave();
 });
@@ -377,23 +404,54 @@ pinBtn.addEventListener('click', async () => {
 minBtn.addEventListener('click', () => window.api.minimize());
 closeBtn.addEventListener('click', () => window.api.close());
 
-// keyboard shortcuts
+// keyboard shortcuts — use e.code (physical key) so they work on any
+// keyboard layout, including Persian.
 document.addEventListener('keydown', (e) => {
-  if (e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === 't') {
+  if (!e.ctrlKey) return;
+  if (!e.shiftKey && e.code === 'KeyT') {
     e.preventDefault();
     addTab();
-  } else if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'c') {
+  } else if (e.shiftKey && e.code === 'KeyC') {
     e.preventDefault();
     copyBtn.click();
-  } else if (e.ctrlKey && e.key.toLowerCase() === 'w') {
+  } else if (!e.shiftKey && e.code === 'KeyW') {
     e.preventDefault();
     if (state.activeId) closeTab(state.activeId);
-  } else if (e.ctrlKey && (e.key === 'Tab' || e.key === 'PageDown')) {
+  } else if (e.code === 'Tab') {
+    e.preventDefault();
+    cycleTab(e.shiftKey ? -1 : 1);
+  } else if (e.code === 'PageDown') {
     e.preventDefault();
     cycleTab(1);
-  } else if (e.ctrlKey && e.key === 'PageUp') {
+  } else if (e.code === 'PageUp') {
     e.preventDefault();
     cycleTab(-1);
+  }
+});
+
+// ---- Per-tab text direction via Windows Ctrl+Shift gesture ----
+// Ctrl + Right-Shift = RTL, Ctrl + Left-Shift = LTR. We persist the choice
+// on the active tab so it doesn't leak to other tabs.
+let chordUsedOtherKey = false;
+window.addEventListener('keydown', (e) => {
+  if (e.ctrlKey && e.code !== 'ShiftLeft' && e.code !== 'ShiftRight' &&
+      e.code !== 'ControlLeft' && e.code !== 'ControlRight') {
+    chordUsedOtherKey = true;
+  }
+});
+window.addEventListener('keyup', (e) => {
+  if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') {
+    if (e.ctrlKey && !chordUsedOtherKey) {
+      const t = activeTab();
+      if (t) {
+        t.dir = e.code === 'ShiftRight' ? 'rtl' : 'ltr';
+        applyEditorDir();
+        scheduleSave();
+      }
+    }
+    chordUsedOtherKey = false;
+  } else if (e.code === 'ControlLeft' || e.code === 'ControlRight') {
+    chordUsedOtherKey = false;
   }
 });
 

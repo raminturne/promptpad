@@ -25,7 +25,7 @@ Minimal, fast, and right next to your work — a quiet terminal-inspired pad wit
 - **6 color themes** — Forest, Midnight, Slate, Carbon, Plum, Ember
 - **Char & token counter** — handy for prompt writing
 - **Copy** the whole prompt with one click
-- **RTL aware** — Persian/Arabic text aligns right automatically
+- **Smart RTL** — any Persian/Arabic in the text aligns it right (even if it starts with English); pure-English stays left. Direction is **per tab**, and you can force it with `Ctrl + Right Shift` (RTL) / `Ctrl + Left Shift` (LTR)
 - **Autosave** to disk — tabs, content, window size & position persist
 - **Settings panel** — themes, tab position, resizable tab width, pinning on/off, launch at startup, reset
 - **Launch at startup** (Windows)
@@ -39,7 +39,11 @@ Minimal, fast, and right next to your work — a quiet terminal-inspired pad wit
 | `Ctrl+Tab` / `Ctrl+PageDown` | Next tab |
 | `Ctrl+PageUp` | Previous tab |
 | `Ctrl+Shift+C` | Copy prompt |
+| `Ctrl + Right Shift` | Force RTL (this tab) |
+| `Ctrl + Left Shift` | Force LTR (this tab) |
 | `Esc` | Close settings |
+
+> Shortcuts use the physical key position, so they work on Persian (and other) keyboard layouts.
 
 ## 🎨 Default colors
 

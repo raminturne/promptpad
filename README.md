@@ -4,6 +4,16 @@ A compact, always-on-top desktop notepad widget for writing and organizing AI pr
 
 Minimal, fast, and right next to your work — a quiet terminal-inspired pad with tabs, themes, and autosave.
 
+## 📸 Screenshots
+
+| Default | Top tabs (browser-style) |
+|:---:|:---:|
+| ![Default view](screenshots/01-default.png) | ![Top layout](screenshots/02-top-layout.png) |
+
+| Settings | Midnight theme (RTL) | Plum theme |
+|:---:|:---:|:---:|
+| ![Settings](screenshots/03-settings.png) | ![Midnight theme](screenshots/04-midnight.png) | ![Plum theme](screenshots/05-plum.png) |
+
 ## ✨ Features
 
 - **Compact always-on-top widget** — frameless window that floats above other apps, with a pin toggle

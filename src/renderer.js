@@ -123,16 +123,94 @@ function normalizeStrayNodes() {
   });
 }
 
+// Place the caret inside a line element at a given character offset.
+function placeCaretInLine(el, offset) {
+  const node = el.firstChild;
+  const r = document.createRange();
+  if (node && node.nodeType === 3) {
+    r.setStart(node, Math.min(offset, node.textContent.length));
+  } else {
+    r.setStart(el, 0); // empty line (<br>)
+  }
+  r.collapse(true);
+  const s = window.getSelection();
+  s.removeAllRanges();
+  s.addRange(r);
+}
+
+// In a plaintext-only contenteditable with pre-wrap, pressing Enter inserts a
+// "\n" *inside* the current line div instead of creating a new line element.
+// That means a single block can hold two visual lines, and per-line direction
+// can't apply (the whole block takes one direction). Here we split any line
+// that contains a newline back into separate .ln divs, keeping the caret put,
+// so each visual line is its own element again. Runs only when a "\n" is
+// present (Enter / multi-line paste), so normal typing keeps native editing.
+function splitMultilineLines() {
+  for (const el of editorLines()) {
+    if (el.textContent.indexOf('\n') === -1) continue;
+
+    // Caret offset within this element (if the caret is inside it).
+    let caretInEl = null;
+    const sel = window.getSelection();
+    if (sel.rangeCount) {
+      const r = sel.getRangeAt(0);
+      if (el === r.endContainer || el.contains(r.endContainer)) {
+        const pre = document.createRange();
+        pre.selectNodeContents(el);
+        pre.setEnd(r.endContainer, r.endOffset);
+        caretInEl = pre.toString().length;
+      }
+    }
+
+    const parts = el.textContent.split('\n');
+    const newEls = parts.map((p) => makeLine(p));
+    el.replaceWith(...newEls);
+
+    if (caretInEl != null) {
+      let acc = 0;
+      let target = newEls[0];
+      let offsetInPart = caretInEl;
+      for (let i = 0; i < parts.length; i++) {
+        if (caretInEl <= acc + parts[i].length) {
+          target = newEls[i];
+          offsetInPart = caretInEl - acc;
+          break;
+        }
+        acc += parts[i].length + 1; // +1 for the consumed "\n"
+      }
+      placeCaretInLine(target, offsetInPart);
+    }
+    return true;
+  }
+  return false;
+}
+
 // Direction per line: each line that contains any Persian/Arabic char is RTL.
 // A manual override on the tab (tab.dir) forces every line one direction.
+//
+// We set the direction via inline style (not just the `dir` attribute) on
+// purpose: Blink skips re-layout when the `dir` *attribute* of the
+// contenteditable line holding the caret changes, so the flip wouldn't show
+// until another event (e.g. a tab switch) rebuilt the DOM. Mutating inline
+// style is always invalidated, so the line re-renders live as you type.
 function updateLineDirs() {
   normalizeStrayNodes();
+  splitMultilineLines();
   const t = activeTab();
   const forced = t && (t.dir === 'rtl' || t.dir === 'ltr') ? t.dir : null;
+  let changed = false;
   editorLines().forEach((d) => {
     if (!d.classList.contains('ln')) d.classList.add('ln');
-    d.setAttribute('dir', forced || detectDir(d.textContent));
+    const want = forced || detectDir(d.textContent);
+    if (d.getAttribute('dir') !== want) {
+      d.setAttribute('dir', want);
+      d.style.direction = want;
+      d.style.textAlign = want === 'rtl' ? 'right' : 'left';
+      changed = true;
+    }
   });
+  // Flush the pending layout so the new direction paints this frame.
+  if (changed) void editorEl.offsetHeight;
 }
 
 function updateEmptyState() {

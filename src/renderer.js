@@ -70,16 +70,88 @@ function detectDir(text) {
   return RTL_RE.test(text || '') ? 'rtl' : 'ltr';
 }
 
-// Apply the editor direction for the active tab.
-// Manual override (tab.dir === 'rtl' | 'ltr') wins; otherwise smart auto-detect.
-function applyEditorDir() {
+// ---------- Editor (contenteditable, per-line direction) ----------
+function makeLine(line) {
+  const d = document.createElement('div');
+  d.className = 'ln';
+  if (line === '') d.appendChild(document.createElement('br'));
+  else d.textContent = line;
+  return d;
+}
+
+// All top-level line elements (divs). Browser-created lines (from Enter)
+// won't carry our .ln class, so we key off direct element children.
+function editorLines() {
+  return Array.from(editorEl.children).filter((n) => n.nodeType === 1);
+}
+
+function getEditorText() {
+  // Defensive: a stray top-level text node means structure was flattened.
+  const strayText = Array.from(editorEl.childNodes)
+    .some((n) => n.nodeType === 3 && n.textContent !== '');
+  if (strayText) return editorEl.innerText.replace(/\n$/, '');
+  const els = editorLines();
+  if (!els.length) return '';
+  return els.map((d) => d.textContent).join('\n');
+}
+
+function setEditorText(text) {
+  editorEl.innerHTML = '';
+  const lines = (text || '').split('\n');
+  for (const line of lines) editorEl.appendChild(makeLine(line));
+  updateLineDirs();
+  updateEmptyState();
+}
+
+// Wrap any stray top-level text node / <br> (which can't carry a dir) into a
+// line div, so every line is a stylable element. Preserves the moved node so
+// the caret stays valid.
+function normalizeStrayNodes() {
+  Array.from(editorEl.childNodes).forEach((n) => {
+    if (n.nodeType === 3) {
+      if (n.textContent === '') { n.remove(); return; }
+      const d = document.createElement('div');
+      d.className = 'ln';
+      editorEl.insertBefore(d, n);
+      d.appendChild(n);
+    } else if (n.nodeType === 1 && n.tagName === 'BR') {
+      const d = document.createElement('div');
+      d.className = 'ln';
+      editorEl.insertBefore(d, n);
+      d.appendChild(n);
+    }
+  });
+}
+
+// Direction per line: each line that contains any Persian/Arabic char is RTL.
+// A manual override on the tab (tab.dir) forces every line one direction.
+function updateLineDirs() {
+  normalizeStrayNodes();
   const t = activeTab();
-  let d;
-  if (t && (t.dir === 'rtl' || t.dir === 'ltr')) d = t.dir;
-  else d = detectDir(editorEl.value);
-  editorEl.style.direction = '';
-  editorEl.setAttribute('dir', d);
-  editorEl.style.textAlign = d === 'rtl' ? 'right' : 'left';
+  const forced = t && (t.dir === 'rtl' || t.dir === 'ltr') ? t.dir : null;
+  editorLines().forEach((d) => {
+    if (!d.classList.contains('ln')) d.classList.add('ln');
+    d.setAttribute('dir', forced || detectDir(d.textContent));
+  });
+}
+
+function updateEmptyState() {
+  editorEl.classList.toggle('is-empty', getEditorText() === '');
+}
+
+// kept as a single entry point used around the app
+function applyEditorDir() {
+  updateLineDirs();
+  updateEmptyState();
+}
+
+function placeCaretEnd() {
+  const r = document.createRange();
+  r.selectNodeContents(editorEl);
+  r.collapse(false);
+  const s = window.getSelection();
+  s.removeAllRanges();
+  s.addRange(r);
 }
 
 // Auto-name a tab from its first non-empty line, else "Prompt N"
@@ -288,11 +360,11 @@ function switchTab(id) {
   syncEditorToState();
   state.activeId = id;
   const t = activeTab();
-  editorEl.value = t ? t.content : '';
-  applyEditorDir();
+  setEditorText(t ? t.content : '');
   renderTabs();
   updateCounts();
   editorEl.focus();
+  placeCaretEnd();
   scheduleSave();
 }
 
@@ -301,8 +373,7 @@ function addTab(focus = true) {
   const tab = { id: uid(), name: '', custom: false, content: '', dir: 'auto' };
   state.tabs.push(tab);
   state.activeId = tab.id;
-  editorEl.value = '';
-  applyEditorDir();
+  setEditorText('');
   renderTabs();
   updateCounts();
   if (focus) editorEl.focus();
@@ -317,7 +388,7 @@ function closeTab(id) {
   if (state.activeId === id) {
     const next = state.tabs[idx] || state.tabs[idx - 1] || null;
     state.activeId = next ? next.id : null;
-    editorEl.value = next ? next.content : '';
+    setEditorText(next ? next.content : '');
   }
   renderTabs();
   updateCounts();
@@ -326,7 +397,7 @@ function closeTab(id) {
 
 function syncEditorToState() {
   const t = activeTab();
-  if (t) t.content = editorEl.value;
+  if (t) t.content = getEditorText();
 }
 
 // ---------- Persistence ----------
@@ -359,21 +430,21 @@ async function loadState() {
     state.activeId = state.tabs[0].id;
   }
   const t = activeTab();
-  editorEl.value = t ? t.content : '';
-  applyEditorDir();
+  setEditorText(t ? t.content : '');
   renderTabs();
   updateCounts();
 }
 
 // ---------- Events ----------
 editorEl.addEventListener('input', () => {
+  updateLineDirs();
+  updateEmptyState();
   const t = activeTab();
   if (t) {
-    t.content = editorEl.value;
+    t.content = getEditorText();
     // live update auto-name if not custom
     if (!t.custom) renderTabs();
   }
-  applyEditorDir();
   updateCounts();
   scheduleSave();
 });

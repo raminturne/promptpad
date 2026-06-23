@@ -283,9 +283,9 @@ body {
 .editor { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 
 .editor-area {
+  position: relative;
   flex: 1;
   width: 100%;
-  resize: none;
   border: none;
   outline: none;
   background: transparent;
@@ -295,11 +295,31 @@ body {
   line-height: 1.65;
   padding: 16px 18px;
   user-select: text;
+  cursor: text;
   caret-color: var(--accent);
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
-.editor-area::placeholder { color: var(--muted); }
-.editor-area::selection { background: var(--accent-soft); }
+/* Each line is its own block; direction is set per line (any Persian → RTL) */
+.editor-area .ln {
+  text-align: start;
+  min-height: 1.65em;
+}
+
+.editor-area.is-empty::before {
+  content: attr(data-placeholder);
+  position: absolute;
+  left: 18px;
+  top: 16px;
+  color: var(--muted);
+  pointer-events: none;
+}
+
+.editor-area::selection,
+.editor-area ::selection { background: var(--accent-soft); }
 
 .editor-area::-webkit-scrollbar,
 .tab-list::-webkit-scrollbar { width: 8px; height: 8px; }

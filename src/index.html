@@ -60,8 +60,8 @@
 
       <!-- Editor -->
       <main class="editor">
-        <textarea id="editor" class="editor-area" spellcheck="false" dir="auto"
-          placeholder="Write your prompt here…"></textarea>
+        <div id="editor" class="editor-area" contenteditable="plaintext-only"
+          spellcheck="false" data-placeholder="Write your prompt here…"></div>
         <footer class="statusbar">
           <div class="counts">
             <span id="charCount">0 chars</span>
@@ -151,7 +151,7 @@
             <div class="about-box">
               <div class="about-brand">
                 <span class="brand-dot"></span>
-                <span>PromptPad <em id="aboutVersion">v1.2.1</em></span>
+                <span>PromptPad <em id="aboutVersion">v1.2.2</em></span>
               </div>
               <p class="about-desc">A compact notepad for writing AI prompts.</p>
               <div class="about-links">

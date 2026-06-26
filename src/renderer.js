@@ -123,6 +123,27 @@ function normalizeStrayNodes() {
   });
 }
 
+// Keep each line div as a single visual row. Blink likes to leave a trailing
+// <br> behind when you start typing into an empty line (one we created as
+// <div><br></div>), which renders a phantom blank row *below* the text. So:
+//   - a line that has text must carry no <br>
+//   - an empty line must carry exactly one <br> (so it stays selectable/tall)
+// The caret lives in the text node while typing, so dropping a trailing <br>
+// never disturbs it.
+function cleanLineBreaks() {
+  editorLines().forEach((d) => {
+    const hasText = d.textContent.length > 0;
+    const brs = d.getElementsByTagName('br');
+    if (hasText) {
+      while (brs.length) brs[0].remove();
+    } else if (brs.length === 0) {
+      d.appendChild(document.createElement('br'));
+    } else {
+      while (brs.length > 1) brs[brs.length - 1].remove();
+    }
+  });
+}
+
 // Place the caret inside a line element at a given character offset.
 function placeCaretInLine(el, offset) {
   const node = el.firstChild;
@@ -196,6 +217,7 @@ function splitMultilineLines() {
 function updateLineDirs() {
   normalizeStrayNodes();
   splitMultilineLines();
+  cleanLineBreaks();
   const t = activeTab();
   const forced = t && (t.dir === 'rtl' || t.dir === 'ltr') ? t.dir : null;
   let changed = false;
@@ -514,7 +536,7 @@ async function loadState() {
 }
 
 // ---------- Events ----------
-editorEl.addEventListener('input', () => {
+function handleEditorChanged() {
   updateLineDirs();
   updateEmptyState();
   const t = activeTab();
@@ -525,6 +547,50 @@ editorEl.addEventListener('input', () => {
   }
   updateCounts();
   scheduleSave();
+}
+
+editorEl.addEventListener('input', handleEditorChanged);
+
+// Take full control of Enter. Left to Blink, a plaintext-only + pre-wrap
+// contenteditable inserts *two* "\n" per Enter (so the caret can sit on a
+// visible empty row), which our line-splitter then turns into an extra blank
+// line. Instead we split the current line into two .ln divs ourselves and put
+// the caret at the start of the new one — exactly one new line, every time.
+editorEl.addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter' || e.isComposing || e.shiftKey || e.ctrlKey || e.altKey || e.metaKey) return;
+  e.preventDefault();
+
+  const sel = window.getSelection();
+  if (!sel.rangeCount) return;
+  let r = sel.getRangeAt(0);
+  if (!r.collapsed) { r.deleteContents(); r = sel.getRangeAt(0); }
+
+  // Find the top-level line div holding the caret.
+  normalizeStrayNodes();
+  let line = r.endContainer;
+  while (line && line !== editorEl && line.parentNode !== editorEl) line = line.parentNode;
+  if (!line || line === editorEl) {
+    line = editorLines()[0];
+    if (!line) { line = makeLine(''); editorEl.appendChild(line); }
+  }
+
+  // Caret offset (in characters) within this line.
+  const pre = document.createRange();
+  pre.selectNodeContents(line);
+  try { pre.setEnd(r.endContainer, r.endOffset); } catch {}
+  const offset = pre.toString().length;
+
+  const text = line.textContent;
+  const firstLine = makeLine(text.slice(0, offset));
+  const secondLine = makeLine(text.slice(offset));
+  line.replaceWith(firstLine, secondLine);
+
+  updateLineDirs();
+  placeCaretInLine(secondLine, 0);
+  // Keep the new line in view as the caret moves past the viewport bottom.
+  secondLine.scrollIntoView({ block: 'nearest' });
+
+  handleEditorChanged();
 });
 
 addBtn.addEventListener('click', () => addTab());

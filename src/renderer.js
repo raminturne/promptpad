@@ -25,7 +25,7 @@ const DEFAULT_SETTINGS = {
   railWidth: 166,
   launchAtStartup: false,
   placeholdersEnabled: true,
-  placeholderBarPosition: 'top', // 'top' | 'right'
+  placeholderBarPosition: 'right', // 'top' | 'right'
   placeholderBarWrap: 'line', // 'line' | 'stack'
   placeholderBarWidth: 220
 };

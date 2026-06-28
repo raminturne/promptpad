@@ -14,10 +14,6 @@ Minimal, fast, and right next to your work — a quiet terminal-inspired pad wit
 |:---:|:---:|:---:|
 | ![Settings](screenshots/03-settings.png) | ![Midnight theme](screenshots/04-midnight.png) | ![Plum theme](screenshots/05-plum.png) |
 
-| Placeholder quick-fill | Placeholder settings |
-|:---:|:---:|
-| ![Placeholder quick-fill](screenshots/06-placeholders.png) | ![Placeholder settings](screenshots/07-settings-placeholders.png) |
-
 ## ✨ Features
 
 - **Compact always-on-top widget** — frameless window that floats above other apps, with a pin toggle

@@ -60,8 +60,15 @@
 
       <!-- Editor -->
       <main class="editor">
-        <div id="editor" class="editor-area" contenteditable="plaintext-only"
-          spellcheck="false" data-placeholder="Write your prompt here…"></div>
+        <div class="editor-body" id="editorBody">
+          <div id="placeholderBar" class="placeholder-bar hidden">
+            <span id="placeholderCount" class="placeholder-count"></span>
+            <div id="placeholderFields" class="placeholder-fields"></div>
+          </div>
+          <div id="placeholderResizer" class="placeholder-resizer" title="Drag to resize"></div>
+          <div id="editor" class="editor-area" contenteditable="plaintext-only"
+            spellcheck="false" data-placeholder="Write your prompt here…"></div>
+        </div>
         <footer class="statusbar">
           <div class="counts">
             <span id="charCount">0 chars</span>
@@ -131,6 +138,40 @@
             </div>
           </section>
 
+          <!-- Placeholders -->
+          <section class="set-group">
+            <div class="set-toggle-row">
+              <div class="set-toggle-text">
+                <span>Detect placeholders</span>
+                <small>Highlight [text] / {text} and offer quick-fill fields</small>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="togglePlaceholders" />
+                <span class="slider"></span>
+              </label>
+            </div>
+            <div class="set-toggle-row" id="placeholderPositionRow">
+              <div class="set-toggle-text">
+                <span>Fill bar position</span>
+                <small>Above the prompt, or as a side panel</small>
+              </div>
+              <div class="seg" id="placeholderPositionSeg">
+                <button class="seg-btn" data-pos="top">Top</button>
+                <button class="seg-btn" data-pos="right">Right</button>
+              </div>
+            </div>
+            <div class="set-toggle-row" id="placeholderWrapRow">
+              <div class="set-toggle-text">
+                <span>Field layout</span>
+                <small>One scrollable line, or stacked rows</small>
+              </div>
+              <div class="seg" id="placeholderWrapSeg">
+                <button class="seg-btn" data-wrap="line">Line</button>
+                <button class="seg-btn" data-wrap="stack">Stacked</button>
+              </div>
+            </div>
+          </section>
+
           <!-- System -->
           <section class="set-group">
             <div class="set-toggle-row">
@@ -151,7 +192,7 @@
             <div class="about-box">
               <div class="about-brand">
                 <span class="brand-dot"></span>
-                <span>PromptPad <em id="aboutVersion">v1.2.5</em></span>
+                <span>PromptPad <em id="aboutVersion">v1.2.6</em></span>
               </div>
               <p class="about-desc">A compact notepad for writing AI prompts.</p>
               <div class="about-links">

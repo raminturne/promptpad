@@ -17,6 +17,7 @@
   --accent-glow: color-mix(in srgb, var(--accent) 38%, transparent);
 
   --rail-width: 166px;
+  --placeholder-width: 220px;
   --font: "Cascadia Code", "Cascadia Mono", "JetBrains Mono", Consolas,
     ui-monospace, "SF Mono", Menlo, monospace;
   --radius: 9px;
@@ -163,7 +164,7 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 8px 8px 11px;
+  padding: 11px 8px 11px 11px;
   border-radius: var(--radius);
   cursor: pointer;
   color: var(--muted-2);
@@ -281,6 +282,112 @@ body {
 
 /* ---------- Editor ---------- */
 .editor { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.editor-body { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+
+/* ---------- Placeholder fill bar ---------- */
+.placeholder-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--elevated);
+  flex-shrink: 0;
+  overflow-x: auto;
+}
+.placeholder-fields { display: flex; gap: 8px; flex: 1; min-width: 0; }
+.placeholder-field { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.placeholder-field label {
+  font-size: 11px;
+  color: var(--muted-2);
+  white-space: nowrap;
+  max-width: 110px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.placeholder-field-row { display: flex; align-items: center; gap: 6px; }
+.placeholder-field input {
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 12px;
+  padding: 4px 7px;
+  outline: none;
+  min-width: 110px;
+}
+
+/* Stacked field layout: wrap onto multiple rows instead of one scrollable line */
+.placeholder-bar.wrap-stack { overflow-x: hidden; overflow-y: auto; max-height: 130px; }
+.placeholder-bar.wrap-stack .placeholder-fields { flex-wrap: wrap; }
+.placeholder-bar.wrap-stack .placeholder-field { flex-shrink: 1; }
+
+/* Side-panel position: a vertical column to the right of the prompt text.
+   Each field stacks label-above-input so the input gets the full panel
+   width to type into, instead of squeezing next to a long [bracket] label. */
+.editor-body.bar-right { flex-direction: row; }
+.editor-body.bar-right #editor { order: 1; }
+.editor-body.bar-right .placeholder-resizer { order: 2; }
+.editor-body.bar-right .placeholder-bar.pos-right { order: 3; }
+
+.placeholder-bar.pos-right {
+  flex-direction: column;
+  align-items: stretch;
+  width: var(--placeholder-width, 220px);
+  flex-shrink: 0;
+  border-bottom: none;
+  border-left: 1px solid var(--border);
+  overflow-y: auto;
+  overflow-x: hidden;
+  max-height: none;
+}
+.placeholder-bar.pos-right .placeholder-fields { flex-direction: column; align-items: stretch; gap: 10px; overflow: visible; }
+.placeholder-bar.pos-right .placeholder-field { flex-direction: column; align-items: stretch; gap: 4px; width: 100%; }
+.placeholder-bar.pos-right .placeholder-field label {
+  max-width: none;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: unset;
+  word-break: break-word;
+}
+.placeholder-bar.pos-right .placeholder-field input { flex: 1; min-width: 0; width: 100%; }
+.placeholder-bar.pos-right .placeholder-count { margin-bottom: 2px; }
+
+.placeholder-resizer {
+  display: none;
+  width: 5px;
+  flex-shrink: 0;
+  cursor: col-resize;
+  background: transparent;
+  margin: 0 -3px;
+  z-index: 5;
+  transition: background 0.15s;
+}
+.editor-body.bar-right .placeholder-resizer { display: block; }
+.placeholder-resizer:hover,
+.placeholder-resizer.active { background: var(--accent-glow); }
+.placeholder-field input:focus { border-color: var(--accent); }
+.placeholder-count { font-size: 10.5px; color: var(--muted); flex-shrink: 0; white-space: nowrap; }
+
+.placeholder-confirm {
+  flex-shrink: 0;
+  width: 22px; height: 22px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border-strong);
+  background: transparent;
+  color: var(--muted);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.placeholder-confirm:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.placeholder-confirm:disabled { opacity: 0.35; cursor: default; }
 
 .editor-area {
   position: relative;
@@ -309,6 +416,13 @@ body {
   min-height: 1.65em;
 }
 
+.editor-area .placeholder-tag {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-radius: 4px;
+  padding: 0 2px;
+}
+
 .editor-area.is-empty::before {
   content: attr(data-placeholder);
   position: absolute;
@@ -322,11 +436,14 @@ body {
 .editor-area ::selection { background: var(--accent-soft); }
 
 .editor-area::-webkit-scrollbar,
-.tab-list::-webkit-scrollbar { width: 8px; height: 8px; }
+.tab-list::-webkit-scrollbar,
+.placeholder-bar::-webkit-scrollbar { width: 8px; height: 8px; }
 .editor-area::-webkit-scrollbar-thumb,
-.tab-list::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 8px; }
+.tab-list::-webkit-scrollbar-thumb,
+.placeholder-bar::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 8px; }
 .editor-area::-webkit-scrollbar-thumb:hover,
-.tab-list::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+.tab-list::-webkit-scrollbar-thumb:hover,
+.placeholder-bar::-webkit-scrollbar-thumb:hover { background: var(--muted); }
 
 /* ---------- Status bar ---------- */
 .statusbar {

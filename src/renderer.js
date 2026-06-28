@@ -23,7 +23,11 @@ const DEFAULT_SETTINGS = {
   pinningEnabled: true,
   railResizable: true,
   railWidth: 166,
-  launchAtStartup: false
+  launchAtStartup: false,
+  placeholdersEnabled: true,
+  placeholderBarPosition: 'top', // 'top' | 'right'
+  placeholderBarWrap: 'line', // 'line' | 'stack'
+  placeholderBarWidth: 220
 };
 
 let settings = { ...DEFAULT_SETTINGS };
@@ -51,8 +55,18 @@ const layoutSeg = document.getElementById('layoutSeg');
 const togglePinEl = document.getElementById('togglePin');
 const toggleResizeEl = document.getElementById('toggleResize');
 const toggleStartupEl = document.getElementById('toggleStartup');
+const togglePlaceholdersEl = document.getElementById('togglePlaceholders');
+const placeholderPositionSeg = document.getElementById('placeholderPositionSeg');
+const placeholderWrapSeg = document.getElementById('placeholderWrapSeg');
+const placeholderWrapRow = document.getElementById('placeholderWrapRow');
 const resetBtn = document.getElementById('resetBtn');
 const resizeRow = document.getElementById('resizeRow');
+// placeholder fill bar
+const editorBodyEl = document.getElementById('editorBody');
+const placeholderBarEl = document.getElementById('placeholderBar');
+const placeholderCountEl = document.getElementById('placeholderCount');
+const placeholderFieldsEl = document.getElementById('placeholderFields');
+const placeholderResizerEl = document.getElementById('placeholderResizer');
 
 // ---------- Helpers ----------
 function uid() {
@@ -68,6 +82,18 @@ const RTL_RE = /[֐-׿؀-ۿ܀-ݏݐ-ݿࢠ-ࣿיִ-﷿ﹰ-﻿]/;
 
 function detectDir(text) {
   return RTL_RE.test(text || '') ? 'rtl' : 'ltr';
+}
+
+// Prompt-template blanks like [topic] or {name} — single line only.
+const PLACEHOLDER_RE = /\[[^\[\]\r\n]+\]|\{[^{}\r\n]+\}/g;
+
+function findPlaceholderTokens(text) {
+  const seen = new Set();
+  const tokens = [];
+  for (const m of (text || '').matchAll(PLACEHOLDER_RE)) {
+    if (!seen.has(m[0])) { seen.add(m[0]); tokens.push(m[0]); }
+  }
+  return tokens;
 }
 
 // ---------- Editor (contenteditable, per-line direction) ----------
@@ -144,19 +170,88 @@ function cleanLineBreaks() {
   });
 }
 
-// Place the caret inside a line element at a given character offset.
+// Place the caret inside a line element at a given character offset. Walks
+// all text nodes (a line can hold several once placeholder spans split it
+// up), falling back to the end of the line for empty (<br>-only) content.
 function placeCaretInLine(el, offset) {
-  const node = el.firstChild;
-  const r = document.createRange();
-  if (node && node.nodeType === 3) {
-    r.setStart(node, Math.min(offset, node.textContent.length));
-  } else {
-    r.setStart(el, 0); // empty line (<br>)
+  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  let node;
+  let acc = 0;
+  while ((node = walker.nextNode())) {
+    const len = node.textContent.length;
+    if (acc + len >= offset) {
+      const r = document.createRange();
+      r.setStart(node, Math.max(0, offset - acc));
+      r.collapse(true);
+      const s = window.getSelection();
+      s.removeAllRanges();
+      s.addRange(r);
+      return;
+    }
+    acc += len;
   }
-  r.collapse(true);
+  const r = document.createRange();
+  r.selectNodeContents(el);
+  r.collapse(false);
   const s = window.getSelection();
   s.removeAllRanges();
   s.addRange(r);
+}
+
+// Caret's character offset within `el`, or null if the caret isn't inside it.
+function getCaretOffsetIn(el) {
+  const sel = window.getSelection();
+  if (!sel.rangeCount) return null;
+  const r = sel.getRangeAt(0);
+  if (el !== r.endContainer && !el.contains(r.endContainer)) return null;
+  const pre = document.createRange();
+  pre.selectNodeContents(el);
+  pre.setEnd(r.endContainer, r.endOffset);
+  return pre.toString().length;
+}
+
+// Top-level .ln line element that currently holds the caret, if any.
+function currentLine() {
+  const sel = window.getSelection();
+  if (!sel.rangeCount) return null;
+  let node = sel.getRangeAt(0).endContainer;
+  while (node && node !== editorEl && node.parentNode !== editorEl) node = node.parentNode;
+  return node && node !== editorEl ? node : null;
+}
+
+// Rebuild a line's children as plain text interleaved with .placeholder-tag
+// spans around [bracket] / {brace} matches, preserving the caret offset.
+function highlightLine(el) {
+  const text = el.textContent;
+  const hadTags = !!el.querySelector('.placeholder-tag');
+  const matches = [...text.matchAll(PLACEHOLDER_RE)];
+  if (!matches.length && !hadTags) return;
+
+  const offset = getCaretOffsetIn(el);
+  el.innerHTML = '';
+  if (text === '') {
+    el.appendChild(document.createElement('br'));
+  } else {
+    let last = 0;
+    for (const m of matches) {
+      if (m.index > last) el.appendChild(document.createTextNode(text.slice(last, m.index)));
+      const span = document.createElement('span');
+      span.className = 'placeholder-tag';
+      span.textContent = m[0];
+      el.appendChild(span);
+      last = m.index + m[0].length;
+    }
+    if (last < text.length) el.appendChild(document.createTextNode(text.slice(last)));
+  }
+  if (offset != null) placeCaretInLine(el, offset);
+}
+
+let highlightTimer = null;
+function scheduleHighlight(line) {
+  clearTimeout(highlightTimer);
+  highlightTimer = setTimeout(() => {
+    if (line && line.isConnected) highlightLine(line);
+  }, 300);
 }
 
 // In a plaintext-only contenteditable with pre-wrap, pressing Enter inserts a
@@ -171,17 +266,7 @@ function splitMultilineLines() {
     if (el.textContent.indexOf('\n') === -1) continue;
 
     // Caret offset within this element (if the caret is inside it).
-    let caretInEl = null;
-    const sel = window.getSelection();
-    if (sel.rangeCount) {
-      const r = sel.getRangeAt(0);
-      if (el === r.endContainer || el.contains(r.endContainer)) {
-        const pre = document.createRange();
-        pre.selectNodeContents(el);
-        pre.setEnd(r.endContainer, r.endOffset);
-        caretInEl = pre.toString().length;
-      }
-    }
+    const caretInEl = getCaretOffsetIn(el);
 
     const parts = el.textContent.split('\n');
     const newEls = parts.map((p) => makeLine(p));
@@ -220,6 +305,7 @@ function updateLineDirs() {
   cleanLineBreaks();
   const t = activeTab();
   const forced = t && (t.dir === 'rtl' || t.dir === 'ltr') ? t.dir : null;
+  const activeLine = currentLine();
   let changed = false;
   editorLines().forEach((d) => {
     if (!d.classList.contains('ln')) d.classList.add('ln');
@@ -230,7 +316,12 @@ function updateLineDirs() {
       d.style.textAlign = want === 'rtl' ? 'right' : 'left';
       changed = true;
     }
+    // Re-highlight lines you're not actively typing on immediately; the line
+    // under the caret is debounced below so spans don't fight the caret
+    // mid-keystroke.
+    if (settings.placeholdersEnabled && d !== activeLine) highlightLine(d);
   });
+  if (settings.placeholdersEnabled) scheduleHighlight(activeLine);
   // Flush the pending layout so the new direction paints this frame.
   if (changed) void editorEl.offsetHeight;
 }
@@ -279,6 +370,97 @@ function updateCounts() {
   const chars = text.length;
   charCountEl.textContent = chars.toLocaleString('en-US') + (chars === 1 ? ' char' : ' chars');
   tokenCountEl.textContent = '~' + estimateTokens(text).toLocaleString('en-US') + ' tokens';
+}
+
+// ---------- Placeholder fill bar ----------
+// Replace every occurrence of `token` (e.g. "[topic]") in the active tab's
+// content with `value` — filling one occurrence fills them all.
+function fillPlaceholder(token, value) {
+  const t = activeTab();
+  if (!t) return;
+  syncEditorToState();
+  t.content = t.content.split(token).join(value);
+  setEditorText(t.content);
+  updateCounts();
+  scheduleSave();
+  updatePlaceholderPanel();
+}
+
+function buildPlaceholderField(token) {
+  const row = document.createElement('div');
+  row.className = 'placeholder-field';
+  row.dataset.token = token;
+
+  const label = document.createElement('label');
+  label.textContent = token;
+  label.setAttribute('dir', detectDir(token));
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.placeholder = 'Type value…';
+
+  const confirmBtn = document.createElement('button');
+  confirmBtn.type = 'button';
+  confirmBtn.className = 'placeholder-confirm';
+  confirmBtn.title = 'Apply';
+  confirmBtn.disabled = true;
+  confirmBtn.innerHTML =
+    '<svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">' +
+    '<path d="M5 12.5l4.5 4.5L19 7" fill="none" stroke="currentColor" ' +
+    'stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+  // Only replace the placeholder once the user explicitly confirms — typing
+  // alone (or losing focus) no longer applies it.
+  const commit = () => {
+    const val = input.value.trim();
+    if (!val) return;
+    fillPlaceholder(token, val);
+  };
+  input.addEventListener('input', () => {
+    confirmBtn.disabled = !input.value.trim();
+  });
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); commit(); }
+  });
+  confirmBtn.addEventListener('click', commit);
+
+  const inputRow = document.createElement('div');
+  inputRow.className = 'placeholder-field-row';
+  inputRow.appendChild(input);
+  inputRow.appendChild(confirmBtn);
+
+  row.appendChild(label);
+  row.appendChild(inputRow);
+  return row;
+}
+
+// Rebuilds the fill bar from the active tab's current placeholder tokens.
+// Reuses existing field rows (instead of wiping innerHTML) so a row the user
+// is mid-typing into doesn't lose focus/value just because another field
+// elsewhere got filled.
+function updatePlaceholderPanel() {
+  const t = activeTab();
+  const tokens = settings.placeholdersEnabled && t ? findPlaceholderTokens(t.content) : [];
+
+  if (!tokens.length) {
+    placeholderBarEl.classList.add('hidden');
+    placeholderFieldsEl.innerHTML = '';
+    return;
+  }
+
+  placeholderBarEl.classList.remove('hidden');
+  placeholderCountEl.textContent =
+    tokens.length + (tokens.length === 1 ? ' placeholder' : ' placeholders');
+
+  const existing = new Map();
+  Array.from(placeholderFieldsEl.children).forEach((row) => existing.set(row.dataset.token, row));
+
+  tokens.forEach((token) => {
+    const row = existing.get(token) || buildPlaceholderField(token);
+    placeholderFieldsEl.appendChild(row);
+    existing.delete(token);
+  });
+  existing.forEach((row) => row.remove());
 }
 
 // ---------- Render ----------
@@ -463,6 +645,7 @@ function switchTab(id) {
   setEditorText(t ? t.content : '');
   renderTabs();
   updateCounts();
+  updatePlaceholderPanel();
   editorEl.focus();
   placeCaretEnd();
   scheduleSave();
@@ -476,6 +659,7 @@ function addTab(focus = true) {
   setEditorText('');
   renderTabs();
   updateCounts();
+  updatePlaceholderPanel();
   if (focus) editorEl.focus();
   scheduleSave();
 }
@@ -492,12 +676,72 @@ function closeTab(id) {
   }
   renderTabs();
   updateCounts();
+  updatePlaceholderPanel();
   scheduleSave();
 }
 
 function syncEditorToState() {
   const t = activeTab();
   if (t) t.content = getEditorText();
+}
+
+// ---------- Undo / redo ----------
+// The editor manually rewrites contenteditable DOM on every keystroke
+// (custom Enter handling, line normalization, placeholder highlighting), so
+// Chromium's native undo history doesn't track real edits and Ctrl+Z stops
+// working. We keep our own per-tab undo/redo stack of content checkpoints
+// instead, coalesced so a whole burst of typing undoes in one step.
+const CHECKPOINT_DELAY = 600;
+const UNDO_LIMIT = 100;
+
+function commitCheckpoint(tab) {
+  clearTimeout(tab.checkpointTimer);
+  tab.checkpointTimer = null;
+  if (tab.pendingCheckpoint != null && tab.pendingCheckpoint !== tab.content) {
+    tab.undoStack = tab.undoStack || [];
+    tab.undoStack.push(tab.pendingCheckpoint);
+    if (tab.undoStack.length > UNDO_LIMIT) tab.undoStack.shift();
+    tab.redoStack = [];
+  }
+  tab.pendingCheckpoint = null;
+}
+
+// Called right after a tab's content changes; remembers what it looked like
+// before this burst of edits and commits that as an undo step once typing
+// pauses for CHECKPOINT_DELAY.
+function noteEditForUndo(tab, prevContent) {
+  if (tab.pendingCheckpoint == null) tab.pendingCheckpoint = prevContent;
+  clearTimeout(tab.checkpointTimer);
+  tab.checkpointTimer = setTimeout(() => commitCheckpoint(tab), CHECKPOINT_DELAY);
+}
+
+function restoreContent(tab, content) {
+  tab.content = content;
+  setEditorText(content);
+  renderTabs();
+  updateCounts();
+  updatePlaceholderPanel();
+  editorEl.focus();
+  placeCaretEnd();
+  scheduleSave();
+}
+
+function undo() {
+  const t = activeTab();
+  if (!t) return;
+  commitCheckpoint(t); // flush any in-progress burst as its own undo step first
+  if (!t.undoStack || !t.undoStack.length) return;
+  t.redoStack = t.redoStack || [];
+  t.redoStack.push(t.content);
+  restoreContent(t, t.undoStack.pop());
+}
+
+function redo() {
+  const t = activeTab();
+  if (!t || !t.redoStack || !t.redoStack.length) return;
+  t.undoStack = t.undoStack || [];
+  t.undoStack.push(t.content);
+  restoreContent(t, t.redoStack.pop());
 }
 
 // ---------- Persistence ----------
@@ -533,6 +777,7 @@ async function loadState() {
   setEditorText(t ? t.content : '');
   renderTabs();
   updateCounts();
+  updatePlaceholderPanel();
 }
 
 // ---------- Events ----------
@@ -541,11 +786,14 @@ function handleEditorChanged() {
   updateEmptyState();
   const t = activeTab();
   if (t) {
+    const prevContent = t.content;
     t.content = getEditorText();
+    if (t.content !== prevContent) noteEditForUndo(t, prevContent);
     // live update auto-name if not custom
     if (!t.custom) renderTabs();
   }
   updateCounts();
+  updatePlaceholderPanel();
   scheduleSave();
 }
 
@@ -567,9 +815,8 @@ editorEl.addEventListener('keydown', (e) => {
 
   // Find the top-level line div holding the caret.
   normalizeStrayNodes();
-  let line = r.endContainer;
-  while (line && line !== editorEl && line.parentNode !== editorEl) line = line.parentNode;
-  if (!line || line === editorEl) {
+  let line = currentLine();
+  if (!line) {
     line = editorLines()[0];
     if (!line) { line = makeLine(''); editorEl.appendChild(line); }
   }
@@ -641,6 +888,12 @@ document.addEventListener('keydown', (e) => {
   } else if (e.code === 'PageUp') {
     e.preventDefault();
     cycleTab(-1);
+  } else if (!e.shiftKey && e.code === 'KeyZ') {
+    e.preventDefault();
+    undo();
+  } else if ((e.shiftKey && e.code === 'KeyZ') || (!e.shiftKey && e.code === 'KeyY')) {
+    e.preventDefault();
+    redo();
   }
 });
 
@@ -700,6 +953,13 @@ function applySettings() {
     !settings.railResizable || settings.tabPosition === 'top');
   document.documentElement.style.setProperty(
     '--rail-width', (settings.railWidth || 166) + 'px');
+
+  const barRight = settings.placeholderBarPosition === 'right';
+  editorBodyEl.classList.toggle('bar-right', barRight);
+  placeholderBarEl.classList.toggle('pos-right', barRight);
+  placeholderBarEl.classList.toggle('wrap-stack', !barRight && settings.placeholderBarWrap === 'stack');
+  document.documentElement.style.setProperty(
+    '--placeholder-width', (settings.placeholderBarWidth || 220) + 'px');
 }
 
 async function saveSettingsNow() {
@@ -737,7 +997,15 @@ function syncSettingsUI() {
   togglePinEl.checked = settings.pinningEnabled;
   toggleResizeEl.checked = settings.railResizable;
   toggleStartupEl.checked = settings.launchAtStartup;
+  togglePlaceholdersEl.checked = settings.placeholdersEnabled;
   resizeRow.classList.toggle('disabled', settings.tabPosition === 'top');
+  placeholderPositionSeg.querySelectorAll('.seg-btn').forEach((b) => {
+    b.classList.toggle('active', b.dataset.pos === settings.placeholderBarPosition);
+  });
+  placeholderWrapSeg.querySelectorAll('.seg-btn').forEach((b) => {
+    b.classList.toggle('active', b.dataset.wrap === settings.placeholderBarWrap);
+  });
+  placeholderWrapRow.classList.toggle('disabled', settings.placeholderBarPosition === 'right');
 }
 
 function openSettings() {
@@ -785,12 +1053,40 @@ toggleStartupEl.addEventListener('change', async () => {
   saveSettingsNow();
 });
 
+togglePlaceholdersEl.addEventListener('change', () => {
+  settings.placeholdersEnabled = togglePlaceholdersEl.checked;
+  if (settings.placeholdersEnabled) updateLineDirs();
+  else setEditorText(getEditorText()); // strip any existing placeholder spans
+  updatePlaceholderPanel();
+  saveSettingsNow();
+});
+
+placeholderPositionSeg.addEventListener('click', (e) => {
+  const btn = e.target.closest('.seg-btn');
+  if (!btn) return;
+  settings.placeholderBarPosition = btn.dataset.pos;
+  applySettings();
+  syncSettingsUI();
+  saveSettingsNow();
+});
+
+placeholderWrapSeg.addEventListener('click', (e) => {
+  const btn = e.target.closest('.seg-btn');
+  if (!btn) return;
+  settings.placeholderBarWrap = btn.dataset.wrap;
+  applySettings();
+  syncSettingsUI();
+  saveSettingsNow();
+});
+
 resetBtn.addEventListener('click', async () => {
   settings = { ...DEFAULT_SETTINGS };
   await window.api.setStartup(false);
   applySettings();
   syncSettingsUI();
   renderTabs();
+  updateLineDirs();
+  updatePlaceholderPanel();
   saveSettingsNow();
 });
 
@@ -824,6 +1120,31 @@ window.addEventListener('mouseup', () => {
   if (!resizing) return;
   resizing = false;
   railResizer.classList.remove('active');
+  document.body.style.cursor = '';
+  saveSettingsNow();
+});
+
+// ---------- Placeholder panel resizer (right position only) ----------
+let placeholderResizing = false;
+placeholderResizerEl.addEventListener('mousedown', (e) => {
+  if (settings.placeholderBarPosition !== 'right') return;
+  placeholderResizing = true;
+  placeholderResizerEl.classList.add('active');
+  document.body.style.cursor = 'col-resize';
+  e.preventDefault();
+});
+window.addEventListener('mousemove', (e) => {
+  if (!placeholderResizing) return;
+  const right = editorBodyEl.getBoundingClientRect().right;
+  let w = Math.round(right - e.clientX);
+  w = Math.max(160, Math.min(420, w));
+  settings.placeholderBarWidth = w;
+  document.documentElement.style.setProperty('--placeholder-width', w + 'px');
+});
+window.addEventListener('mouseup', () => {
+  if (!placeholderResizing) return;
+  placeholderResizing = false;
+  placeholderResizerEl.classList.remove('active');
   document.body.style.cursor = '';
   saveSettingsNow();
 });

@@ -14,6 +14,10 @@ Minimal, fast, and right next to your work — a quiet terminal-inspired pad wit
 |:---:|:---:|:---:|
 | ![Settings](screenshots/03-settings.png) | ![Midnight theme](screenshots/04-midnight.png) | ![Plum theme](screenshots/05-plum.png) |
 
+| Placeholder quick-fill | Placeholder settings |
+|:---:|:---:|
+| ![Placeholder quick-fill](screenshots/06-placeholders.png) | ![Placeholder settings](screenshots/07-settings-placeholders.png) |
+
 ## ✨ Features
 
 - **Compact always-on-top widget** — frameless window that floats above other apps, with a pin toggle
@@ -26,8 +30,10 @@ Minimal, fast, and right next to your work — a quiet terminal-inspired pad wit
 - **Char & token counter** — handy for prompt writing
 - **Copy** the whole prompt with one click
 - **Smart RTL** — any Persian/Arabic in the text aligns it right (even if it starts with English); pure-English stays left. Direction is **per tab**, and you can force it with `Ctrl + Right Shift` (RTL) / `Ctrl + Left Shift` (LTR)
+- **Placeholder quick-fill** — write a template with `[bracket]` or `{brace}` blanks and they're highlighted automatically; a fill bar lets you type a value for each one, replacing every matching occurrence at once. The bar can sit above the prompt or as a resizable side panel, as one scrollable line or stacked rows — all toggled in Settings
+- **Undo / redo** (`Ctrl+Z` / `Ctrl+Shift+Z`) — its own per-tab history, coalesced so a burst of typing undoes in one step
 - **Autosave** to disk — tabs, content, window size & position persist
-- **Settings panel** — themes, tab position, resizable tab width, pinning on/off, launch at startup, reset
+- **Settings panel** — themes, tab position, resizable tab width, pinning on/off, placeholder detection & layout, launch at startup, reset
 - **Launch at startup** (Windows)
 
 ## ⌨️ Shortcuts
@@ -39,6 +45,8 @@ Minimal, fast, and right next to your work — a quiet terminal-inspired pad wit
 | `Ctrl+Tab` / `Ctrl+PageDown` | Next tab |
 | `Ctrl+PageUp` | Previous tab |
 | `Ctrl+Shift+C` | Copy prompt |
+| `Ctrl+Z` | Undo |
+| `Ctrl+Shift+Z` / `Ctrl+Y` | Redo |
 | `Ctrl + Right Shift` | Force RTL (this tab) |
 | `Ctrl + Left Shift` | Force LTR (this tab) |
 | `Esc` | Close settings |

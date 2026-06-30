@@ -52,6 +52,7 @@ const DEFAULT_SETTINGS = {
   railResizable: true,
   railWidth: 166,
   launchAtStartup: false,
+  autoCheckUpdates: true,
   placeholdersEnabled: true,
   placeholderBarPosition: 'right', // 'top' | 'right'
   placeholderBarWrap: 'line', // 'line' | 'stack'
@@ -121,6 +122,11 @@ const replaceAllEl = document.getElementById('replaceAll');
 // update check
 const checkUpdateBtn = document.getElementById('checkUpdateBtn');
 const checkUpdateLabel = document.getElementById('checkUpdateLabel');
+const toggleAutoUpdateEl = document.getElementById('toggleAutoUpdate');
+const updateBannerEl = document.getElementById('updateBanner');
+const updateBannerTextEl = document.getElementById('updateBannerText');
+const updateBannerLinkEl = document.getElementById('updateBannerLink');
+const updateBannerCloseEl = document.getElementById('updateBannerClose');
 // save-as-template dialog
 const saveTemplateDialog = document.getElementById('saveTemplateDialog');
 const templateNameInput = document.getElementById('templateNameInput');
@@ -1437,6 +1443,7 @@ function syncSettingsUI() {
   toggleCloseEl.checked = settings.closeButtonEnabled;
   toggleResizeEl.checked = settings.railResizable;
   toggleStartupEl.checked = settings.launchAtStartup;
+  toggleAutoUpdateEl.checked = settings.autoCheckUpdates;
   togglePlaceholdersEl.checked = settings.placeholdersEnabled;
   resizeRow.classList.toggle('disabled', settings.tabPosition === 'top');
   placeholderPositionSeg.querySelectorAll('.seg-btn').forEach((b) => {
@@ -1496,6 +1503,11 @@ toggleStartupEl.addEventListener('change', async () => {
   const real = await window.api.setStartup(settings.launchAtStartup);
   settings.launchAtStartup = real;
   toggleStartupEl.checked = real;
+  saveSettingsNow();
+});
+
+toggleAutoUpdateEl.addEventListener('change', () => {
+  settings.autoCheckUpdates = toggleAutoUpdateEl.checked;
   saveSettingsNow();
 });
 
@@ -1769,28 +1781,44 @@ replaceOneEl.addEventListener('click', doReplaceOne);
 replaceAllEl.addEventListener('click', doReplaceAll);
 
 // ---------- Update Check ----------
-checkUpdateBtn.addEventListener('click', async () => {
-  if (checkUpdateBtn.classList.contains('checking')) return;
-  checkUpdateBtn.classList.add('checking');
-  checkUpdateLabel.textContent = 'Checking…';
+const CURRENT_VERSION = document.getElementById('aboutVersion').textContent.replace('v', '');
+
+function showUpdateBanner(tag, url) {
+  updateBannerTextEl.textContent = 'New version available: v' + tag.replace('v', '');
+  updateBannerLinkEl.onclick = () => window.api.openExternal(url);
+  updateBannerEl.classList.remove('hidden');
+  // also update settings button
+  checkUpdateBtn.classList.add('update-available');
+  checkUpdateLabel.textContent = 'Update available: v' + tag.replace('v', '');
+  checkUpdateBtn.onclick = () => window.api.openExternal(url);
+}
+
+async function runUpdateCheck(silent = false) {
   try {
     const result = await window.api.checkUpdate();
-    if (!result) { checkUpdateLabel.textContent = 'Could not check'; return; }
-    const current = document.getElementById('aboutVersion').textContent.replace('v', '');
-    const latest = (result.tag || '').replace('v', '');
-    if (latest && latest !== current) {
-      checkUpdateBtn.classList.add('update-available');
-      checkUpdateLabel.textContent = 'Update available: v' + latest;
-      checkUpdateBtn.onclick = () => window.api.openExternal(result.url);
-    } else {
+    if (!result || !result.tag) return;
+    const latest = result.tag.replace('v', '');
+    if (latest && latest !== CURRENT_VERSION) {
+      showUpdateBanner(result.tag, result.url);
+    } else if (!silent) {
       checkUpdateLabel.textContent = 'You\'re up to date ✓';
       setTimeout(() => { checkUpdateLabel.textContent = 'Check for updates'; }, 3000);
     }
   } catch {
-    checkUpdateLabel.textContent = 'Check failed';
-  } finally {
-    checkUpdateBtn.classList.remove('checking');
+    if (!silent) checkUpdateLabel.textContent = 'Check failed';
   }
+}
+
+updateBannerCloseEl.addEventListener('click', () => {
+  updateBannerEl.classList.add('hidden');
+});
+
+checkUpdateBtn.addEventListener('click', async () => {
+  if (checkUpdateBtn.classList.contains('checking')) return;
+  checkUpdateBtn.classList.add('checking');
+  checkUpdateLabel.textContent = 'Checking…';
+  await runUpdateCheck(false);
+  checkUpdateBtn.classList.remove('checking');
 });
 
 // ---------- Init ----------
@@ -1819,4 +1847,9 @@ checkUpdateBtn.addEventListener('click', async () => {
   });
 
   editorEl.focus();
+
+  // auto-check for updates after short delay (silent — banner only if newer version found)
+  if (settings.autoCheckUpdates) {
+    setTimeout(() => runUpdateCheck(true), 3000);
+  }
 })();

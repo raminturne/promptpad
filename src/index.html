@@ -227,6 +227,16 @@
                 <span class="slider"></span>
               </label>
             </div>
+            <div class="set-toggle-row">
+              <div class="set-toggle-text">
+                <span>Auto-check for updates</span>
+                <small>Check GitHub for new versions on launch</small>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="toggleAutoUpdate" />
+                <span class="slider"></span>
+              </label>
+            </div>
           </section>
 
           <!-- About -->
@@ -261,6 +271,16 @@
           </section>
         </div>
       </div>
+    </div>
+
+    <!-- Update notification banner -->
+    <div id="updateBanner" class="update-banner hidden">
+      <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><polyline points="23 4 23 10 17 10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
+      <span id="updateBannerText"></span>
+      <button id="updateBannerLink" class="update-banner-link">Download</button>
+      <button id="updateBannerClose" class="update-banner-close" title="Dismiss">
+        <svg viewBox="0 0 24 24" width="11" height="11" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><line x1="6" y1="6" x2="18" y2="18" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
+      </button>
     </div>
 
     <!-- Tab right-click context menu -->

@@ -43,6 +43,7 @@ body {
 .hidden { display: none !important; }
 
 .app {
+  position: relative;
   display: flex;
   flex-direction: column;
   height: 100vh;
@@ -1148,6 +1149,43 @@ body {
 /* CSS Custom Highlight API — marks for find matches */
 ::highlight(find-match) { background-color: rgba(255,200,50,.32); color: inherit; }
 ::highlight(find-current) { background-color: rgba(255,140,20,.7); color: #000; }
+
+/* =========================================================
+   UPDATE NOTIFICATION BANNER
+   ========================================================= */
+.update-banner {
+  position: absolute;
+  bottom: 40px; /* above statusbar */
+  left: 0; right: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  background: var(--accent);
+  color: var(--bg);
+  font-size: 12.5px;
+  z-index: 200;
+  box-shadow: 0 -2px 12px rgba(0,0,0,.25);
+}
+.update-banner svg { opacity: .85; flex-shrink: 0; }
+.update-banner span { flex: 1; }
+.update-banner-link {
+  background: rgba(255,255,255,.2);
+  border: 1px solid rgba(255,255,255,.35);
+  border-radius: 4px;
+  color: inherit;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 3px 10px;
+  white-space: nowrap;
+}
+.update-banner-link:hover { background: rgba(255,255,255,.35); }
+.update-banner-close {
+  background: none; border: none; color: inherit;
+  cursor: pointer; opacity: .7; padding: 2px; display: flex;
+  align-items: center; flex-shrink: 0;
+}
+.update-banner-close:hover { opacity: 1; }
 
 /* =========================================================
    CHECK FOR UPDATES

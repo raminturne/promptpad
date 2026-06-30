@@ -74,8 +74,31 @@
             <div id="placeholderFields" class="placeholder-fields"></div>
           </div>
           <div id="placeholderResizer" class="placeholder-resizer" title="Drag to resize"></div>
-          <div id="editor" class="editor-area" contenteditable="plaintext-only"
-            spellcheck="false" data-placeholder="Write your prompt here…"></div>
+          <!-- Editor column: find bar stacked above the editor in both layouts -->
+          <div class="editor-col">
+            <div id="findBar" class="find-bar hidden">
+              <div class="find-row">
+                <input id="findInput" class="find-input" type="text" placeholder="Find…" spellcheck="false" autocomplete="off" />
+                <button id="findPrev" class="find-nav" title="Previous (Shift+Enter)">
+                  <svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true"><polyline points="18 15 12 9 6 15" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
+                </button>
+                <button id="findNext" class="find-nav" title="Next (Enter)">
+                  <svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true"><polyline points="6 9 12 15 18 9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
+                </button>
+                <span id="findCount" class="find-count"></span>
+                <button id="findClose" class="find-close">
+                  <svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="6" y1="6" x2="18" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+                </button>
+              </div>
+              <div id="replaceRow" class="find-row hidden">
+                <input id="replaceInput" class="find-input" type="text" placeholder="Replace…" spellcheck="false" autocomplete="off" />
+                <button id="replaceOne" class="find-action">Replace</button>
+                <button id="replaceAll" class="find-action">All</button>
+              </div>
+            </div>
+            <div id="editor" class="editor-area" contenteditable="plaintext-only"
+              spellcheck="false" data-placeholder="Write your prompt here…"></div>
+          </div>
         </div>
         <footer class="statusbar">
           <div class="counts">
@@ -212,7 +235,7 @@
             <div class="about-box">
               <div class="about-brand">
                 <span class="brand-dot"></span>
-                <span>PromptPad <em id="aboutVersion">v1.3.0</em></span>
+                <span>PromptPad <em id="aboutVersion">v1.4.0</em></span>
               </div>
               <p class="about-desc">A compact notepad for writing AI prompts.</p>
               <div class="about-links">
@@ -225,6 +248,10 @@
                   t.me/fast_amozesh
                 </a>
               </div>
+              <button id="checkUpdateBtn" class="check-update-btn">
+                <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><polyline points="23 4 23 10 17 10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
+                <span id="checkUpdateLabel">Check for updates</span>
+              </button>
             </div>
           </section>
 

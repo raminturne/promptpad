@@ -12,5 +12,6 @@ contextBridge.exposeInMainWorld('api', {
   setBgColor: (color) => ipcRenderer.send('set-bg-color', color),
   setStartup: (enabled) => ipcRenderer.invoke('set-startup', enabled),
   getStartup: () => ipcRenderer.invoke('get-startup'),
-  openExternal: (url) => ipcRenderer.send('open-external', url)
+  openExternal: (url) => ipcRenderer.send('open-external', url),
+  checkUpdate: () => ipcRenderer.invoke('check-update')
 });

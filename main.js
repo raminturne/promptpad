@@ -155,6 +155,29 @@ app.whenReady().then(() => {
     }
   });
 
+  ipcMain.handle('check-update', async () => {
+    const { net } = require('electron');
+    return new Promise((resolve) => {
+      const req = net.request({
+        method: 'GET',
+        url: 'https://api.github.com/repos/raminturne/promptpad/releases/latest',
+        headers: { 'User-Agent': 'PromptPad-UpdateCheck' }
+      });
+      let body = '';
+      req.on('response', (res) => {
+        res.on('data', (chunk) => { body += chunk.toString(); });
+        res.on('end', () => {
+          try {
+            const data = JSON.parse(body);
+            resolve({ tag: data.tag_name || null, url: data.html_url || null });
+          } catch { resolve(null); }
+        });
+      });
+      req.on('error', () => resolve(null));
+      req.end();
+    });
+  });
+
   createWindow(BrowserWindow);
 
   app.on('activate', () => {

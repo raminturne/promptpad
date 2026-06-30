@@ -1,6 +1,6 @@
 {
   "name": "promptpad",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "A compact, always-on-top notepad widget for writing AI prompts",
   "main": "main.js",
   "author": "PromptPad",
@@ -15,8 +15,9 @@
     "electron-builder": "^24.13.3"
   },
   "build": {
-    "appId": "com.promptpad.app",
+    "appId": "com.raminturne.promptpad",
     "productName": "PromptPad",
+    "copyright": "Copyright © 2026 PromptPad",
     "files": [
       "main.js",
       "preload.js",
@@ -35,15 +36,19 @@
           ]
         }
       ],
-      "icon": "build/icon.ico"
+      "icon": "build/icon.ico",
+      "publisherName": "PromptPad",
+      "requestedExecutionLevel": "asInvoker",
+      "signDlls": false
     },
     "nsis": {
-      "oneClick": false,
+      "oneClick": true,
       "perMachine": false,
-      "allowToChangeInstallationDirectory": true,
+      "allowToChangeInstallationDirectory": false,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "PromptPad"
+      "shortcutName": "PromptPad",
+      "deleteAppDataOnUninstall": false
     }
   }
 }

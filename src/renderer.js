@@ -107,6 +107,20 @@ const templatesOverlay = document.getElementById('templatesOverlay');
 const templatesClose = document.getElementById('templatesClose');
 const templatesListEl = document.getElementById('templatesList');
 const templatesEmptyEl = document.getElementById('templatesEmpty');
+// find & replace
+const findBarEl = document.getElementById('findBar');
+const findInputEl = document.getElementById('findInput');
+const findPrevEl = document.getElementById('findPrev');
+const findNextEl = document.getElementById('findNext');
+const findCountEl = document.getElementById('findCount');
+const findCloseEl = document.getElementById('findClose');
+const replaceRowEl = document.getElementById('replaceRow');
+const replaceInputEl = document.getElementById('replaceInput');
+const replaceOneEl = document.getElementById('replaceOne');
+const replaceAllEl = document.getElementById('replaceAll');
+// update check
+const checkUpdateBtn = document.getElementById('checkUpdateBtn');
+const checkUpdateLabel = document.getElementById('checkUpdateLabel');
 // save-as-template dialog
 const saveTemplateDialog = document.getElementById('saveTemplateDialog');
 const templateNameInput = document.getElementById('templateNameInput');
@@ -743,7 +757,8 @@ function startRename(tab, tabEl, nameEl, index) {
 
 // ---------- Actions ----------
 function switchTab(id) {
-  _previewToken = null; _previewBase = null; // cancel any active live preview
+  _previewToken = null; _previewBase = null;
+  clearFindHL();
   // flush current editor into state first
   syncEditorToState();
   state.activeId = id;
@@ -911,7 +926,7 @@ function showCtxMenu(e, tabId) {
   if (!tab) return;
 
   ctxPinItem.textContent = tab.pinned ? 'Unpin' : 'Pin';
-  ctxPinGroup.style.display = settings.pinningEnabled ? '' : 'none';
+  ctxPinGroup.style.display = '';
 
   ctxColorRowEl.querySelectorAll('.ctx-swatch').forEach((sw) => {
     sw.classList.toggle('active', sw.dataset.color === (tab.color || ''));
@@ -1266,6 +1281,12 @@ document.addEventListener('keydown', (e) => {
   } else if ((e.shiftKey && e.code === 'KeyZ') || (!e.shiftKey && e.code === 'KeyY')) {
     e.preventDefault();
     redo();
+  } else if (!e.shiftKey && e.code === 'KeyF') {
+    e.preventDefault();
+    openFind(false);
+  } else if (!e.shiftKey && e.code === 'KeyH') {
+    e.preventDefault();
+    openFind(true);
   }
 });
 
@@ -1574,6 +1595,204 @@ window.addEventListener('mouseup', () => {
   saveSettingsNow();
 });
 
+// ---------- Find & Replace ----------
+let findMatches = [];
+let findIdx = 0;
+
+const _findHL = CSS.highlights ? (() => { const h = new Highlight(); CSS.highlights.set('find-match', h); return h; })() : null;
+const _curHL = CSS.highlights ? (() => { const h = new Highlight(); CSS.highlights.set('find-current', h); return h; })() : null;
+
+function openFind(withReplace = false) {
+  findBarEl.classList.remove('hidden');
+  replaceRowEl.classList.toggle('hidden', !withReplace);
+  const sel = window.getSelection();
+  if (sel && !sel.isCollapsed) {
+    const txt = sel.toString().trim().replace(/\n/g, '').slice(0, 100);
+    if (txt) findInputEl.value = txt;
+  }
+  findInputEl.focus();
+  findInputEl.select();
+  runFind();
+}
+
+function closeFind() {
+  findBarEl.classList.add('hidden');
+  clearFindHL();
+  findMatches = [];
+  editorEl.focus();
+}
+
+function clearFindHL() {
+  if (_findHL) _findHL.clear();
+  if (_curHL) _curHL.clear();
+}
+
+function buildPosMap() {
+  const map = [];
+  const lines = [...editorEl.children].filter((c) => c.tagName === 'DIV');
+  if (!lines.length) {
+    const walker = document.createTreeWalker(editorEl, NodeFilter.SHOW_TEXT);
+    while (walker.nextNode()) {
+      const n = walker.currentNode;
+      for (let i = 0; i < n.textContent.length; i++) map.push({ n, i });
+    }
+    return map;
+  }
+  for (let d = 0; d < lines.length; d++) {
+    if (d > 0) map.push(null); // newline between divs
+    const walker = document.createTreeWalker(lines[d], NodeFilter.SHOW_TEXT);
+    while (walker.nextNode()) {
+      const n = walker.currentNode;
+      for (let i = 0; i < n.textContent.length; i++) map.push({ n, i });
+    }
+  }
+  return map;
+}
+
+function makeRange(posMap, pos, len) {
+  let count = 0, startE = null, endE = null;
+  for (let i = 0; i < posMap.length; i++) {
+    const e = posMap[i];
+    if (e === null) { count++; continue; }
+    if (count === pos && !startE) startE = e;
+    if (count === pos + len - 1) { endE = { n: e.n, i: e.i + 1 }; break; }
+    count++;
+  }
+  if (!startE || !endE) return null;
+  const r = new Range();
+  r.setStart(startE.n, startE.i);
+  r.setEnd(endE.n, endE.i);
+  return r;
+}
+
+function runFind() {
+  clearFindHL();
+  findMatches = [];
+  const q = findInputEl.value;
+  findInputEl.classList.remove('no-match');
+  if (!q) { findCountEl.textContent = ''; return; }
+
+  const posMap = buildPosMap();
+  const fullText = posMap.map((e) => e === null ? '\n' : e.n.textContent[e.i]).join('');
+  const lower = fullText.toLowerCase();
+  const qLower = q.toLowerCase();
+  let p = 0;
+  while ((p = lower.indexOf(qLower, p)) !== -1) { findMatches.push(p); p++; }
+
+  if (!findMatches.length) {
+    findCountEl.textContent = 'No results';
+    findInputEl.classList.add('no-match');
+    return;
+  }
+  if (findIdx >= findMatches.length) findIdx = 0;
+
+  if (_findHL && _curHL) {
+    for (let i = 0; i < findMatches.length; i++) {
+      const r = makeRange(posMap, findMatches[i], q.length);
+      if (!r) continue;
+      if (i === findIdx) _curHL.add(r);
+      else _findHL.add(r);
+    }
+  }
+
+  const curRange = makeRange(posMap, findMatches[findIdx], q.length);
+  if (curRange) {
+    try {
+      const rect = curRange.getBoundingClientRect();
+      const eRect = editorEl.getBoundingClientRect();
+      if (rect.bottom > eRect.bottom || rect.top < eRect.top) {
+        curRange.startContainer.parentElement?.scrollIntoView({ block: 'nearest' });
+      }
+    } catch {}
+  }
+
+  findCountEl.textContent = (findIdx + 1) + ' / ' + findMatches.length;
+}
+
+function findMove(dir) {
+  if (!findMatches.length) { runFind(); return; }
+  findIdx = (findIdx + dir + findMatches.length) % findMatches.length;
+  runFind();
+}
+
+function doReplaceOne() {
+  if (!findMatches.length) return;
+  const t = activeTab();
+  if (!t) return;
+  const q = findInputEl.value;
+  const repl = replaceInputEl.value;
+  const pos = findMatches[findIdx];
+  const newContent = t.content.slice(0, pos) + repl + t.content.slice(pos + q.length);
+  t.content = newContent;
+  setEditorText(newContent);
+  updateCounts();
+  updatePlaceholderPanel();
+  scheduleSave();
+  runFind();
+}
+
+function doReplaceAll() {
+  if (!findMatches.length) return;
+  const t = activeTab();
+  if (!t) return;
+  const q = findInputEl.value;
+  const repl = replaceInputEl.value;
+  const lower = t.content.toLowerCase();
+  const qLower = q.toLowerCase();
+  let result = '', last = 0, p = 0;
+  while ((p = lower.indexOf(qLower, last)) !== -1) {
+    result += t.content.slice(last, p) + repl;
+    last = p + q.length;
+  }
+  result += t.content.slice(last);
+  t.content = result;
+  setEditorText(result);
+  updateCounts();
+  updatePlaceholderPanel();
+  scheduleSave();
+  findIdx = 0;
+  runFind();
+}
+
+findInputEl.addEventListener('input', () => { findIdx = 0; runFind(); });
+findInputEl.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); findMove(e.shiftKey ? -1 : 1); }
+  if (e.key === 'Escape') { e.preventDefault(); closeFind(); }
+});
+replaceInputEl.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') { e.preventDefault(); closeFind(); }
+});
+findPrevEl.addEventListener('click', () => findMove(-1));
+findNextEl.addEventListener('click', () => findMove(1));
+findCloseEl.addEventListener('click', closeFind);
+replaceOneEl.addEventListener('click', doReplaceOne);
+replaceAllEl.addEventListener('click', doReplaceAll);
+
+// ---------- Update Check ----------
+checkUpdateBtn.addEventListener('click', async () => {
+  if (checkUpdateBtn.classList.contains('checking')) return;
+  checkUpdateBtn.classList.add('checking');
+  checkUpdateLabel.textContent = 'Checking…';
+  try {
+    const result = await window.api.checkUpdate();
+    if (!result) { checkUpdateLabel.textContent = 'Could not check'; return; }
+    const current = document.getElementById('aboutVersion').textContent.replace('v', '');
+    const latest = (result.tag || '').replace('v', '');
+    if (latest && latest !== current) {
+      checkUpdateBtn.classList.add('update-available');
+      checkUpdateLabel.textContent = 'Update available: v' + latest;
+      checkUpdateBtn.onclick = () => window.api.openExternal(result.url);
+    } else {
+      checkUpdateLabel.textContent = 'You\'re up to date ✓';
+      setTimeout(() => { checkUpdateLabel.textContent = 'Check for updates'; }, 3000);
+    }
+  } catch {
+    checkUpdateLabel.textContent = 'Check failed';
+  } finally {
+    checkUpdateBtn.classList.remove('checking');
+  }
+});
+
 // ---------- Init ----------
 (async function init() {
   const savedSettings = await window.api.loadSettings();
@@ -1589,10 +1808,11 @@ window.addEventListener('mouseup', () => {
 
   buildCtxColorRow();
 
-  // close overlays with Escape (priority: ctx menu > save dialog > templates > settings)
+  // close overlays with Escape (priority: ctx menu > find bar > save dialog > templates > settings)
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
     if (!ctxMenuEl.classList.contains('hidden')) { hideCtxMenu(); return; }
+    if (!findBarEl.classList.contains('hidden')) { closeFind(); return; }
     if (!saveTemplateDialog.classList.contains('hidden')) { closeSaveTemplateDialog(); return; }
     if (!templatesOverlay.classList.contains('hidden')) { closeTemplates(); return; }
     if (!settingsOverlay.classList.contains('hidden')) { closeSettings(); return; }

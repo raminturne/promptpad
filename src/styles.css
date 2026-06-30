@@ -285,6 +285,7 @@ body {
 /* ---------- Editor ---------- */
 .editor { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .editor-body { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.editor-col { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 
 /* ---------- Placeholder fill bar ---------- */
 .placeholder-bar {
@@ -329,7 +330,7 @@ body {
    Each field stacks label-above-input so the input gets the full panel
    width to type into, instead of squeezing next to a long [bracket] label. */
 .editor-body.bar-right { flex-direction: row; }
-.editor-body.bar-right #editor { order: 1; }
+.editor-body.bar-right .editor-col { order: 1; }
 .editor-body.bar-right .placeholder-resizer { order: 2; }
 .editor-body.bar-right .placeholder-bar.pos-right { order: 3; }
 
@@ -1102,6 +1103,67 @@ body {
 }
 .font-btn:hover:not(.active) { background: var(--elevated); color: var(--text); }
 .font-btn.active { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+
+/* =========================================================
+   FIND & REPLACE BAR
+   ========================================================= */
+.find-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 10px;
+  background: var(--elevated);
+  border-bottom: 1px solid var(--elevated-hi);
+  flex-shrink: 0;
+}
+.find-row { display: flex; align-items: center; gap: 5px; }
+.find-input {
+  flex: 1; min-width: 0;
+  background: var(--bg);
+  border: 1px solid var(--elevated-hi);
+  color: var(--text);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 13px;
+  font-family: var(--font);
+  outline: none;
+}
+.find-input:focus { border-color: var(--accent); }
+.find-input.no-match { border-color: var(--danger); }
+.find-nav, .find-close {
+  display: flex; align-items: center; justify-content: center;
+  background: none; border: 1px solid transparent;
+  border-radius: 4px; color: var(--text); opacity: .7;
+  cursor: pointer; padding: 4px 5px; flex-shrink: 0;
+}
+.find-nav:hover, .find-close:hover { opacity: 1; background: var(--elevated-hi); }
+.find-count { font-size: 11px; opacity: .5; white-space: nowrap; min-width: 52px; text-align: center; }
+.find-action {
+  background: var(--elevated-hi); border: 1px solid transparent;
+  border-radius: 4px; color: var(--text);
+  cursor: pointer; padding: 4px 10px; font-size: 12px; white-space: nowrap;
+}
+.find-action:hover { border-color: var(--accent); color: var(--accent); }
+
+/* CSS Custom Highlight API — marks for find matches */
+::highlight(find-match) { background-color: rgba(255,200,50,.32); color: inherit; }
+::highlight(find-current) { background-color: rgba(255,140,20,.7); color: #000; }
+
+/* =========================================================
+   CHECK FOR UPDATES
+   ========================================================= */
+.check-update-btn {
+  display: flex; align-items: center; gap: 6px;
+  background: none; border: 1px solid var(--elevated-hi);
+  border-radius: 5px; color: var(--text); opacity: .7;
+  cursor: pointer; padding: 5px 10px; font-size: 12px;
+  margin-top: 8px; width: 100%;
+  font-family: var(--font);
+  transition: opacity .12s, border-color .12s;
+}
+.check-update-btn:hover { opacity: 1; border-color: var(--accent); }
+.check-update-btn.update-available { border-color: var(--accent); color: var(--accent); opacity: 1; }
+.check-update-btn.checking { opacity: .5; cursor: default; }
 
 /* =========================================================
    SPECIAL THEME VARIANTS

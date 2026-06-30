@@ -1,26 +1,54 @@
 // ---------- State ----------
 let state = {
-  tabs: [],      // { id, name, custom (bool), content }
+  tabs: [],      // { id, name, custom, content, dir, pinned, color }
   activeId: null,
-  seq: 1
+  seq: 1,
+  templates: [] // { id, name, content }
 };
 
+const TAB_COLORS = [null, '#e05252', '#e07a52', '#e0c852', '#52b05a', '#5290e0', '#9052e0', '#e052b8'];
+
 let saveTimer = null;
+let _previewToken = null;   // token currently being live-previewed
+let _previewBase  = null;   // snapshot of t.content before preview started
 
 // ---------- Themes & settings ----------
 const THEMES = {
-  forest:   { label: 'Forest',   bg: '#1B211A', text: '#D3DAD9', sidebar: '#161b15', elevated: '#222a21', elevatedHi: '#2a332a', accent: '#7fbf8b', danger: '#e08a7a' },
-  midnight: { label: 'Midnight', bg: '#0f1620', text: '#cdd6e3', sidebar: '#0b121b', elevated: '#18222f', elevatedHi: '#1f2b3a', accent: '#5ea8e0', danger: '#e08a7a' },
-  slate:    { label: 'Slate',    bg: '#14181c', text: '#cdd5da', sidebar: '#0f1316', elevated: '#1d242a', elevatedHi: '#262f36', accent: '#79c6c0', danger: '#e08a7a' },
-  carbon:   { label: 'Carbon',   bg: '#161616', text: '#dad9d6', sidebar: '#101010', elevated: '#202020', elevatedHi: '#2a2a2a', accent: '#d9a566', danger: '#e08a7a' },
-  plum:     { label: 'Plum',     bg: '#1a141f', text: '#e2d8e8', sidebar: '#150f1a', elevated: '#241a2b', elevatedHi: '#2e2236', accent: '#b88ad9', danger: '#e08a8a' },
-  ember:    { label: 'Ember',    bg: '#1f1517', text: '#ecdad6', sidebar: '#190f11', elevated: '#2a1c1d', elevatedHi: '#341f22', accent: '#e0907a', danger: '#e0707a' }
+  // === Dark (7) ===
+  forest:   { label: 'Forest',   type: 'dark', bg: '#1B211A', text: '#D3DAD9', sidebar: '#161b15', elevated: '#222a21', elevatedHi: '#2a332a', accent: '#7fbf8b', danger: '#e08a7a' },
+  midnight: { label: 'Midnight', type: 'dark', bg: '#0f1620', text: '#cdd6e3', sidebar: '#0b121b', elevated: '#18222f', elevatedHi: '#1f2b3a', accent: '#5ea8e0', danger: '#e08a7a' },
+  carbon:   { label: 'Carbon',   type: 'dark', bg: '#161616', text: '#dad9d6', sidebar: '#101010', elevated: '#202020', elevatedHi: '#2a2a2a', accent: '#d9a566', danger: '#e08a7a' },
+  plum:     { label: 'Plum',     type: 'dark', bg: '#1a141f', text: '#e2d8e8', sidebar: '#150f1a', elevated: '#241a2b', elevatedHi: '#2e2236', accent: '#b88ad9', danger: '#e08a8a' },
+  ember:    { label: 'Ember',    type: 'dark', bg: '#1f1517', text: '#ecdad6', sidebar: '#190f11', elevated: '#2a1c1d', elevatedHi: '#341f22', accent: '#e0907a', danger: '#e0707a' },
+  dracula:  { label: 'Dracula',  type: 'dark', bg: '#282a36', text: '#f8f8f2', sidebar: '#21222c', elevated: '#313341', elevatedHi: '#414354', accent: '#bd93f9', danger: '#ff5555' },
+  mono:     { label: 'Mono',     type: 'dark', bg: '#0a0a0a', text: '#f0f0f0', sidebar: '#050505', elevated: '#141414', elevatedHi: '#1e1e1e', accent: '#888888', danger: '#cc3333' },
+
+  // === Light (7) ===
+  paper:    { label: 'Paper',    type: 'light', cssClass: 'theme-light', bg: '#f7f7f5', text: '#1a1a1a', sidebar: '#eeecea', elevated: '#ffffff', elevatedHi: '#e8e6e4', accent: '#5472d4', danger: '#d94040' },
+  sky:      { label: 'Sky',      type: 'light', cssClass: 'theme-light', bg: '#e8f0fb', text: '#1a2540', sidebar: '#dce8f8', elevated: '#f2f7ff', elevatedHi: '#ccddf5', accent: '#2563eb', danger: '#dc2626' },
+  sage:     { label: 'Sage',     type: 'light', cssClass: 'theme-light', bg: '#eef5f0', text: '#182418', sidebar: '#e2ede6', elevated: '#f5faf6', elevatedHi: '#d4e8da', accent: '#2d7a50', danger: '#c04040' },
+  rose:     { label: 'Rose',     type: 'light', cssClass: 'theme-light', bg: '#fdf0f4', text: '#2a1020', sidebar: '#f8e4ec', elevated: '#fff5f8', elevatedHi: '#f0d4e0', accent: '#d0406a', danger: '#c02050' },
+  latte:    { label: 'Latte',    type: 'light', cssClass: 'theme-light', bg: '#f5ede0', text: '#2a1e10', sidebar: '#ede3d4', elevated: '#fdf6ed', elevatedHi: '#e4d8c8', accent: '#b06030', danger: '#c03030' },
+  lavender: { label: 'Lavender', type: 'light', cssClass: 'theme-light', bg: '#f0ecfa', text: '#1e1830', sidebar: '#e6e0f5', elevated: '#f8f5ff', elevatedHi: '#d8d0ee', accent: '#7050c0', danger: '#c02050' },
+  snow:     { label: 'Snow',     type: 'light', cssClass: 'theme-light', bg: '#ffffff', text: '#111111', sidebar: '#f5f5f5', elevated: '#ffffff', elevatedHi: '#e8e8e8', accent: '#333333', danger: '#cc0000' },
+};
+
+// ---------- Fonts ----------
+const FONTS = {
+  cascadia: { label: 'Cascadia',  stack: '"Cascadia Code", "Cascadia Mono", Consolas, ui-monospace, monospace' },
+  consolas: { label: 'Consolas',  stack: 'Consolas, "Cascadia Code", ui-monospace, monospace' },
+  jetbrains:{ label: 'JetBrains', stack: '"JetBrains Mono", Consolas, ui-monospace, monospace' },
+  lucida:   { label: 'Lucida',    stack: '"Lucida Console", "Lucida Sans Typewriter", Consolas, monospace' },
+  courier:  { label: 'Courier',   stack: '"Courier New", Courier, monospace' },
+  system:   { label: 'System UI', stack: '"Segoe UI", Inter, system-ui, sans-serif' },
 };
 
 const DEFAULT_SETTINGS = {
   theme: 'forest',
+  font: 'cascadia',
   tabPosition: 'left',
   pinningEnabled: true,
+  closeButtonEnabled: true,
   railResizable: true,
   railWidth: 166,
   launchAtStartup: false,
@@ -53,6 +81,7 @@ const settingsClose = document.getElementById('settingsClose');
 const themeRow = document.getElementById('themeRow');
 const layoutSeg = document.getElementById('layoutSeg');
 const togglePinEl = document.getElementById('togglePin');
+const toggleCloseEl = document.getElementById('toggleClose');
 const toggleResizeEl = document.getElementById('toggleResize');
 const toggleStartupEl = document.getElementById('toggleStartup');
 const togglePlaceholdersEl = document.getElementById('togglePlaceholders');
@@ -67,6 +96,22 @@ const placeholderBarEl = document.getElementById('placeholderBar');
 const placeholderCountEl = document.getElementById('placeholderCount');
 const placeholderFieldsEl = document.getElementById('placeholderFields');
 const placeholderResizerEl = document.getElementById('placeholderResizer');
+// context menu
+const ctxMenuEl = document.getElementById('tabContextMenu');
+const ctxPinItem = ctxMenuEl.querySelector('[data-action="pin"]');
+const ctxPinGroup = document.getElementById('ctxPinGroup');
+const ctxColorRowEl = ctxMenuEl.querySelector('.ctx-color-row');
+// templates
+const templatesBtn = document.getElementById('templatesBtn');
+const templatesOverlay = document.getElementById('templatesOverlay');
+const templatesClose = document.getElementById('templatesClose');
+const templatesListEl = document.getElementById('templatesList');
+const templatesEmptyEl = document.getElementById('templatesEmpty');
+// save-as-template dialog
+const saveTemplateDialog = document.getElementById('saveTemplateDialog');
+const templateNameInput = document.getElementById('templateNameInput');
+const templateNameCancel = document.getElementById('templateNameCancel');
+const templateNameSave = document.getElementById('templateNameSave');
 
 // ---------- Helpers ----------
 function uid() {
@@ -379,7 +424,13 @@ function fillPlaceholder(token, value) {
   const t = activeTab();
   if (!t) return;
   syncEditorToState();
+  commitCheckpoint(t);
+  const prevContent = t.content;
   t.content = t.content.split(token).join(value);
+  t.undoStack = t.undoStack || [];
+  t.undoStack.push(prevContent);
+  if (t.undoStack.length > UNDO_LIMIT) t.undoStack.shift();
+  t.redoStack = [];
   setEditorText(t.content);
   updateCounts();
   scheduleSave();
@@ -409,19 +460,63 @@ function buildPlaceholderField(token) {
     '<path d="M5 12.5l4.5 4.5L19 7" fill="none" stroke="currentColor" ' +
     'stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
-  // Only replace the placeholder once the user explicitly confirms — typing
-  // alone (or losing focus) no longer applies it.
+  const startPreview = () => {
+    const t = activeTab();
+    if (!t) return;
+    _previewToken = token;
+    _previewBase  = t.content;
+  };
+  const updatePreview = () => {
+    if (_previewToken !== token || !_previewBase) return;
+    const val = input.value;
+    const preview = val ? _previewBase.split(token).join(val) : _previewBase;
+    setEditorText(preview);
+  };
+  const endPreview = (restore) => {
+    if (_previewToken !== token) return;
+    _previewToken = null;
+    _previewBase  = null;
+    if (restore) {
+      const t = activeTab();
+      if (t) setEditorText(t.content);
+    }
+  };
+
   const commit = () => {
     const val = input.value.trim();
-    if (!val) return;
+    endPreview(false); // fillPlaceholder will setEditorText with final content
+    if (!val) {
+      const t = activeTab();
+      if (t) setEditorText(t.content);
+      return;
+    }
     fillPlaceholder(token, val);
   };
+
+  input.addEventListener('focus', () => {
+    startPreview();
+    updatePreview();
+  });
   input.addEventListener('input', () => {
     confirmBtn.disabled = !input.value.trim();
+    updatePreview();
+  });
+  input.addEventListener('blur', () => {
+    // Small delay so confirm-button click can fire first
+    setTimeout(() => { endPreview(true); }, 120);
   });
   input.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') { e.preventDefault(); commit(); }
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (!input.value.trim()) return;
+      const idx = Array.from(placeholderFieldsEl.querySelectorAll('input')).indexOf(input);
+      commit();
+      const newInputs = Array.from(placeholderFieldsEl.querySelectorAll('input'));
+      if (idx !== -1 && idx < newInputs.length) newInputs[idx].focus();
+    }
   });
+  // Prevent blur when clicking the confirm button
+  confirmBtn.addEventListener('mousedown', (e) => e.preventDefault());
   confirmBtn.addEventListener('click', commit);
 
   const inputRow = document.createElement('div');
@@ -499,6 +594,13 @@ function renderTabs() {
       'stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>';
     el.appendChild(pinEl);
 
+    if (tab.color) {
+      const colorDot = document.createElement('span');
+      colorDot.className = 'tab-color-dot';
+      colorDot.style.background = tab.color;
+      el.appendChild(colorDot);
+    }
+
     const nameEl = document.createElement('span');
     nameEl.className = 'tab-name';
     const dispName = autoName(tab, i);
@@ -543,6 +645,9 @@ function renderTabs() {
       try { e.dataTransfer.setData('text/plain', tab.id); } catch {}
     });
     el.addEventListener('dragend', onDragEnd);
+
+    // right-click context menu
+    el.addEventListener('contextmenu', (e) => { showCtxMenu(e, tab.id); });
 
     tabListEl.appendChild(el);
   });
@@ -638,6 +743,7 @@ function startRename(tab, tabEl, nameEl, index) {
 
 // ---------- Actions ----------
 function switchTab(id) {
+  _previewToken = null; _previewBase = null; // cancel any active live preview
   // flush current editor into state first
   syncEditorToState();
   state.activeId = id;
@@ -653,7 +759,7 @@ function switchTab(id) {
 
 function addTab(focus = true) {
   syncEditorToState();
-  const tab = { id: uid(), name: '', custom: false, content: '', dir: 'auto' };
+  const tab = { id: uid(), name: '', custom: false, content: '', dir: 'auto', color: null };
   state.tabs.push(tab);
   state.activeId = tab.id;
   setEditorText('');
@@ -744,6 +850,269 @@ function redo() {
   restoreContent(t, t.redoStack.pop());
 }
 
+// ---------- Tab colors ----------
+function setTabColor(id, color) {
+  const tab = state.tabs.find((t) => t.id === id);
+  if (!tab) return;
+  tab.color = color || null;
+  renderTabs();
+  scheduleSave();
+}
+
+// ---------- Duplicate ----------
+function duplicateTab(id) {
+  syncEditorToState();
+  const src = state.tabs.find((t) => t.id === id);
+  if (!src) return;
+  const tab = {
+    id: uid(), name: src.name, custom: src.custom,
+    content: src.content, dir: src.dir, color: src.color || null
+  };
+  const idx = state.tabs.indexOf(src);
+  state.tabs.splice(idx + 1, 0, tab);
+  state.activeId = tab.id;
+  setEditorText(tab.content);
+  renderTabs();
+  updateCounts();
+  updatePlaceholderPanel();
+  scheduleSave();
+}
+
+// ---------- Copy tab content ----------
+async function copyTabContent(id) {
+  const tab = state.tabs.find((t) => t.id === id);
+  if (!tab || !tab.content) return;
+  try { await navigator.clipboard.writeText(tab.content); } catch (e) { console.error(e); }
+}
+
+// ---------- Context menu ----------
+let ctxTabId = null;
+
+function buildCtxColorRow() {
+  TAB_COLORS.forEach((color) => {
+    const sw = document.createElement('span');
+    sw.className = 'ctx-swatch' + (color === null ? ' ctx-swatch--none' : '');
+    sw.dataset.color = color || '';
+    if (color) sw.style.background = color;
+    sw.title = color || 'None';
+    sw.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (ctxTabId) setTabColor(ctxTabId, color);
+      hideCtxMenu();
+    });
+    ctxColorRowEl.appendChild(sw);
+  });
+}
+
+function showCtxMenu(e, tabId) {
+  e.preventDefault();
+  ctxTabId = tabId;
+  const tab = state.tabs.find((t) => t.id === tabId);
+  if (!tab) return;
+
+  ctxPinItem.textContent = tab.pinned ? 'Unpin' : 'Pin';
+  ctxPinGroup.style.display = settings.pinningEnabled ? '' : 'none';
+
+  ctxColorRowEl.querySelectorAll('.ctx-swatch').forEach((sw) => {
+    sw.classList.toggle('active', sw.dataset.color === (tab.color || ''));
+  });
+
+  ctxMenuEl.style.left = e.clientX + 'px';
+  ctxMenuEl.style.top = e.clientY + 'px';
+  ctxMenuEl.classList.remove('hidden');
+
+  requestAnimationFrame(() => {
+    const rect = ctxMenuEl.getBoundingClientRect();
+    const vw = document.documentElement.clientWidth;
+    const vh = document.documentElement.clientHeight;
+    if (rect.right > vw - 4) ctxMenuEl.style.left = Math.max(4, vw - rect.width - 4) + 'px';
+    if (rect.bottom > vh - 4) ctxMenuEl.style.top = Math.max(4, vh - rect.height - 4) + 'px';
+  });
+}
+
+function hideCtxMenu() {
+  ctxMenuEl.classList.add('hidden');
+  ctxTabId = null;
+}
+
+ctxMenuEl.addEventListener('click', (e) => {
+  const item = e.target.closest('[data-action]');
+  if (!item || !ctxTabId) return;
+  const id = ctxTabId;
+  const action = item.dataset.action;
+  hideCtxMenu();
+
+  switch (action) {
+    case 'rename': {
+      const tabEl = tabListEl.querySelector('[data-id="' + id + '"]');
+      const nameEl = tabEl && tabEl.querySelector('.tab-name');
+      const tab = state.tabs.find((t) => t.id === id);
+      const i = state.tabs.indexOf(tab);
+      if (tabEl && nameEl && tab) startRename(tab, tabEl, nameEl, i);
+      break;
+    }
+    case 'duplicate': duplicateTab(id); break;
+    case 'copy': copyTabContent(id); break;
+    case 'save-template': openSaveTemplateDialog(id); break;
+    case 'pin': togglePin(id); break;
+    case 'close': closeTab(id); break;
+  }
+});
+
+document.addEventListener('click', (e) => {
+  if (!ctxMenuEl.classList.contains('hidden') && !ctxMenuEl.contains(e.target)) {
+    hideCtxMenu();
+  }
+});
+
+// ---------- Templates ----------
+function openTemplates() {
+  renderTemplatesList();
+  templatesOverlay.classList.remove('hidden');
+}
+
+function closeTemplates() {
+  templatesOverlay.classList.add('hidden');
+}
+
+function renderTemplatesList() {
+  templatesListEl.innerHTML = '';
+  const empty = !state.templates || !state.templates.length;
+  templatesEmptyEl.classList.toggle('hidden', !empty);
+  if (empty) return;
+
+  state.templates.forEach((tmpl) => {
+    const row = document.createElement('div');
+    row.className = 'template-row';
+
+    const nameEl = document.createElement('div');
+    nameEl.className = 'template-row-name';
+    nameEl.textContent = tmpl.name;
+    nameEl.setAttribute('dir', detectDir(tmpl.name));
+    nameEl.title = 'Double-click to rename';
+
+    const preview = document.createElement('div');
+    preview.className = 'template-row-preview';
+    const firstLine = (tmpl.content || '').split('\n').find((l) => l.trim()) || '';
+    const previewText = firstLine.length > 64 ? firstLine.slice(0, 64) + '…' : firstLine;
+    preview.textContent = previewText || '(empty)';
+    preview.setAttribute('dir', detectDir(firstLine));
+
+    const actions = document.createElement('div');
+    actions.className = 'template-row-actions';
+
+    const useBtn = document.createElement('button');
+    useBtn.className = 'template-use-btn';
+    useBtn.textContent = 'Use';
+    useBtn.addEventListener('click', () => { createFromTemplate(tmpl); closeTemplates(); });
+
+    const delBtn = document.createElement('button');
+    delBtn.className = 'template-del-btn';
+    delBtn.textContent = 'Delete';
+    delBtn.addEventListener('click', () => deleteTemplate(tmpl.id));
+
+    actions.appendChild(useBtn);
+    actions.appendChild(delBtn);
+
+    nameEl.addEventListener('dblclick', () => startTemplateRename(tmpl, nameEl));
+
+    row.addEventListener('click', (e) => {
+      if (e.target.closest('.template-del-btn')) return;
+      createFromTemplate(tmpl);
+      closeTemplates();
+    });
+
+    row.appendChild(nameEl);
+    row.appendChild(preview);
+    row.appendChild(actions);
+    templatesListEl.appendChild(row);
+  });
+}
+
+function startTemplateRename(tmpl, nameEl) {
+  const input = document.createElement('input');
+  input.className = 'template-name-input';
+  input.value = tmpl.name;
+  input.setAttribute('dir', detectDir(tmpl.name));
+  nameEl.replaceWith(input);
+  input.focus();
+  input.select();
+
+  const commit = () => {
+    const v = input.value.trim();
+    if (v) tmpl.name = v;
+    renderTemplatesList();
+    scheduleSave();
+  };
+  input.addEventListener('blur', commit);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+    if (e.key === 'Escape') { input.value = tmpl.name; input.blur(); }
+  });
+}
+
+function createFromTemplate(tmpl) {
+  syncEditorToState();
+  const tab = { id: uid(), name: tmpl.name, custom: true, content: tmpl.content, dir: 'auto', color: null };
+  state.tabs.push(tab);
+  state.activeId = tab.id;
+  setEditorText(tab.content);
+  renderTabs();
+  updateCounts();
+  updatePlaceholderPanel();
+  editorEl.focus();
+  scheduleSave();
+}
+
+function deleteTemplate(id) {
+  state.templates = (state.templates || []).filter((t) => t.id !== id);
+  renderTemplatesList();
+  scheduleSave();
+}
+
+function openSaveTemplateDialog(tabId) {
+  const tab = state.tabs.find((t) => t.id === tabId);
+  if (!tab) return;
+  syncEditorToState();
+  saveTemplateDialog.dataset.tabId = tabId;
+  const suggested = autoName(tab, state.tabs.indexOf(tab));
+  templateNameInput.value = suggested;
+  templateNameInput.setAttribute('dir', detectDir(suggested));
+  saveTemplateDialog.classList.remove('hidden');
+  templateNameInput.focus();
+  templateNameInput.select();
+}
+
+function closeSaveTemplateDialog() {
+  saveTemplateDialog.classList.add('hidden');
+  saveTemplateDialog.dataset.tabId = '';
+}
+
+function confirmSaveTemplate() {
+  const tabId = saveTemplateDialog.dataset.tabId;
+  const name = templateNameInput.value.trim();
+  if (!name || !tabId) { closeSaveTemplateDialog(); return; }
+  const tab = state.tabs.find((t) => t.id === tabId);
+  if (!tab) { closeSaveTemplateDialog(); return; }
+  if (!state.templates) state.templates = [];
+  state.templates.push({ id: uid(), name, content: tab.content });
+  closeSaveTemplateDialog();
+  scheduleSave();
+}
+
+templatesBtn.addEventListener('click', openTemplates);
+templatesClose.addEventListener('click', closeTemplates);
+templatesOverlay.addEventListener('click', (e) => {
+  if (e.target === templatesOverlay) closeTemplates();
+});
+
+templateNameCancel.addEventListener('click', closeSaveTemplateDialog);
+templateNameSave.addEventListener('click', confirmSaveTemplate);
+templateNameInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); confirmSaveTemplate(); }
+  if (e.key === 'Escape') { closeSaveTemplateDialog(); }
+});
+
 // ---------- Persistence ----------
 function scheduleSave() {
   clearTimeout(saveTimer);
@@ -767,11 +1136,13 @@ async function loadState() {
       activeId: saved.activeId && saved.tabs.some((t) => t.id === saved.activeId)
         ? saved.activeId
         : saved.tabs[0].id,
-      seq: saved.seq || 1
+      seq: saved.seq || 1,
+      templates: saved.templates || []
     };
   } else {
-    state.tabs = [{ id: uid(), name: '', custom: false, content: '', dir: 'auto' }];
+    state.tabs = [{ id: uid(), name: '', custom: false, content: '', dir: 'auto', color: null }];
     state.activeId = state.tabs[0].id;
+    state.templates = [];
   }
   const t = activeTab();
   setEditorText(t ? t.content : '');
@@ -782,6 +1153,7 @@ async function loadState() {
 
 // ---------- Events ----------
 function handleEditorChanged() {
+  if (_previewToken) return; // skip sync while live-previewing a placeholder
   updateLineDirs();
   updateEmptyState();
   const t = activeTab();
@@ -805,7 +1177,7 @@ editorEl.addEventListener('input', handleEditorChanged);
 // line. Instead we split the current line into two .ln divs ourselves and put
 // the caret at the start of the new one — exactly one new line, every time.
 editorEl.addEventListener('keydown', (e) => {
-  if (e.key !== 'Enter' || e.isComposing || e.shiftKey || e.ctrlKey || e.altKey || e.metaKey) return;
+  if (e.key !== 'Enter' || e.isComposing || e.ctrlKey || e.altKey || e.metaKey) return;
   e.preventDefault();
 
   const sel = window.getSelection();
@@ -942,13 +1314,22 @@ function applyTheme(name) {
   r.setProperty('--elevated-hi', t.elevatedHi);
   r.setProperty('--accent', t.accent);
   r.setProperty('--danger', t.danger);
+  Object.values(THEMES).forEach(th => { if (th.cssClass) appEl.classList.remove(th.cssClass); });
+  if (t.cssClass) appEl.classList.add(t.cssClass);
   window.api.setBgColor(t.bg);
+}
+
+function applyFont(id) {
+  const f = FONTS[id] || FONTS.cascadia;
+  document.documentElement.style.setProperty('--font', f.stack);
 }
 
 function applySettings() {
   applyTheme(settings.theme);
+  applyFont(settings.font);
   appEl.classList.toggle('layout-top', settings.tabPosition === 'top');
   appEl.classList.toggle('pins-off', !settings.pinningEnabled);
+  appEl.classList.toggle('close-off', !settings.closeButtonEnabled);
   appEl.classList.toggle('resize-off',
     !settings.railResizable || settings.tabPosition === 'top');
   document.documentElement.style.setProperty(
@@ -969,32 +1350,70 @@ async function saveSettingsNow() {
 // ---------- Settings: panel ----------
 function buildThemeSwatches() {
   themeRow.innerHTML = '';
-  Object.entries(THEMES).forEach(([key, t]) => {
-    const sw = document.createElement('button');
-    sw.className = 'theme-swatch' + (settings.theme === key ? ' active' : '');
-    sw.title = t.label;
-    sw.style.background =
-      'linear-gradient(135deg, ' + t.elevated + ' 0 55%, ' + t.sidebar + ' 55% 100%)';
-    const dot = document.createElement('span');
-    dot.className = 'sw-dot';
-    dot.style.background = t.accent;
-    sw.appendChild(dot);
-    sw.addEventListener('click', () => {
-      settings.theme = key;
-      applySettings();
-      buildThemeSwatches();
+  const makeGroup = (label, entries) => {
+    const grp = document.createElement('div');
+    grp.className = 'theme-group';
+    const lbl = document.createElement('div');
+    lbl.className = 'theme-group-label';
+    lbl.textContent = label;
+    grp.appendChild(lbl);
+    const row = document.createElement('div');
+    row.className = 'theme-swatches';
+    entries.forEach(([key, t]) => {
+      const sw = document.createElement('button');
+      sw.className = 'theme-swatch' + (settings.theme === key ? ' active' : '');
+      sw.title = t.label;
+      sw.style.background = 'linear-gradient(135deg, ' + t.elevated + ' 0 55%, ' + t.sidebar + ' 55% 100%)';
+      if (t.type === 'light') sw.style.outline = '1px solid rgba(0,0,0,.14)';
+      const dot = document.createElement('span');
+      dot.className = 'sw-dot';
+      dot.style.background = t.accent;
+      sw.appendChild(dot);
+      sw.addEventListener('click', () => {
+        settings.theme = key;
+        applySettings();
+        buildThemeSwatches();
+        saveSettingsNow();
+      });
+      row.appendChild(sw);
+    });
+    grp.appendChild(row);
+    themeRow.appendChild(grp);
+  };
+  const dark = Object.entries(THEMES).filter(([, t]) => t.type === 'dark');
+  const light = Object.entries(THEMES).filter(([, t]) => t.type === 'light');
+  makeGroup('Dark', dark);
+  makeGroup('Light', light);
+}
+
+function buildFontPicker() {
+  const row = document.getElementById('fontRow');
+  if (!row) return;
+  row.innerHTML = '';
+  Object.entries(FONTS).forEach(([key, f]) => {
+    const btn = document.createElement('button');
+    btn.className = 'font-btn' + (settings.font === key ? ' active' : '');
+    btn.title = f.label;
+    btn.textContent = f.label;
+    btn.style.fontFamily = f.stack;
+    btn.addEventListener('click', () => {
+      settings.font = key;
+      applyFont(key);
+      buildFontPicker();
       saveSettingsNow();
     });
-    themeRow.appendChild(sw);
+    row.appendChild(btn);
   });
 }
 
 function syncSettingsUI() {
   buildThemeSwatches();
+  buildFontPicker();
   layoutSeg.querySelectorAll('.seg-btn').forEach((b) => {
     b.classList.toggle('active', b.dataset.layout === settings.tabPosition);
   });
   togglePinEl.checked = settings.pinningEnabled;
+  toggleCloseEl.checked = settings.closeButtonEnabled;
   toggleResizeEl.checked = settings.railResizable;
   toggleStartupEl.checked = settings.launchAtStartup;
   togglePlaceholdersEl.checked = settings.placeholdersEnabled;
@@ -1036,6 +1455,12 @@ togglePinEl.addEventListener('change', () => {
   settings.pinningEnabled = togglePinEl.checked;
   applySettings();
   renderTabs();
+  saveSettingsNow();
+});
+
+toggleCloseEl.addEventListener('change', () => {
+  settings.closeButtonEnabled = toggleCloseEl.checked;
+  applySettings();
   saveSettingsNow();
 });
 
@@ -1162,11 +1587,15 @@ window.addEventListener('mouseup', () => {
   const onTop = await window.api.getAlwaysOnTop();
   pinBtn.classList.toggle('active', onTop);
 
-  // close settings with Escape
+  buildCtxColorRow();
+
+  // close overlays with Escape (priority: ctx menu > save dialog > templates > settings)
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && !settingsOverlay.classList.contains('hidden')) {
-      closeSettings();
-    }
+    if (e.key !== 'Escape') return;
+    if (!ctxMenuEl.classList.contains('hidden')) { hideCtxMenu(); return; }
+    if (!saveTemplateDialog.classList.contains('hidden')) { closeSaveTemplateDialog(); return; }
+    if (!templatesOverlay.classList.contains('hidden')) { closeTemplates(); return; }
+    if (!settingsOverlay.classList.contains('hidden')) { closeSettings(); return; }
   });
 
   editorEl.focus();

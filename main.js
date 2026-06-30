@@ -1,9 +1,8 @@
-const { app, BrowserWindow, ipcMain, shell } = require('electron');
+const { app } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
-const DATA_FILE = path.join(app.getPath('userData'), 'promptpad-data.json');
-
+let DATA_FILE;
 let mainWindow = null;
 
 function readData() {
@@ -25,7 +24,7 @@ function writeData(data) {
   }
 }
 
-function createWindow() {
+function createWindow(BrowserWindow) {
   const saved = readData();
   const win = (saved && saved.window) || {};
 
@@ -57,7 +56,6 @@ function createWindow() {
 
   mainWindow.loadFile(path.join(__dirname, 'src', 'index.html'));
 
-  // Persist window bounds on move/resize (debounced)
   let boundsTimer = null;
   const persistBounds = () => {
     clearTimeout(boundsTimer);
@@ -78,98 +76,89 @@ function createWindow() {
 
   mainWindow.on('move', persistBounds);
   mainWindow.on('resize', persistBounds);
-
-  mainWindow.on('closed', () => {
-    mainWindow = null;
-  });
+  mainWindow.on('closed', () => { mainWindow = null; });
 }
 
-// ---- IPC ----
-ipcMain.handle('load-notes', () => {
-  const data = readData();
-  return data && data.notes ? data.notes : null;
-});
-
-ipcMain.handle('save-notes', (_e, notes) => {
-  const data = readData() || {};
-  data.notes = notes;
-  return writeData(data);
-});
-
-ipcMain.on('window-minimize', () => {
-  if (mainWindow) mainWindow.minimize();
-});
-
-ipcMain.on('window-close', () => {
-  if (mainWindow) mainWindow.close();
-});
-
-ipcMain.handle('toggle-always-on-top', () => {
-  if (!mainWindow) return false;
-  const next = !mainWindow.isAlwaysOnTop();
-  mainWindow.setAlwaysOnTop(next, 'floating');
-  const data = readData() || {};
-  data.window = { ...(data.window || {}), alwaysOnTop: next };
-  writeData(data);
-  return next;
-});
-
-ipcMain.handle('get-always-on-top', () => {
-  return mainWindow ? mainWindow.isAlwaysOnTop() : false;
-});
-
-// settings
-ipcMain.handle('load-settings', () => {
-  const data = readData();
-  return data && data.settings ? data.settings : null;
-});
-
-ipcMain.handle('save-settings', (_e, settings) => {
-  const data = readData() || {};
-  data.settings = settings;
-  return writeData(data);
-});
-
-// background color (keep frameless window corners matching active theme)
-ipcMain.on('set-bg-color', (_e, color) => {
-  if (mainWindow && typeof color === 'string') {
-    try { mainWindow.setBackgroundColor(color); } catch {}
-  }
-});
-
-// launch at system startup
-ipcMain.handle('set-startup', (_e, enabled) => {
-  try {
-    app.setLoginItemSettings({
-      openAtLogin: !!enabled,
-      path: process.execPath
-    });
-    return app.getLoginItemSettings().openAtLogin;
-  } catch (e) {
-    console.error('startup setting failed', e);
-    return false;
-  }
-});
-
-ipcMain.handle('get-startup', () => {
-  try {
-    return app.getLoginItemSettings().openAtLogin;
-  } catch {
-    return false;
-  }
-});
-
-// open external links in default browser
-ipcMain.on('open-external', (_e, url) => {
-  if (typeof url === 'string' && /^https?:\/\//.test(url)) {
-    shell.openExternal(url);
-  }
-});
-
 app.whenReady().then(() => {
-  createWindow();
+  const { BrowserWindow, ipcMain, shell } = require('electron');
+
+  DATA_FILE = path.join(app.getPath('userData'), 'promptpad-data.json');
+
+  // ---- IPC ----
+  ipcMain.handle('load-notes', () => {
+    const data = readData();
+    return data && data.notes ? data.notes : null;
+  });
+
+  ipcMain.handle('save-notes', (_e, notes) => {
+    const data = readData() || {};
+    data.notes = notes;
+    return writeData(data);
+  });
+
+  ipcMain.on('window-minimize', () => {
+    if (mainWindow) mainWindow.minimize();
+  });
+
+  ipcMain.on('window-close', () => {
+    if (mainWindow) mainWindow.close();
+  });
+
+  ipcMain.handle('toggle-always-on-top', () => {
+    if (!mainWindow) return false;
+    const next = !mainWindow.isAlwaysOnTop();
+    mainWindow.setAlwaysOnTop(next, 'floating');
+    const data = readData() || {};
+    data.window = { ...(data.window || {}), alwaysOnTop: next };
+    writeData(data);
+    return next;
+  });
+
+  ipcMain.handle('get-always-on-top', () => {
+    return mainWindow ? mainWindow.isAlwaysOnTop() : false;
+  });
+
+  ipcMain.handle('load-settings', () => {
+    const data = readData();
+    return data && data.settings ? data.settings : null;
+  });
+
+  ipcMain.handle('save-settings', (_e, settings) => {
+    const data = readData() || {};
+    data.settings = settings;
+    return writeData(data);
+  });
+
+  ipcMain.on('set-bg-color', (_e, color) => {
+    if (mainWindow && typeof color === 'string') {
+      try { mainWindow.setBackgroundColor(color); } catch {}
+    }
+  });
+
+  ipcMain.handle('set-startup', (_e, enabled) => {
+    try {
+      app.setLoginItemSettings({ openAtLogin: !!enabled, path: process.execPath });
+      return app.getLoginItemSettings().openAtLogin;
+    } catch (e) {
+      console.error('startup setting failed', e);
+      return false;
+    }
+  });
+
+  ipcMain.handle('get-startup', () => {
+    try { return app.getLoginItemSettings().openAtLogin; } catch { return false; }
+  });
+
+  ipcMain.on('open-external', (_e, url) => {
+    if (typeof url === 'string' && /^https?:\/\//.test(url)) {
+      shell.openExternal(url);
+    }
+  });
+
+  createWindow(BrowserWindow);
+
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    if (BrowserWindow.getAllWindows().length === 0) createWindow(BrowserWindow);
   });
 });
 

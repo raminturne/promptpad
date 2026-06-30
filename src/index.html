@@ -52,6 +52,14 @@
           </svg>
           <span>new</span>
         </button>
+        <button id="templatesBtn" class="templates-btn" title="Templates">
+          <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+            <line x1="4" y1="7" x2="20" y2="7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+            <line x1="4" y1="12" x2="20" y2="12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+            <line x1="4" y1="17" x2="14" y2="17" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          </svg>
+          <span>templates</span>
+        </button>
         <div class="tab-list" id="tabList"></div>
       </nav>
 
@@ -104,6 +112,8 @@
           <section class="set-group">
             <h3 class="set-label">Theme</h3>
             <div id="themeRow" class="theme-row"></div>
+            <h3 class="set-label" style="margin-top:14px">Font</h3>
+            <div id="fontRow" class="font-row"></div>
           </section>
 
           <section class="set-group">
@@ -123,6 +133,16 @@
               </div>
               <label class="switch">
                 <input type="checkbox" id="togglePin" />
+                <span class="slider"></span>
+              </label>
+            </div>
+            <div class="set-toggle-row">
+              <div class="set-toggle-text">
+                <span>Close button</span>
+                <small>Show the × on hover over tabs</small>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="toggleClose" />
                 <span class="slider"></span>
               </label>
             </div>
@@ -192,7 +212,7 @@
             <div class="about-box">
               <div class="about-brand">
                 <span class="brand-dot"></span>
-                <span>PromptPad <em id="aboutVersion">v1.2.6</em></span>
+                <span>PromptPad <em id="aboutVersion">v1.3.0</em></span>
               </div>
               <p class="about-desc">A compact notepad for writing AI prompts.</p>
               <div class="about-links">
@@ -213,6 +233,55 @@
             <button id="resetBtn" class="reset-btn">Reset settings to defaults</button>
           </section>
         </div>
+      </div>
+    </div>
+
+    <!-- Tab right-click context menu -->
+    <div id="tabContextMenu" class="ctx-menu hidden">
+      <div class="ctx-item" data-action="rename">Rename</div>
+      <div class="ctx-item" data-action="duplicate">Duplicate</div>
+      <div class="ctx-sep"></div>
+      <div class="ctx-item" data-action="copy">Copy content</div>
+      <div class="ctx-item" data-action="save-template">Save as template…</div>
+      <div class="ctx-sep"></div>
+      <div class="ctx-colors">
+        <span class="ctx-color-label">Color</span>
+        <div class="ctx-color-row"></div>
+      </div>
+      <div id="ctxPinGroup">
+        <div class="ctx-sep"></div>
+        <div class="ctx-item" data-action="pin">Pin</div>
+      </div>
+      <div class="ctx-sep"></div>
+      <div class="ctx-item ctx-danger" data-action="close">Close tab</div>
+    </div>
+
+    <!-- Save as template dialog -->
+    <div id="saveTemplateDialog" class="mini-dialog hidden">
+      <span class="mini-dialog-label">Template name</span>
+      <input id="templateNameInput" type="text" />
+      <div class="mini-dialog-actions">
+        <button id="templateNameCancel" class="mini-dialog-cancel">Cancel</button>
+        <button id="templateNameSave" class="mini-dialog-save">Save</button>
+      </div>
+    </div>
+
+    <!-- Templates panel -->
+    <div id="templatesOverlay" class="overlay hidden">
+      <div class="templates-card">
+        <div class="templates-head">
+          <span class="templates-title">templates</span>
+          <button id="templatesClose" class="win-btn" title="Close">
+            <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+              <line x1="6" y1="6" x2="18" y2="18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+              <line x1="18" y1="6" x2="6" y2="18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+            </svg>
+          </button>
+        </div>
+        <div class="templates-empty hidden" id="templatesEmpty">
+          No templates yet.<br>Right-click a tab → "Save as template…"
+        </div>
+        <div class="templates-body" id="templatesList"></div>
       </div>
     </div>
   </div>

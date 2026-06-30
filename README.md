@@ -1,72 +1,67 @@
 # PromptPad
 
-A compact, always-on-top desktop notepad widget for writing and organizing AI prompts. Built with Electron.
+A compact, always-on-top desktop notepad for writing and organizing AI prompts. Built with Electron.
 
-Minimal, fast, and right next to your work — a quiet terminal-inspired pad with tabs, themes, and autosave.
+Minimal, fast, and right next to your work — with tabs, 14 themes, live placeholder fill, templates, and find & replace.
 
 ## 📸 Screenshots
 
-| Default | Top tabs (browser-style) |
+| Dark theme + Placeholders | Light theme |
 |:---:|:---:|
-| ![Default view](screenshots/01-default.png) | ![Top layout](screenshots/02-top-layout.png) |
+| ![Dark theme](screenshots/01-default.png) | ![Light theme](screenshots/02-light-theme.png) |
 
-| Settings | Midnight theme (RTL) | Plum theme |
+| Settings (Dark / Light) | Right-click context menu | Templates |
 |:---:|:---:|:---:|
-| ![Settings](screenshots/03-settings.png) | ![Midnight theme](screenshots/04-midnight.png) | ![Plum theme](screenshots/05-plum.png) |
+| ![Settings](screenshots/03-settings.png) | ![Context menu](screenshots/04-context-menu.png) | ![Templates](screenshots/05-templates.png) |
 
 ## ✨ Features
 
 - **Compact always-on-top widget** — frameless window that floats above other apps, with a pin toggle
-- **Tabs** — left sidebar (vertical) or browser-style top layout
-  - Add with `+`, click to switch
-  - **Drag & drop** to reorder / categorize
-  - **Pin** tabs (pinned ones stay on top)
-  - Auto-named from the first line, double-click to rename
-- **6 color themes** — Forest, Midnight, Slate, Carbon, Plum, Ember
-- **Char & token counter** — handy for prompt writing
-- **Copy** the whole prompt with one click
-- **Smart RTL** — any Persian/Arabic in the text aligns it right (even if it starts with English); pure-English stays left. Direction is **per tab**, and you can force it with `Ctrl + Right Shift` (RTL) / `Ctrl + Left Shift` (LTR)
-- **Placeholder quick-fill** — write a template with `[bracket]` or `{brace}` blanks and they're highlighted automatically; a fill bar lets you type a value for each one, replacing every matching occurrence at once. The bar can sit above the prompt or as a resizable side panel, as one scrollable line or stacked rows — all toggled in Settings
-- **Undo / redo** (`Ctrl+Z` / `Ctrl+Shift+Z`) — its own per-tab history, coalesced so a burst of typing undoes in one step
-- **Autosave** to disk — tabs, content, window size & position persist
-- **Settings panel** — themes, tab position, resizable tab width, pinning on/off, placeholder detection & layout, launch at startup, reset
+- **Tabs** — left sidebar or browser-style top layout
+  - Add with `+`, click to switch, drag & drop to reorder
+  - **Pin** tabs so they stay on top of the list
+  - Auto-named from first line, double-click to rename
+  - **Right-click context menu** — Rename, Duplicate, Copy content, Save as template, color (8 colors), Pin/Unpin, Close
+- **14 themes** — 7 dark (Forest, Midnight, Carbon, Plum, Ember, Dracula, Mono) + 7 light (Paper, Sky, Sage, Rose, Latte, Lavender, Snow), grouped in Settings
+- **Placeholder quick-fill** — write `[bracket]` or `{brace}` blanks; they highlight automatically and a fill bar lets you type values one by one
+  - **Live preview** — typed value appears inside the prompt in real-time before you confirm
+  - Enter jumps to the next field
+  - Bar can sit above the prompt or as a resizable side panel; one scrollable line or stacked rows
+- **Find & Replace** — `Ctrl+F` to search with highlighted matches and match counter; `Ctrl+H` to replace one or all
+- **Templates** — save any tab as a reusable template; open the Templates panel from the sidebar to browse, use, or delete
+- **Smart RTL** — Persian/Arabic text aligns right automatically, per-tab; force with `Ctrl + Right Shift` / `Ctrl + Left Shift`
+- **Undo / redo** (`Ctrl+Z` / `Ctrl+Y`) — per-tab history with coalesced typing
+- **Auto-check for updates** — checks GitHub for new releases on startup; shows a dismissable banner if a newer version is available (toggle in Settings)
+- **Char & token counter** + one-click copy
+- **Autosave** — tabs, content, window position all persist
 - **Launch at startup** (Windows)
 
 ## ⌨️ Shortcuts
 
 | Shortcut | Action |
 |----------|--------|
-| `Ctrl+T` | New prompt |
+| `Ctrl+T` | New tab |
 | `Ctrl+W` | Close tab |
 | `Ctrl+Tab` / `Ctrl+PageDown` | Next tab |
 | `Ctrl+PageUp` | Previous tab |
 | `Ctrl+Shift+C` | Copy prompt |
+| `Ctrl+F` | Find |
+| `Ctrl+H` | Find & Replace |
 | `Ctrl+Z` | Undo |
 | `Ctrl+Shift+Z` / `Ctrl+Y` | Redo |
 | `Ctrl + Right Shift` | Force RTL (this tab) |
 | `Ctrl + Left Shift` | Force LTR (this tab) |
-| `Esc` | Close settings |
+| `Esc` | Close panel / find bar |
 
-> Shortcuts use the physical key position, so they work on Persian (and other) keyboard layouts.
-
-## 🎨 Default colors
-
-- Background: `#1B211A`
-- Text: `#D3DAD9`
+> Shortcuts use physical key positions so they work on Persian and other keyboard layouts.
 
 ## 🛠️ Development
 
 ```bash
 npm install      # install dependencies
-npm start        # run the app
-npm run dist     # build the Windows installer (.exe) into release/
+npm start        # run in dev mode
+npm run dist     # build Windows installer → release/PromptPad Setup <version>.exe
 ```
-
-> The custom app icon is generated with `node build/make-icon.js`.
-
-## 📦 Build output
-
-`npm run dist` produces an NSIS installer at `release/PromptPad Setup <version>.exe`.
 
 ## 👤 Author
 

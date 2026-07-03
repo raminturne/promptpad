@@ -104,7 +104,17 @@ function toggleWindowVisible() {
   }
 }
 
-app.whenReady().then(() => {
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (!mainWindow) return;
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+  });
+
+  app.whenReady().then(() => {
   const { BrowserWindow, ipcMain, shell, Tray, Menu } = require('electron');
 
   DATA_FILE = path.join(app.getPath('userData'), 'promptpad-data.json');
@@ -236,8 +246,9 @@ app.whenReady().then(() => {
   });
 });
 
-app.on('before-quit', () => { quitting = true; });
+  app.on('before-quit', () => { quitting = true; });
 
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit();
-});
+  app.on('window-all-closed', () => {
+    if (process.platform !== 'darwin') app.quit();
+  });
+}

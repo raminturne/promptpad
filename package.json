@@ -21,7 +21,8 @@
     "files": [
       "main.js",
       "preload.js",
-      "src/**/*"
+      "src/**/*",
+      "build/icon.ico"
     ],
     "directories": {
       "output": "release",

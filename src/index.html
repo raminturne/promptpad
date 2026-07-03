@@ -86,6 +86,9 @@
                   <svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true"><polyline points="6 9 12 15 18 9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
                 </button>
                 <span id="findCount" class="find-count"></span>
+                <button id="findAllTabs" class="find-nav" title="Search all tabs">
+                  <svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true"><rect x="3" y="7" width="13" height="13" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8 4h11a2 2 0 0 1 2 2v11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+                </button>
                 <button id="findClose" class="find-close">
                   <svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="6" y1="6" x2="18" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
                 </button>
@@ -95,9 +98,11 @@
                 <button id="replaceOne" class="find-action">Replace</button>
                 <button id="replaceAll" class="find-action">All</button>
               </div>
+              <div id="findResults" class="find-results hidden"></div>
             </div>
             <div id="editor" class="editor-area" contenteditable="plaintext-only"
               spellcheck="false" data-placeholder="Write your prompt here…"></div>
+            <div id="mdPreview" class="md-preview hidden"></div>
           </div>
         </div>
         <footer class="statusbar">
@@ -106,13 +111,22 @@
             <span class="dot-sep">·</span>
             <span id="tokenCount">~0 tokens</span>
           </div>
-          <button id="copyBtn" class="copy-btn" title="Copy prompt (Ctrl+Shift+C)">
-            <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
-              <rect x="9" y="9" width="11" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/>
-              <path d="M5 15V5a2 2 0 0 1 2-2h8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-            </svg>
-            <span id="copyLabel">copy</span>
-          </button>
+          <div class="status-actions">
+            <button id="mdBtn" class="copy-btn" title="Markdown preview (Ctrl+M)">
+              <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
+                <rect x="2.5" y="5" width="19" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/>
+                <path d="M6 15v-6l2.5 3L11 9v6M15 9v6M15 15l-2-2.2M15 15l2-2.2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              <span>md</span>
+            </button>
+            <button id="copyBtn" class="copy-btn" title="Copy prompt (Ctrl+Shift+C)">
+              <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
+                <rect x="9" y="9" width="11" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/>
+                <path d="M5 15V5a2 2 0 0 1 2-2h8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+              </svg>
+              <span id="copyLabel">copy</span>
+            </button>
+          </div>
         </footer>
       </main>
     </div>
@@ -137,6 +151,17 @@
             <div id="themeRow" class="theme-row"></div>
             <h3 class="set-label" style="margin-top:14px">Font</h3>
             <div id="fontRow" class="font-row"></div>
+            <div class="set-toggle-row" id="fontSizeRow">
+              <div class="set-toggle-text">
+                <span>Font size</span>
+                <small>Also: Ctrl + scroll, Ctrl+= / Ctrl+- / Ctrl+0</small>
+              </div>
+              <div class="stepper">
+                <button id="fontSizeDown" class="stepper-btn" title="Smaller">−</button>
+                <span id="fontSizeValue" class="stepper-value">13.5px</span>
+                <button id="fontSizeUp" class="stepper-btn" title="Bigger">+</button>
+              </div>
+            </div>
           </section>
 
           <section class="set-group">
@@ -237,6 +262,23 @@
                 <span class="slider"></span>
               </label>
             </div>
+            <div class="set-toggle-row">
+              <div class="set-toggle-text">
+                <span>Window opacity</span>
+                <small id="opacityValue">100%</small>
+              </div>
+              <input type="range" id="opacityRange" class="range-input" min="70" max="100" step="5" />
+            </div>
+            <div class="set-toggle-row">
+              <div class="set-toggle-text">
+                <span>Close to tray</span>
+                <small>Keep running in the tray when closed</small>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="toggleTray" />
+                <span class="slider"></span>
+              </label>
+            </div>
           </section>
 
           <!-- About -->
@@ -245,7 +287,7 @@
             <div class="about-box">
               <div class="about-brand">
                 <span class="brand-dot"></span>
-                <span>PromptPad <em id="aboutVersion">v1.4.0</em></span>
+                <span>PromptPad <em id="aboutVersion">v1.5.0</em></span>
               </div>
               <p class="about-desc">A compact notepad for writing AI prompts.</p>
               <div class="about-links">
@@ -287,6 +329,7 @@
     <div id="tabContextMenu" class="ctx-menu hidden">
       <div class="ctx-item" data-action="rename">Rename</div>
       <div class="ctx-item" data-action="duplicate">Duplicate</div>
+      <div class="ctx-item" data-action="history">History…</div>
       <div class="ctx-sep"></div>
       <div class="ctx-item" data-action="copy">Copy content</div>
       <div class="ctx-item" data-action="save-template">Save as template…</div>
@@ -294,6 +337,11 @@
       <div class="ctx-colors">
         <span class="ctx-color-label">Color</span>
         <div class="ctx-color-row"></div>
+      </div>
+      <div class="ctx-sep"></div>
+      <div class="ctx-colors">
+        <span class="ctx-color-label">Group</span>
+        <div class="ctx-group-list" id="ctxGroupList"></div>
       </div>
       <div id="ctxPinGroup">
         <div class="ctx-sep"></div>
@@ -303,6 +351,16 @@
       <div class="ctx-item ctx-danger" data-action="close">Close tab</div>
     </div>
 
+    <!-- New group dialog -->
+    <div id="groupNameDialog" class="mini-dialog hidden">
+      <span class="mini-dialog-label">Group name</span>
+      <input id="groupNameInput" type="text" />
+      <div class="mini-dialog-actions">
+        <button id="groupNameCancel" class="mini-dialog-cancel">Cancel</button>
+        <button id="groupNameSave" class="mini-dialog-save">Create</button>
+      </div>
+    </div>
+
     <!-- Save as template dialog -->
     <div id="saveTemplateDialog" class="mini-dialog hidden">
       <span class="mini-dialog-label">Template name</span>
@@ -310,6 +368,25 @@
       <div class="mini-dialog-actions">
         <button id="templateNameCancel" class="mini-dialog-cancel">Cancel</button>
         <button id="templateNameSave" class="mini-dialog-save">Save</button>
+      </div>
+    </div>
+
+    <!-- Tab history (snapshots) panel -->
+    <div id="historyOverlay" class="overlay hidden">
+      <div class="templates-card">
+        <div class="templates-head">
+          <span class="templates-title" id="historyTitle">history</span>
+          <button id="historyClose" class="win-btn" title="Close">
+            <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+              <line x1="6" y1="6" x2="18" y2="18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+              <line x1="18" y1="6" x2="6" y2="18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+            </svg>
+          </button>
+        </div>
+        <div class="templates-empty hidden" id="historyEmpty">
+          No snapshots yet.<br>Snapshots are saved automatically while you write.
+        </div>
+        <div class="templates-body" id="historyList"></div>
       </div>
     </div>
 
@@ -333,6 +410,7 @@
     </div>
   </div>
 
+  <script src="markdown.js"></script>
   <script src="renderer.js"></script>
 </body>
 </html>

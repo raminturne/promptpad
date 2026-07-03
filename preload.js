@@ -13,5 +13,7 @@ contextBridge.exposeInMainWorld('api', {
   setStartup: (enabled) => ipcRenderer.invoke('set-startup', enabled),
   getStartup: () => ipcRenderer.invoke('get-startup'),
   openExternal: (url) => ipcRenderer.send('open-external', url),
-  checkUpdate: () => ipcRenderer.invoke('check-update')
+  checkUpdate: () => ipcRenderer.invoke('check-update'),
+  setOpacity: (v) => ipcRenderer.send('set-opacity', v),
+  setCloseToTray: (enabled) => ipcRenderer.send('set-close-to-tray', enabled)
 });

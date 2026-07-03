@@ -1,9 +1,11 @@
 // ---------- State ----------
 let state = {
-  tabs: [],      // { id, name, custom, content, dir, pinned, color }
+  tabs: [],      // { id, name, custom, content, dir, pinned, color, groupId, snapshots }
   activeId: null,
   seq: 1,
-  templates: [] // { id, name, content }
+  templates: [], // { id, name, content }
+  groups: [],    // { id, name, collapsed }
+  phValues: {}   // { '[token]': ['recent', 'values'] } — MRU, max 8
 };
 
 const TAB_COLORS = [null, '#e05252', '#e07a52', '#e0c852', '#52b05a', '#5290e0', '#9052e0', '#e052b8'];
@@ -46,6 +48,7 @@ const FONTS = {
 const DEFAULT_SETTINGS = {
   theme: 'forest',
   font: 'cascadia',
+  fontSize: 13.5,
   tabPosition: 'left',
   pinningEnabled: true,
   closeButtonEnabled: true,
@@ -53,6 +56,8 @@ const DEFAULT_SETTINGS = {
   railWidth: 166,
   launchAtStartup: false,
   autoCheckUpdates: true,
+  windowOpacity: 100,
+  closeToTray: false,
   placeholdersEnabled: true,
   placeholderBarPosition: 'right', // 'top' | 'right'
   placeholderBarWrap: 'line', // 'line' | 'stack'
@@ -91,6 +96,12 @@ const placeholderWrapSeg = document.getElementById('placeholderWrapSeg');
 const placeholderWrapRow = document.getElementById('placeholderWrapRow');
 const resetBtn = document.getElementById('resetBtn');
 const resizeRow = document.getElementById('resizeRow');
+const fontSizeDownEl = document.getElementById('fontSizeDown');
+const fontSizeUpEl = document.getElementById('fontSizeUp');
+const fontSizeValueEl = document.getElementById('fontSizeValue');
+const opacityRangeEl = document.getElementById('opacityRange');
+const opacityValueEl = document.getElementById('opacityValue');
+const toggleTrayEl = document.getElementById('toggleTray');
 // placeholder fill bar
 const editorBodyEl = document.getElementById('editorBody');
 const placeholderBarEl = document.getElementById('placeholderBar');
@@ -102,6 +113,12 @@ const ctxMenuEl = document.getElementById('tabContextMenu');
 const ctxPinItem = ctxMenuEl.querySelector('[data-action="pin"]');
 const ctxPinGroup = document.getElementById('ctxPinGroup');
 const ctxColorRowEl = ctxMenuEl.querySelector('.ctx-color-row');
+const ctxGroupListEl = document.getElementById('ctxGroupList');
+// group name dialog
+const groupNameDialog = document.getElementById('groupNameDialog');
+const groupNameInput = document.getElementById('groupNameInput');
+const groupNameCancel = document.getElementById('groupNameCancel');
+const groupNameSave = document.getElementById('groupNameSave');
 // templates
 const templatesBtn = document.getElementById('templatesBtn');
 const templatesOverlay = document.getElementById('templatesOverlay');
@@ -119,6 +136,16 @@ const replaceRowEl = document.getElementById('replaceRow');
 const replaceInputEl = document.getElementById('replaceInput');
 const replaceOneEl = document.getElementById('replaceOne');
 const replaceAllEl = document.getElementById('replaceAll');
+const findAllTabsEl = document.getElementById('findAllTabs');
+const findResultsEl = document.getElementById('findResults');
+// markdown preview
+const mdBtn = document.getElementById('mdBtn');
+const mdPreviewEl = document.getElementById('mdPreview');
+// history (snapshots)
+const historyOverlay = document.getElementById('historyOverlay');
+const historyClose = document.getElementById('historyClose');
+const historyListEl = document.getElementById('historyList');
+const historyEmptyEl = document.getElementById('historyEmpty');
 // update check
 const checkUpdateBtn = document.getElementById('checkUpdateBtn');
 const checkUpdateLabel = document.getElementById('checkUpdateLabel');
@@ -440,11 +467,21 @@ function updateCounts() {
 // ---------- Placeholder fill bar ----------
 // Replace every occurrence of `token` (e.g. "[topic]") in the active tab's
 // content with `value` — filling one occurrence fills them all.
+// Remember a used placeholder value (MRU per token, capped)
+function rememberPhValue(token, value) {
+  if (!value || value.length > 200) return;
+  if (!state.phValues) state.phValues = {};
+  const list = state.phValues[token] || [];
+  const next = [value, ...list.filter((v) => v !== value)].slice(0, 8);
+  state.phValues[token] = next;
+}
+
 function fillPlaceholder(token, value) {
   const t = activeTab();
   if (!t) return;
   syncEditorToState();
   commitCheckpoint(t);
+  rememberPhValue(token, value);
   const prevContent = t.content;
   t.content = t.content.split(token).join(value);
   t.undoStack = t.undoStack || [];
@@ -469,6 +506,20 @@ function buildPlaceholderField(token) {
   const input = document.createElement('input');
   input.type = 'text';
   input.placeholder = 'Type value…';
+
+  // suggest previously used values for this token
+  const dl = document.createElement('datalist');
+  dl.id = 'ph-dl-' + uid();
+  const refreshSuggestions = () => {
+    dl.innerHTML = '';
+    ((state.phValues && state.phValues[token]) || []).forEach((v) => {
+      const opt = document.createElement('option');
+      opt.value = v;
+      dl.appendChild(opt);
+    });
+  };
+  refreshSuggestions();
+  input.setAttribute('list', dl.id);
 
   const confirmBtn = document.createElement('button');
   confirmBtn.type = 'button';
@@ -514,6 +565,7 @@ function buildPlaceholderField(token) {
   };
 
   input.addEventListener('focus', () => {
+    refreshSuggestions();
     startPreview();
     updatePreview();
   });
@@ -542,6 +594,7 @@ function buildPlaceholderField(token) {
   const inputRow = document.createElement('div');
   inputRow.className = 'placeholder-field-row';
   inputRow.appendChild(input);
+  inputRow.appendChild(dl);
   inputRow.appendChild(confirmBtn);
 
   row.appendChild(label);
@@ -590,17 +643,16 @@ function renderTabs() {
     return;
   }
 
-  const pinsOn = settings.pinningEnabled;
   const ordered = orderedTabs();
   let lastPinnedId = null;
-  if (pinsOn) ordered.forEach((t) => { if (t.pinned) lastPinnedId = t.id; });
+  ordered.forEach((t) => { if (t.pinned) lastPinnedId = t.id; });
 
-  ordered.forEach((tab) => {
+  const makeTabEl = (tab) => {
     const i = state.tabs.indexOf(tab);
     const el = document.createElement('div');
     el.className = 'tab' + (tab.id === state.activeId ? ' active' : '') +
-      (pinsOn && tab.pinned ? ' pinned' : '') +
-      (pinsOn && tab.id === lastPinnedId ? ' pin-divider' : '');
+      (tab.pinned ? ' pinned' : '') +
+      (tab.id === lastPinnedId ? ' pin-divider' : '');
     el.dataset.id = tab.id;
     el.draggable = true;
 
@@ -669,13 +721,179 @@ function renderTabs() {
     // right-click context menu
     el.addEventListener('contextmenu', (e) => { showCtxMenu(e, tab.id); });
 
-    tabListEl.appendChild(el);
+    return el;
+  };
+
+  // Groups only apply in the left layout; top layout stays a flat strip.
+  const groups = state.groups || [];
+  const grouping = settings.tabPosition !== 'top' && groups.length > 0;
+
+  if (!grouping) {
+    ordered.forEach((tab) => tabListEl.appendChild(makeTabEl(tab)));
+    return;
+  }
+
+  const inKnownGroup = (t) => t.groupId && groups.some((g) => g.id === t.groupId);
+
+  // 1) pinned tabs always on top, regardless of group
+  ordered.filter((t) => t.pinned).forEach((t) => tabListEl.appendChild(makeTabEl(t)));
+
+  // 2) each group: header + members (hidden when collapsed)
+  groups.forEach((g) => {
+    const members = ordered.filter((t) => !t.pinned && t.groupId === g.id);
+    tabListEl.appendChild(makeGroupHeader(g, members.length));
+    if (!g.collapsed) members.forEach((t) => tabListEl.appendChild(makeTabEl(t)));
   });
+
+  // 3) ungrouped tabs at the bottom
+  ordered.filter((t) => !t.pinned && !inKnownGroup(t))
+    .forEach((t) => tabListEl.appendChild(makeTabEl(t)));
 }
+
+function makeGroupHeader(group, count) {
+  const el = document.createElement('div');
+  el.className = 'tab-group-header' + (group.collapsed ? ' collapsed' : '');
+  el.dataset.groupId = group.id;
+
+  const chev = document.createElement('span');
+  chev.className = 'tab-group-chevron';
+  chev.innerHTML =
+    '<svg viewBox="0 0 24 24" width="10" height="10" aria-hidden="true">' +
+    '<polyline points="6 9 12 15 18 9" fill="none" stroke="currentColor" ' +
+    'stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  el.appendChild(chev);
+
+  const nameEl = document.createElement('span');
+  nameEl.className = 'tab-group-name';
+  nameEl.textContent = group.name;
+  nameEl.setAttribute('dir', detectDir(group.name));
+  el.appendChild(nameEl);
+
+  const countEl = document.createElement('span');
+  countEl.className = 'tab-group-count';
+  countEl.textContent = count;
+  el.appendChild(countEl);
+
+  const delEl = document.createElement('button');
+  delEl.className = 'tab-group-del';
+  delEl.innerHTML = '&times;';
+  delEl.title = 'Ungroup (tabs are kept)';
+  el.appendChild(delEl);
+
+  el.addEventListener('click', (e) => {
+    if (e.target.closest('.tab-group-del')) return;
+    group.collapsed = !group.collapsed;
+    renderTabs();
+    scheduleSave();
+  });
+
+  nameEl.addEventListener('dblclick', (e) => {
+    e.stopPropagation();
+    startGroupRename(group, nameEl);
+  });
+
+  delEl.addEventListener('click', (e) => {
+    e.stopPropagation();
+    dissolveGroup(group.id);
+  });
+
+  return el;
+}
+
+function startGroupRename(group, nameEl) {
+  const input = document.createElement('input');
+  input.className = 'tab-name-input';
+  input.value = group.name;
+  input.setAttribute('dir', detectDir(group.name));
+  nameEl.replaceWith(input);
+  input.focus();
+  input.select();
+  const commit = () => {
+    const v = input.value.trim();
+    if (v) group.name = v;
+    renderTabs();
+    scheduleSave();
+  };
+  input.addEventListener('blur', commit);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+    if (e.key === 'Escape') { input.value = group.name; input.blur(); }
+  });
+  input.addEventListener('click', (e) => e.stopPropagation());
+}
+
+function dissolveGroup(groupId) {
+  state.tabs.forEach((t) => { if (t.groupId === groupId) t.groupId = null; });
+  state.groups = (state.groups || []).filter((g) => g.id !== groupId);
+  renderTabs();
+  scheduleSave();
+}
+
+function setTabGroup(tabId, groupId) {
+  const t = state.tabs.find((x) => x.id === tabId);
+  if (!t) return;
+  t.groupId = groupId;
+  const g = groupId && (state.groups || []).find((x) => x.id === groupId);
+  if (g) g.collapsed = false; // reveal where the tab landed
+  renderTabs();
+  scheduleSave();
+}
+
+// Group picker inside the tab context menu
+function buildCtxGroupList(tab) {
+  ctxGroupListEl.innerHTML = '';
+  const mk = (label, active, cb) => {
+    const b = document.createElement('button');
+    b.className = 'ctx-group-item' + (active ? ' active' : '');
+    b.textContent = label;
+    b.setAttribute('dir', detectDir(label));
+    b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      hideCtxMenu();
+      cb();
+    });
+    ctxGroupListEl.appendChild(b);
+  };
+  mk('None', !tab.groupId, () => setTabGroup(tab.id, null));
+  (state.groups || []).forEach((g) => {
+    mk(g.name, tab.groupId === g.id, () => setTabGroup(tab.id, g.id));
+  });
+  mk('+ New…', false, () => openGroupDialog(tab.id));
+}
+
+function openGroupDialog(tabId) {
+  groupNameDialog.dataset.tabId = tabId;
+  groupNameInput.value = '';
+  groupNameDialog.classList.remove('hidden');
+  groupNameInput.focus();
+}
+
+function closeGroupDialog() {
+  groupNameDialog.classList.add('hidden');
+  groupNameDialog.dataset.tabId = '';
+}
+
+function confirmGroupDialog() {
+  const tabId = groupNameDialog.dataset.tabId;
+  const name = groupNameInput.value.trim();
+  if (!name) { closeGroupDialog(); return; }
+  if (!state.groups) state.groups = [];
+  const group = { id: uid(), name, collapsed: false };
+  state.groups.push(group);
+  closeGroupDialog();
+  if (tabId) setTabGroup(tabId, group.id);
+  else { renderTabs(); scheduleSave(); }
+}
+
+groupNameCancel.addEventListener('click', closeGroupDialog);
+groupNameSave.addEventListener('click', confirmGroupDialog);
+groupNameInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); confirmGroupDialog(); }
+  if (e.key === 'Escape') { closeGroupDialog(); }
+});
 
 // Pinned tabs first (preserving their order), then unpinned (stable)
 function orderedTabs() {
-  if (!settings.pinningEnabled) return state.tabs.slice();
   const pinned = state.tabs.filter((t) => t.pinned);
   const rest = state.tabs.filter((t) => !t.pinned);
   return [...pinned, ...rest];
@@ -722,10 +940,33 @@ tabListEl.addEventListener('dragover', (e) => {
 function onDragEnd() {
   const dragging = tabListEl.querySelector('.dragging');
   if (dragging) dragging.classList.remove('dragging');
+
+  // when group sections are shown, the drop position also decides the group
+  const draggedTab = dragging && state.tabs.find((t) => t.id === dragging.dataset.id);
+  if (dragging && draggedTab && !draggedTab.pinned &&
+      settings.tabPosition !== 'top' && (state.groups || []).length) {
+    let el = dragging.previousElementSibling;
+    let newGroup, decided = false;
+    if (!el) { newGroup = null; decided = true; } // dropped at the very top
+    while (el && !decided) {
+      if (el.classList.contains('tab-group-header')) {
+        newGroup = el.dataset.groupId;
+        decided = true;
+      } else if (el.classList.contains('tab')) {
+        const prev = state.tabs.find((t) => t.id === el.dataset.id);
+        if (prev && !prev.pinned) { newGroup = prev.groupId || null; decided = true; }
+        break; // pinned neighbour → keep current group
+      } else {
+        el = el.previousElementSibling;
+      }
+    }
+    if (decided) draggedTab.groupId = newGroup;
+  }
+
   // rebuild order from DOM
   const domOrder = [...tabListEl.querySelectorAll('.tab')].map((el) => el.dataset.id);
   state.tabs.sort((a, b) => domOrder.indexOf(a.id) - domOrder.indexOf(b.id));
-  renderTabs(); // re-applies pinned-on-top grouping + divider
+  renderTabs(); // re-applies pinned-on-top + group sections
   scheduleSave();
 }
 
@@ -773,8 +1014,11 @@ function switchTab(id) {
   renderTabs();
   updateCounts();
   updatePlaceholderPanel();
-  editorEl.focus();
-  placeCaretEnd();
+  if (mdOn) renderMdPreview();
+  else {
+    editorEl.focus();
+    placeCaretEnd();
+  }
   scheduleSave();
 }
 
@@ -938,6 +1182,8 @@ function showCtxMenu(e, tabId) {
     sw.classList.toggle('active', sw.dataset.color === (tab.color || ''));
   });
 
+  buildCtxGroupList(tab);
+
   ctxMenuEl.style.left = e.clientX + 'px';
   ctxMenuEl.style.top = e.clientY + 'px';
   ctxMenuEl.classList.remove('hidden');
@@ -973,6 +1219,7 @@ ctxMenuEl.addEventListener('click', (e) => {
       break;
     }
     case 'duplicate': duplicateTab(id); break;
+    case 'history': openHistory(id); break;
     case 'copy': copyTabContent(id); break;
     case 'save-template': openSaveTemplateDialog(id); break;
     case 'pin': togglePin(id); break;
@@ -1127,6 +1374,93 @@ templatesOverlay.addEventListener('click', (e) => {
   if (e.target === templatesOverlay) closeTemplates();
 });
 
+// ---------- Tab history (snapshots) panel ----------
+let historyTabId = null;
+
+function relTime(ts) {
+  const mins = Math.floor((Date.now() - ts) / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return mins + 'm ago';
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return hrs + 'h ago';
+  return Math.floor(hrs / 24) + 'd ago';
+}
+
+function openHistory(tabId) {
+  historyTabId = tabId;
+  renderHistoryList();
+  historyOverlay.classList.remove('hidden');
+}
+
+function closeHistory() {
+  historyOverlay.classList.add('hidden');
+  historyTabId = null;
+}
+
+function renderHistoryList() {
+  historyListEl.innerHTML = '';
+  const tab = state.tabs.find((t) => t.id === historyTabId);
+  const snaps = (tab && tab.snapshots) || [];
+  historyEmptyEl.classList.toggle('hidden', snaps.length > 0);
+  if (!tab || !snaps.length) return;
+
+  snaps.forEach((snap, idx) => {
+    const row = document.createElement('div');
+    row.className = 'template-row';
+
+    const nameEl = document.createElement('div');
+    nameEl.className = 'template-row-name';
+    nameEl.textContent = relTime(snap.ts) + ' · ' + snap.content.length.toLocaleString('en-US') + ' chars';
+
+    const firstLine = (snap.content.split('\n').find((l) => l.trim()) || '').slice(0, 80);
+    const preview = document.createElement('div');
+    preview.className = 'template-row-preview';
+    preview.textContent = firstLine;
+    preview.setAttribute('dir', detectDir(firstLine));
+
+    const actions = document.createElement('div');
+    actions.className = 'template-row-actions';
+
+    const restoreBtn = document.createElement('button');
+    restoreBtn.className = 'template-use-btn';
+    restoreBtn.textContent = 'Restore';
+    restoreBtn.addEventListener('click', () => restoreSnapshot(tab, idx));
+
+    actions.appendChild(restoreBtn);
+    row.appendChild(nameEl);
+    row.appendChild(preview);
+    row.appendChild(actions);
+    historyListEl.appendChild(row);
+  });
+}
+
+function restoreSnapshot(tab, idx) {
+  const snap = tab.snapshots && tab.snapshots[idx];
+  if (!snap) return;
+  if (tab.id === state.activeId) syncEditorToState();
+  takeSnapshot(tab, true); // keep the pre-restore content recoverable
+  commitCheckpoint(tab);
+  tab.undoStack = tab.undoStack || [];
+  tab.undoStack.push(tab.content);
+  if (tab.undoStack.length > UNDO_LIMIT) tab.undoStack.shift();
+  tab.redoStack = [];
+  tab.content = snap.content;
+  if (tab.id === state.activeId) {
+    setEditorText(tab.content);
+    updateCounts();
+    updatePlaceholderPanel();
+    if (mdOn) renderMdPreview();
+  }
+  renderTabs();
+  scheduleSave();
+  closeHistory();
+}
+
+historyClose.addEventListener('click', closeHistory);
+historyOverlay.addEventListener('click', (e) => {
+  if (e.target === historyOverlay) closeHistory();
+});
+
 templateNameCancel.addEventListener('click', closeSaveTemplateDialog);
 templateNameSave.addEventListener('click', confirmSaveTemplate);
 templateNameInput.addEventListener('keydown', (e) => {
@@ -1140,8 +1474,23 @@ function scheduleSave() {
   saveTimer = setTimeout(doSave, 350);
 }
 
+// ---------- Snapshots (per-tab history) ----------
+const SNAPSHOT_MAX = 15;
+const SNAPSHOT_MIN_GAP = 5 * 60 * 1000; // at most one auto-snapshot per 5 min
+
+function takeSnapshot(t, force = false) {
+  if (!t || !t.content || !t.content.trim()) return;
+  t.snapshots = t.snapshots || [];
+  const newest = t.snapshots[0];
+  if (newest && newest.content === t.content) return;
+  if (!force && newest && Date.now() - newest.ts < SNAPSHOT_MIN_GAP) return;
+  t.snapshots.unshift({ ts: Date.now(), content: t.content });
+  if (t.snapshots.length > SNAPSHOT_MAX) t.snapshots.length = SNAPSHOT_MAX;
+}
+
 async function doSave() {
   syncEditorToState();
+  takeSnapshot(activeTab());
   try {
     await window.api.saveNotes(state);
   } catch (e) {
@@ -1151,25 +1500,33 @@ async function doSave() {
 
 async function loadState() {
   const saved = await window.api.loadNotes();
-  if (saved && Array.isArray(saved.tabs) && saved.tabs.length > 0) {
+  const hadSaved = !!(saved && Array.isArray(saved.tabs) && saved.tabs.length > 0);
+  if (hadSaved) {
     state = {
       tabs: saved.tabs,
       activeId: saved.activeId && saved.tabs.some((t) => t.id === saved.activeId)
         ? saved.activeId
         : saved.tabs[0].id,
       seq: saved.seq || 1,
-      templates: saved.templates || []
+      templates: saved.templates || [],
+      groups: saved.groups || [],
+      phValues: saved.phValues || {},
+      lastVersion: saved.lastVersion || null
     };
   } else {
     state.tabs = [{ id: uid(), name: '', custom: false, content: '', dir: 'auto', color: null }];
     state.activeId = state.tabs[0].id;
     state.templates = [];
+    state.groups = [];
+    state.phValues = {};
+    state.lastVersion = null;
   }
   const t = activeTab();
   setEditorText(t ? t.content : '');
   renderTabs();
   updateCounts();
   updatePlaceholderPanel();
+  return hadSaved;
 }
 
 // ---------- Events ----------
@@ -1293,8 +1650,27 @@ document.addEventListener('keydown', (e) => {
   } else if (!e.shiftKey && e.code === 'KeyH') {
     e.preventDefault();
     openFind(true);
+  } else if (e.code === 'Equal' || e.code === 'NumpadAdd') {
+    e.preventDefault();
+    stepFontSize(1);
+  } else if (e.code === 'Minus' || e.code === 'NumpadSubtract') {
+    e.preventDefault();
+    stepFontSize(-1);
+  } else if (e.code === 'Digit0' || e.code === 'Numpad0') {
+    e.preventDefault();
+    stepFontSize(0);
+  } else if (!e.shiftKey && e.code === 'KeyM') {
+    e.preventDefault();
+    setMdPreview(!mdOn);
   }
 });
+
+// Ctrl+wheel over the editor zooms the font
+editorEl.addEventListener('wheel', (e) => {
+  if (!e.ctrlKey) return;
+  e.preventDefault();
+  stepFontSize(e.deltaY < 0 ? 1 : -1);
+}, { passive: false });
 
 // ---- Per-tab text direction via Windows Ctrl+Shift gesture ----
 // Ctrl + Right-Shift = RTL, Ctrl + Left-Shift = LTR. We persist the choice
@@ -1351,9 +1727,35 @@ function applyFont(id) {
   document.documentElement.style.setProperty('--font', f.stack);
 }
 
+const FONT_SIZE_MIN = 10, FONT_SIZE_MAX = 24;
+
+function applyFontSize() {
+  const v = settings.fontSize || DEFAULT_SETTINGS.fontSize;
+  document.documentElement.style.setProperty('--editor-font-size', v + 'px');
+}
+
+// Step the editor font size (dir: +1 / -1, or 0 to reset) and persist.
+function stepFontSize(dir) {
+  const cur = settings.fontSize || DEFAULT_SETTINGS.fontSize;
+  const next = dir === 0
+    ? DEFAULT_SETTINGS.fontSize
+    : Math.min(FONT_SIZE_MAX, Math.max(FONT_SIZE_MIN, cur + dir * 0.5));
+  if (next === cur && dir !== 0) return;
+  settings.fontSize = next;
+  applyFontSize();
+  updateFontSizeLabel();
+  saveSettingsNow();
+}
+
+function updateFontSizeLabel() {
+  if (fontSizeValueEl) fontSizeValueEl.textContent = (settings.fontSize || DEFAULT_SETTINGS.fontSize) + 'px';
+}
+
 function applySettings() {
   applyTheme(settings.theme);
   applyFont(settings.font);
+  applyFontSize();
+  window.api.setOpacity((settings.windowOpacity || 100) / 100);
   appEl.classList.toggle('layout-top', settings.tabPosition === 'top');
   appEl.classList.toggle('pins-off', !settings.pinningEnabled);
   appEl.classList.toggle('close-off', !settings.closeButtonEnabled);
@@ -1436,6 +1838,7 @@ function buildFontPicker() {
 function syncSettingsUI() {
   buildThemeSwatches();
   buildFontPicker();
+  updateFontSizeLabel();
   layoutSeg.querySelectorAll('.seg-btn').forEach((b) => {
     b.classList.toggle('active', b.dataset.layout === settings.tabPosition);
   });
@@ -1444,6 +1847,9 @@ function syncSettingsUI() {
   toggleResizeEl.checked = settings.railResizable;
   toggleStartupEl.checked = settings.launchAtStartup;
   toggleAutoUpdateEl.checked = settings.autoCheckUpdates;
+  opacityRangeEl.value = settings.windowOpacity || 100;
+  opacityValueEl.textContent = (settings.windowOpacity || 100) + '%';
+  toggleTrayEl.checked = !!settings.closeToTray;
   togglePlaceholdersEl.checked = settings.placeholdersEnabled;
   resizeRow.classList.toggle('disabled', settings.tabPosition === 'top');
   placeholderPositionSeg.querySelectorAll('.seg-btn').forEach((b) => {
@@ -1508,6 +1914,22 @@ toggleStartupEl.addEventListener('change', async () => {
 
 toggleAutoUpdateEl.addEventListener('change', () => {
   settings.autoCheckUpdates = toggleAutoUpdateEl.checked;
+  saveSettingsNow();
+});
+
+fontSizeDownEl.addEventListener('click', () => stepFontSize(-1));
+fontSizeUpEl.addEventListener('click', () => stepFontSize(1));
+
+opacityRangeEl.addEventListener('input', () => {
+  settings.windowOpacity = Number(opacityRangeEl.value);
+  opacityValueEl.textContent = settings.windowOpacity + '%';
+  window.api.setOpacity(settings.windowOpacity / 100);
+});
+opacityRangeEl.addEventListener('change', () => saveSettingsNow());
+
+toggleTrayEl.addEventListener('change', () => {
+  settings.closeToTray = toggleTrayEl.checked;
+  window.api.setCloseToTray(settings.closeToTray);
   saveSettingsNow();
 });
 
@@ -1631,6 +2053,8 @@ function closeFind() {
   findBarEl.classList.add('hidden');
   clearFindHL();
   findMatches = [];
+  findResultsEl.classList.add('hidden');
+  findResultsEl.innerHTML = '';
   editorEl.focus();
 }
 
@@ -1682,6 +2106,7 @@ function runFind() {
   findMatches = [];
   const q = findInputEl.value;
   findInputEl.classList.remove('no-match');
+  renderFindResults(q);
   if (!q) { findCountEl.textContent = ''; return; }
 
   const posMap = buildPosMap();
@@ -1727,6 +2152,106 @@ function findMove(dir) {
   runFind();
 }
 
+// ---------- Markdown preview ----------
+let mdOn = false;
+
+function renderMdPreview() {
+  const t = activeTab();
+  mdPreviewEl.innerHTML = window.renderMarkdown(t ? t.content : '');
+  mdPreviewEl.querySelectorAll('p, h1, h2, h3, h4, li, blockquote').forEach((el) => {
+    el.setAttribute('dir', detectDir(el.textContent));
+  });
+}
+
+function setMdPreview(on) {
+  if (on) {
+    syncEditorToState();
+    renderMdPreview();
+  }
+  mdOn = on;
+  editorEl.classList.toggle('hidden', on);
+  mdPreviewEl.classList.toggle('hidden', !on);
+  mdBtn.classList.toggle('active', on);
+  if (!on) editorEl.focus();
+}
+
+mdBtn.addEventListener('click', () => setMdPreview(!mdOn));
+
+// ---- Search across all tabs ----
+let findAllTabs = false;
+
+findAllTabsEl.addEventListener('click', () => {
+  findAllTabs = !findAllTabs;
+  findAllTabsEl.classList.toggle('active', findAllTabs);
+  runFind();
+  findInputEl.focus();
+});
+
+// Lists matches from the other (non-active) tabs under the find bar.
+function renderFindResults(q) {
+  if (!findAllTabs || !q) {
+    findResultsEl.classList.add('hidden');
+    findResultsEl.innerHTML = '';
+    return;
+  }
+  findResultsEl.innerHTML = '';
+  const qLower = q.toLowerCase();
+  let any = false;
+
+  state.tabs.forEach((t) => {
+    if (t.id === state.activeId) return;
+    const content = t.content || '';
+    const lower = content.toLowerCase();
+    let p = 0, count = 0, first = -1;
+    while ((p = lower.indexOf(qLower, p)) !== -1) {
+      if (first === -1) first = p;
+      count++;
+      p++;
+    }
+    if (!count) return;
+    any = true;
+
+    const start = Math.max(0, first - 24);
+    let snip = content.slice(start, first + q.length + 40).replace(/\s+/g, ' ').trim();
+    if (start > 0) snip = '…' + snip;
+    if (first + q.length + 40 < content.length) snip += '…';
+
+    const row = document.createElement('div');
+    row.className = 'find-result-row';
+
+    const name = document.createElement('span');
+    name.className = 'find-result-name';
+    const dispName = autoName(t, state.tabs.indexOf(t));
+    name.textContent = dispName;
+    name.setAttribute('dir', detectDir(dispName));
+
+    const badge = document.createElement('span');
+    badge.className = 'find-result-count';
+    badge.textContent = count;
+
+    const prev = document.createElement('span');
+    prev.className = 'find-result-snippet';
+    prev.textContent = snip;
+    prev.setAttribute('dir', detectDir(snip));
+
+    row.appendChild(name);
+    row.appendChild(badge);
+    row.appendChild(prev);
+    row.addEventListener('click', () => {
+      switchTab(t.id);
+      runFind();
+      findInputEl.focus();
+    });
+    findResultsEl.appendChild(row);
+  });
+
+  if (!any) {
+    findResultsEl.classList.add('hidden');
+    return;
+  }
+  findResultsEl.classList.remove('hidden');
+}
+
 function doReplaceOne() {
   if (!findMatches.length) return;
   const t = activeTab();
@@ -1747,6 +2272,7 @@ function doReplaceAll() {
   if (!findMatches.length) return;
   const t = activeTab();
   if (!t) return;
+  takeSnapshot(t, true);
   const q = findInputEl.value;
   const repl = replaceInputEl.value;
   const lower = t.content.toLowerCase();
@@ -1783,6 +2309,41 @@ replaceAllEl.addEventListener('click', doReplaceAll);
 // ---------- Update Check ----------
 const CURRENT_VERSION = document.getElementById('aboutVersion').textContent.replace('v', '');
 
+// ---------- "What's new" tab (shown once after each update) ----------
+const WHATS_NEW =
+  "What's new in v" + CURRENT_VERSION + " ✨\n" +
+  '\n' +
+  '• Tab groups — right-click a tab → Group, collapse/expand from the sidebar\n' +
+  '• Tab history — right-click a tab → History… to restore earlier versions\n' +
+  '• Search all tabs — Ctrl+F, then hit the "all tabs" toggle\n' +
+  '• Markdown preview — Ctrl+M or the "md" button in the status bar\n' +
+  '• Font size — Ctrl + scroll on the editor, Ctrl+= / Ctrl+- / Ctrl+0, or Settings\n' +
+  '• Window opacity — slider in Settings → System\n' +
+  '• Close to tray — PromptPad can keep running in the system tray\n' +
+  '• Placeholder suggestions — fields now remember your previous values\n' +
+  '• Fixed — Pin from the right-click menu now always works\n' +
+  '\n' +
+  'You can close this tab — it won\'t come back until the next update.';
+
+function maybeShowWhatsNew(hadSaved) {
+  if (state.lastVersion === CURRENT_VERSION) return;
+  state.lastVersion = CURRENT_VERSION;
+  // fresh installs just record the version; updates get the tab
+  if (hadSaved) {
+    const tab = {
+      id: uid(), name: "What's new ✨", custom: true,
+      content: WHATS_NEW, dir: 'ltr', color: null
+    };
+    state.tabs.push(tab);
+    state.activeId = tab.id;
+    setEditorText(tab.content);
+    renderTabs();
+    updateCounts();
+    updatePlaceholderPanel();
+  }
+  scheduleSave();
+}
+
 function showUpdateBanner(tag, url) {
   updateBannerTextEl.textContent = 'New version available: v' + tag.replace('v', '');
   updateBannerLinkEl.onclick = () => window.api.openExternal(url);
@@ -1793,12 +2354,23 @@ function showUpdateBanner(tag, url) {
   checkUpdateBtn.onclick = () => window.api.openExternal(url);
 }
 
+// > 0 when a is newer than b (semver-ish "1.5.0" strings)
+function cmpVersions(a, b) {
+  const pa = a.split('.').map(Number);
+  const pb = b.split('.').map(Number);
+  for (let i = 0; i < 3; i++) {
+    const d = (pa[i] || 0) - (pb[i] || 0);
+    if (d) return d;
+  }
+  return 0;
+}
+
 async function runUpdateCheck(silent = false) {
   try {
     const result = await window.api.checkUpdate();
     if (!result || !result.tag) return;
     const latest = result.tag.replace('v', '');
-    if (latest && latest !== CURRENT_VERSION) {
+    if (latest && cmpVersions(latest, CURRENT_VERSION) > 0) {
       showUpdateBanner(result.tag, result.url);
     } else if (!silent) {
       checkUpdateLabel.textContent = 'You\'re up to date ✓';
@@ -1829,7 +2401,8 @@ checkUpdateBtn.addEventListener('click', async () => {
   try { settings.launchAtStartup = await window.api.getStartup(); } catch {}
   applySettings();
 
-  await loadState();
+  const hadSaved = await loadState();
+  maybeShowWhatsNew(hadSaved);
 
   const onTop = await window.api.getAlwaysOnTop();
   pinBtn.classList.toggle('active', onTop);
@@ -1841,7 +2414,10 @@ checkUpdateBtn.addEventListener('click', async () => {
     if (e.key !== 'Escape') return;
     if (!ctxMenuEl.classList.contains('hidden')) { hideCtxMenu(); return; }
     if (!findBarEl.classList.contains('hidden')) { closeFind(); return; }
+    if (mdOn) { setMdPreview(false); return; }
     if (!saveTemplateDialog.classList.contains('hidden')) { closeSaveTemplateDialog(); return; }
+    if (!groupNameDialog.classList.contains('hidden')) { closeGroupDialog(); return; }
+    if (!historyOverlay.classList.contains('hidden')) { closeHistory(); return; }
     if (!templatesOverlay.classList.contains('hidden')) { closeTemplates(); return; }
     if (!settingsOverlay.classList.contains('hidden')) { closeSettings(); return; }
   });

@@ -4,6 +4,9 @@ const fs = require('fs');
 
 let DATA_FILE;
 let mainWindow = null;
+let tray = null;
+let quitting = false;
+let closeToTray = false;
 
 function readData() {
   try {
@@ -27,6 +30,8 @@ function writeData(data) {
 function createWindow(BrowserWindow) {
   const saved = readData();
   const win = (saved && saved.window) || {};
+  const savedSettings = (saved && saved.settings) || {};
+  closeToTray = !!savedSettings.closeToTray;
 
   mainWindow = new BrowserWindow({
     width: win.width || 500,
@@ -54,7 +59,17 @@ function createWindow(BrowserWindow) {
     mainWindow.setAlwaysOnTop(true, 'floating');
   }
 
+  const op = Number(savedSettings.windowOpacity);
+  if (op >= 70 && op < 100) mainWindow.setOpacity(op / 100);
+
   mainWindow.loadFile(path.join(__dirname, 'src', 'index.html'));
+
+  mainWindow.on('close', (e) => {
+    if (closeToTray && !quitting) {
+      e.preventDefault();
+      mainWindow.hide();
+    }
+  });
 
   let boundsTimer = null;
   const persistBounds = () => {
@@ -79,8 +94,18 @@ function createWindow(BrowserWindow) {
   mainWindow.on('closed', () => { mainWindow = null; });
 }
 
+function toggleWindowVisible() {
+  if (!mainWindow) return;
+  if (mainWindow.isVisible() && !mainWindow.isMinimized()) {
+    mainWindow.hide();
+  } else {
+    mainWindow.show();
+    mainWindow.focus();
+  }
+}
+
 app.whenReady().then(() => {
-  const { BrowserWindow, ipcMain, shell } = require('electron');
+  const { BrowserWindow, ipcMain, shell, Tray, Menu } = require('electron');
 
   DATA_FILE = path.join(app.getPath('userData'), 'promptpad-data.json');
 
@@ -178,12 +203,40 @@ app.whenReady().then(() => {
     });
   });
 
+  ipcMain.on('set-opacity', (_e, v) => {
+    if (!mainWindow) return;
+    const n = Number(v);
+    if (!Number.isFinite(n)) return;
+    mainWindow.setOpacity(Math.min(1, Math.max(0.5, n)));
+  });
+
+  ipcMain.on('set-close-to-tray', (_e, enabled) => {
+    closeToTray = !!enabled;
+  });
+
   createWindow(BrowserWindow);
+
+  // Tray icon — always available for quick show/hide; the "close to tray"
+  // setting only controls what the window × button does.
+  try {
+    tray = new Tray(path.join(__dirname, 'build', 'icon.ico'));
+    tray.setToolTip('PromptPad');
+    tray.setContextMenu(Menu.buildFromTemplate([
+      { label: 'Show PromptPad', click: () => { if (mainWindow) { mainWindow.show(); mainWindow.focus(); } } },
+      { type: 'separator' },
+      { label: 'Quit', click: () => { quitting = true; app.quit(); } }
+    ]));
+    tray.on('click', toggleWindowVisible);
+  } catch (e) {
+    console.error('tray failed', e);
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow(BrowserWindow);
   });
 });
+
+app.on('before-quit', () => { quitting = true; });
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();

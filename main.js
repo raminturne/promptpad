@@ -1,12 +1,30 @@
-const { app } = require('electron');
+const { app, protocol } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const { pathToFileURL } = require('url');
 
 let DATA_FILE;
+let IMAGES_DIR;
 let mainWindow = null;
+let qcWindow = null;
 let tray = null;
 let quitting = false;
 let closeToTray = false;
+
+const QUICK_CAPTURE_ACCEL = 'Control+Shift+Space';
+
+// Dev/testing: run against an isolated data directory (also isolates the
+// single-instance lock), e.g. electron . --pp-data-dir=C:\tmp\pp-test
+const dataDirArg = process.argv.find((a) => a.startsWith('--pp-data-dir='));
+if (dataDirArg) {
+  try { app.setPath('userData', dataDirArg.slice('--pp-data-dir='.length)); } catch {}
+}
+
+// Custom scheme for note images ("ppimg://<filename>") — must be registered
+// before app ready. Serves files from userData/images only.
+protocol.registerSchemesAsPrivileged([
+  { scheme: 'ppimg', privileges: { secure: true, supportFetchAPI: true, stream: true } }
+]);
 
 function readData() {
   try {
@@ -115,9 +133,26 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   app.whenReady().then(() => {
-  const { BrowserWindow, ipcMain, shell, Tray, Menu } = require('electron');
+  const { BrowserWindow, ipcMain, shell, Tray, Menu, dialog, net, globalShortcut } = require('electron');
 
   DATA_FILE = path.join(app.getPath('userData'), 'promptpad-data.json');
+  IMAGES_DIR = path.join(app.getPath('userData'), 'images');
+  try { fs.mkdirSync(IMAGES_DIR, { recursive: true }); } catch {}
+
+  // Serve saved images to the renderer. Filenames are whitelisted to a safe
+  // charset so the handler can never read outside IMAGES_DIR.
+  protocol.handle('ppimg', async (req) => {
+    try {
+      let name = decodeURIComponent(req.url.slice('ppimg://'.length));
+      name = name.replace(/[/\\]+$/, '');
+      if (!/^[a-z0-9._-]+$/i.test(name) || name.includes('..')) {
+        return new Response('', { status: 400 });
+      }
+      return await net.fetch(pathToFileURL(path.join(IMAGES_DIR, name)).toString());
+    } catch {
+      return new Response('', { status: 404 });
+    }
+  });
 
   // ---- IPC ----
   ipcMain.handle('load-notes', () => {
@@ -222,6 +257,221 @@ if (!app.requestSingleInstanceLock()) {
 
   ipcMain.on('set-close-to-tray', (_e, enabled) => {
     closeToTray = !!enabled;
+  });
+
+  // ---- Images ----
+  const IMG_EXTS = ['png', 'jpg', 'jpeg', 'gif', 'webp'];
+
+  function newImageName(ext) {
+    return 'i' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6) + '.' + ext;
+  }
+
+  ipcMain.handle('save-image', (_e, base64, ext) => {
+    ext = String(ext || '').toLowerCase();
+    if (!IMG_EXTS.includes(ext)) return null;
+    // base64 inflates ~4/3, so this caps images at roughly 10 MB
+    if (typeof base64 !== 'string' || !base64 || base64.length > 14_000_000) return null;
+    try {
+      const name = newImageName(ext);
+      fs.writeFileSync(path.join(IMAGES_DIR, name), Buffer.from(base64, 'base64'));
+      return { filename: name };
+    } catch (err) {
+      console.error('save-image failed', err);
+      return null;
+    }
+  });
+
+  ipcMain.handle('download-image', async (_e, filename) => {
+    if (!mainWindow) return { ok: false };
+    if (typeof filename !== 'string' || !/^[a-z0-9._-]+$/i.test(filename) || filename.includes('..')) {
+      return { ok: false };
+    }
+    const src = path.join(IMAGES_DIR, filename);
+    if (!fs.existsSync(src)) return { ok: false };
+    const ext = path.extname(filename).slice(1).toLowerCase() || 'png';
+    const res = await dialog.showSaveDialog(mainWindow, {
+      title: 'Save image',
+      defaultPath: 'image.' + ext,
+      filters: [{ name: 'Image', extensions: [ext] }]
+    });
+    if (res.canceled || !res.filePath) return { ok: false, canceled: true };
+    try {
+      fs.copyFileSync(src, res.filePath);
+      return { ok: true, path: res.filePath };
+    } catch (err) {
+      console.error('download-image failed', err);
+      return { ok: false };
+    }
+  });
+
+  ipcMain.handle('pick-image', async () => {
+    if (!mainWindow) return null;
+    const res = await dialog.showOpenDialog(mainWindow, {
+      title: 'Insert image',
+      filters: [{ name: 'Images', extensions: IMG_EXTS }],
+      properties: ['openFile']
+    });
+    if (res.canceled || !res.filePaths.length) return null;
+    const src = res.filePaths[0];
+    const ext = path.extname(src).slice(1).toLowerCase();
+    if (!IMG_EXTS.includes(ext)) return null;
+    try {
+      const name = newImageName(ext);
+      fs.copyFileSync(src, path.join(IMAGES_DIR, name));
+      return { filename: name };
+    } catch (err) {
+      console.error('pick-image failed', err);
+      return null;
+    }
+  });
+
+  // ---- Backup: export / import ----
+  ipcMain.handle('export-data', async () => {
+    if (!mainWindow) return { ok: false };
+    const res = await dialog.showSaveDialog(mainWindow, {
+      title: 'Export backup',
+      defaultPath: 'promptpad-backup-' + new Date().toISOString().slice(0, 10) + '.json',
+      filters: [{ name: 'JSON', extensions: ['json'] }]
+    });
+    if (res.canceled || !res.filePath) return { ok: false, canceled: true };
+    try {
+      const data = readData() || {};
+      fs.writeFileSync(res.filePath, JSON.stringify(data, null, 2), 'utf-8');
+      return { ok: true, path: res.filePath };
+    } catch (err) {
+      console.error('export failed', err);
+      return { ok: false };
+    }
+  });
+
+  ipcMain.handle('import-data', async () => {
+    if (!mainWindow) return { ok: false };
+    const res = await dialog.showOpenDialog(mainWindow, {
+      title: 'Import backup',
+      filters: [{ name: 'JSON', extensions: ['json'] }],
+      properties: ['openFile']
+    });
+    if (res.canceled || !res.filePaths.length) return { ok: false, canceled: true };
+    try {
+      let parsed = JSON.parse(fs.readFileSync(res.filePaths[0], 'utf-8'));
+      // accept a bare state file too ({ tabs: [...] })
+      if (parsed && Array.isArray(parsed.tabs)) parsed = { notes: parsed };
+      if (!parsed || !parsed.notes || !Array.isArray(parsed.notes.tabs)) {
+        return { ok: false, invalid: true };
+      }
+      const current = readData();
+      if (current) {
+        const bak = DATA_FILE.replace(/\.json$/, '') + '.backup-' + Date.now() + '.json';
+        fs.writeFileSync(bak, JSON.stringify(current, null, 2), 'utf-8');
+      }
+      // keep this machine's window geometry
+      if (current && current.window) parsed.window = current.window;
+      writeData(parsed);
+      return { ok: true };
+    } catch (err) {
+      console.error('import failed', err);
+      return { ok: false, invalid: true };
+    }
+  });
+
+  ipcMain.on('relaunch-app', () => {
+    quitting = true;
+    app.relaunch();
+    app.exit(0);
+  });
+
+  ipcMain.handle('export-note', async (_e, name, content, ext) => {
+    if (!mainWindow) return { ok: false };
+    ext = ext === 'txt' ? 'txt' : 'md';
+    const safe = String(name || 'note')
+      .replace(/[<>:"/\\|?*\x00-\x1f]/g, '').trim().slice(0, 60) || 'note';
+    const res = await dialog.showSaveDialog(mainWindow, {
+      title: 'Export note',
+      defaultPath: safe + '.' + ext,
+      filters: [
+        { name: 'Markdown', extensions: ['md'] },
+        { name: 'Text', extensions: ['txt'] }
+      ]
+    });
+    if (res.canceled || !res.filePath) return { ok: false, canceled: true };
+    try {
+      fs.writeFileSync(res.filePath, String(content || ''), 'utf-8');
+      return { ok: true, path: res.filePath };
+    } catch (err) {
+      console.error('export-note failed', err);
+      return { ok: false };
+    }
+  });
+
+  // ---- Global quick-capture hotkey ----
+  // Opens a small, standalone always-on-top box WITHOUT raising the main
+  // window. What you type/paste is forwarded to the main window and appended
+  // to Fast Save, so the app itself never steals focus from your work.
+  function showQuickCaptureWindow() {
+    if (qcWindow && !qcWindow.isDestroyed()) {
+      qcWindow.show();
+      qcWindow.focus();
+      return;
+    }
+    qcWindow = new BrowserWindow({
+      width: 460,
+      height: 210,
+      frame: false,
+      resizable: false,
+      alwaysOnTop: true,
+      skipTaskbar: true,
+      fullscreenable: false,
+      minimizable: false,
+      maximizable: false,
+      show: false,
+      backgroundColor: '#00000000',
+      webPreferences: {
+        preload: path.join(__dirname, 'preload.js'),
+        contextIsolation: true,
+        nodeIntegration: false
+      }
+    });
+    qcWindow.setAlwaysOnTop(true, 'screen-saver');
+    qcWindow.loadFile(path.join(__dirname, 'src', 'quickcapture.html'));
+    let openedAt = 0;
+    qcWindow.once('ready-to-show', () => {
+      openedAt = Date.now();
+      qcWindow.show();
+      qcWindow.focus();
+    });
+    // Dismiss when it loses focus (a lightweight, Spotlight-style popup),
+    // but ignore the very first moments while it's still settling.
+    qcWindow.on('blur', () => {
+      if (qcWindow && !qcWindow.isDestroyed() && Date.now() - openedAt > 400) qcWindow.close();
+    });
+    qcWindow.on('closed', () => { qcWindow = null; });
+  }
+
+  function triggerQuickCapture() {
+    showQuickCaptureWindow();
+  }
+
+  ipcMain.on('qc-submit', (_e, payload) => {
+    if (mainWindow) mainWindow.webContents.send('qc-message', payload);
+    if (qcWindow && !qcWindow.isDestroyed()) qcWindow.close();
+  });
+
+  ipcMain.on('qc-close', () => {
+    if (qcWindow && !qcWindow.isDestroyed()) qcWindow.close();
+  });
+
+  ipcMain.handle('set-quick-capture', (_e, enabled) => {
+    try { globalShortcut.unregister(QUICK_CAPTURE_ACCEL); } catch {}
+    if (!enabled) return false;
+    try {
+      return globalShortcut.register(QUICK_CAPTURE_ACCEL, triggerQuickCapture);
+    } catch {
+      return false;
+    }
+  });
+
+  app.on('will-quit', () => {
+    try { globalShortcut.unregisterAll(); } catch {}
   });
 
   createWindow(BrowserWindow);

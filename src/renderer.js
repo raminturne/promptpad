@@ -5,8 +5,23 @@ let state = {
   seq: 1,
   templates: [], // { id, name, content }
   groups: [],    // { id, name, collapsed }
-  phValues: {}   // { '[token]': ['recent', 'values'] } — MRU, max 8
+  phValues: {},  // { '[token]': ['recent', 'values'] } — MRU, max 8
+  fastSave: { messages: [] } // { id, ts, text } — chat-style quick notes
 };
+
+// Sentinel activeId for the Fast Save view (not a real tab).
+const FS_ID = '__fastsave__';
+
+function fsActive() {
+  return state.activeId === FS_ID;
+}
+
+function fsMessages() {
+  if (!state.fastSave || !Array.isArray(state.fastSave.messages)) {
+    state.fastSave = { messages: [] };
+  }
+  return state.fastSave.messages;
+}
 
 const TAB_COLORS = [null, '#e05252', '#e07a52', '#e0c852', '#52b05a', '#5290e0', '#9052e0', '#e052b8'];
 
@@ -14,36 +29,9 @@ let saveTimer = null;
 let _previewToken = null;   // token currently being live-previewed
 let _previewBase  = null;   // snapshot of t.content before preview started
 
-// ---------- Themes & settings ----------
-const THEMES = {
-  // === Dark (7) ===
-  forest:   { label: 'Forest',   type: 'dark', bg: '#1B211A', text: '#D3DAD9', sidebar: '#161b15', elevated: '#222a21', elevatedHi: '#2a332a', accent: '#7fbf8b', danger: '#e08a7a' },
-  midnight: { label: 'Midnight', type: 'dark', bg: '#0f1620', text: '#cdd6e3', sidebar: '#0b121b', elevated: '#18222f', elevatedHi: '#1f2b3a', accent: '#5ea8e0', danger: '#e08a7a' },
-  carbon:   { label: 'Carbon',   type: 'dark', bg: '#161616', text: '#dad9d6', sidebar: '#101010', elevated: '#202020', elevatedHi: '#2a2a2a', accent: '#d9a566', danger: '#e08a7a' },
-  plum:     { label: 'Plum',     type: 'dark', bg: '#1a141f', text: '#e2d8e8', sidebar: '#150f1a', elevated: '#241a2b', elevatedHi: '#2e2236', accent: '#b88ad9', danger: '#e08a8a' },
-  ember:    { label: 'Ember',    type: 'dark', bg: '#1f1517', text: '#ecdad6', sidebar: '#190f11', elevated: '#2a1c1d', elevatedHi: '#341f22', accent: '#e0907a', danger: '#e0707a' },
-  dracula:  { label: 'Dracula',  type: 'dark', bg: '#282a36', text: '#f8f8f2', sidebar: '#21222c', elevated: '#313341', elevatedHi: '#414354', accent: '#bd93f9', danger: '#ff5555' },
-  mono:     { label: 'Mono',     type: 'dark', bg: '#0a0a0a', text: '#f0f0f0', sidebar: '#050505', elevated: '#141414', elevatedHi: '#1e1e1e', accent: '#888888', danger: '#cc3333' },
-
-  // === Light (7) ===
-  paper:    { label: 'Paper',    type: 'light', cssClass: 'theme-light', bg: '#f7f7f5', text: '#1a1a1a', sidebar: '#eeecea', elevated: '#ffffff', elevatedHi: '#e8e6e4', accent: '#5472d4', danger: '#d94040' },
-  sky:      { label: 'Sky',      type: 'light', cssClass: 'theme-light', bg: '#e8f0fb', text: '#1a2540', sidebar: '#dce8f8', elevated: '#f2f7ff', elevatedHi: '#ccddf5', accent: '#2563eb', danger: '#dc2626' },
-  sage:     { label: 'Sage',     type: 'light', cssClass: 'theme-light', bg: '#eef5f0', text: '#182418', sidebar: '#e2ede6', elevated: '#f5faf6', elevatedHi: '#d4e8da', accent: '#2d7a50', danger: '#c04040' },
-  rose:     { label: 'Rose',     type: 'light', cssClass: 'theme-light', bg: '#fdf0f4', text: '#2a1020', sidebar: '#f8e4ec', elevated: '#fff5f8', elevatedHi: '#f0d4e0', accent: '#d0406a', danger: '#c02050' },
-  latte:    { label: 'Latte',    type: 'light', cssClass: 'theme-light', bg: '#f5ede0', text: '#2a1e10', sidebar: '#ede3d4', elevated: '#fdf6ed', elevatedHi: '#e4d8c8', accent: '#b06030', danger: '#c03030' },
-  lavender: { label: 'Lavender', type: 'light', cssClass: 'theme-light', bg: '#f0ecfa', text: '#1e1830', sidebar: '#e6e0f5', elevated: '#f8f5ff', elevatedHi: '#d8d0ee', accent: '#7050c0', danger: '#c02050' },
-  snow:     { label: 'Snow',     type: 'light', cssClass: 'theme-light', bg: '#ffffff', text: '#111111', sidebar: '#f5f5f5', elevated: '#ffffff', elevatedHi: '#e8e8e8', accent: '#333333', danger: '#cc0000' },
-};
-
-// ---------- Fonts ----------
-const FONTS = {
-  cascadia: { label: 'Cascadia',  stack: '"Cascadia Code", "Cascadia Mono", Consolas, ui-monospace, monospace' },
-  consolas: { label: 'Consolas',  stack: 'Consolas, "Cascadia Code", ui-monospace, monospace' },
-  jetbrains:{ label: 'JetBrains', stack: '"JetBrains Mono", Consolas, ui-monospace, monospace' },
-  lucida:   { label: 'Lucida',    stack: '"Lucida Console", "Lucida Sans Typewriter", Consolas, monospace' },
-  courier:  { label: 'Courier',   stack: '"Courier New", Courier, monospace' },
-  system:   { label: 'System UI', stack: '"Segoe UI", Inter, system-ui, sans-serif' },
-};
+// ---------- Themes & fonts (shared with the quick-capture window) ----------
+const THEMES = window.PP_THEMES;
+const FONTS = window.PP_FONTS;
 
 const DEFAULT_SETTINGS = {
   theme: 'forest',
@@ -61,7 +49,13 @@ const DEFAULT_SETTINGS = {
   placeholdersEnabled: true,
   placeholderBarPosition: 'right', // 'top' | 'right'
   placeholderBarWrap: 'line', // 'line' | 'stack'
-  placeholderBarWidth: 220
+  placeholderBarWidth: 220,
+  placeholderBarCollapsed: false,
+  fastSaveEnabled: true,
+  quickCaptureEnabled: true,
+  imageResizable: true,
+  imageDownloadEnabled: true,
+  editorJustify: false
 };
 
 let settings = { ...DEFAULT_SETTINGS };
@@ -159,6 +153,74 @@ const saveTemplateDialog = document.getElementById('saveTemplateDialog');
 const templateNameInput = document.getElementById('templateNameInput');
 const templateNameCancel = document.getElementById('templateNameCancel');
 const templateNameSave = document.getElementById('templateNameSave');
+// placeholder collapse
+const placeholderCollapseEl = document.getElementById('placeholderCollapse');
+// todo & image buttons
+const todoBtn = document.getElementById('todoBtn');
+const imgBtn = document.getElementById('imgBtn');
+// fast save
+const fastSaveViewEl = document.getElementById('fastSaveView');
+const fsMessagesEl = document.getElementById('fsMessages');
+const fsInputEl = document.getElementById('fsInput');
+const fsSendBtn = document.getElementById('fsSend');
+const toggleFastSaveEl = document.getElementById('toggleFastSave');
+// quick capture
+const toggleQuickCaptureEl = document.getElementById('toggleQuickCapture');
+// backup
+const exportDataBtn = document.getElementById('exportDataBtn');
+const exportDataLabel = document.getElementById('exportDataLabel');
+const importDataBtn = document.getElementById('importDataBtn');
+const importDataLabel = document.getElementById('importDataLabel');
+const importConfirmDialog = document.getElementById('importConfirmDialog');
+const importCancelBtn = document.getElementById('importCancel');
+const importConfirmBtn = document.getElementById('importConfirm');
+// lightbox & drop hint
+const lightboxEl = document.getElementById('lightbox');
+const lightboxImgEl = document.getElementById('lightboxImg');
+const dropHintEl = document.getElementById('dropHint');
+// title-bar search
+const searchBtn = document.getElementById('searchBtn');
+// formatting toolbar
+const emojiBtn = document.getElementById('emojiBtn');
+const emojiPanel = document.getElementById('emojiPanel');
+const linkBtn = document.getElementById('linkBtn');
+const justifyBtn = document.getElementById('justifyBtn');
+const cleanBtn = document.getElementById('cleanBtn');
+const linkDialog = document.getElementById('linkDialog');
+const linkTextInput = document.getElementById('linkTextInput');
+const linkUrlInput = document.getElementById('linkUrlInput');
+const linkCancel = document.getElementById('linkCancel');
+const linkSave = document.getElementById('linkSave');
+// image context menu
+const imgContextMenu = document.getElementById('imgContextMenu');
+const toggleImageResizeEl = document.getElementById('toggleImageResize');
+const toggleImageDownloadEl = document.getElementById('toggleImageDownload');
+// fast save extras
+const fsHeaderSearchBtn = document.getElementById('fsSearchBtn');
+const fsGalleryBtn = document.getElementById('fsGalleryBtn');
+const fsSearchBar = document.getElementById('fsSearchBar');
+const fsSearchInput = document.getElementById('fsSearchInput');
+const fsSearchCount = document.getElementById('fsSearchCount');
+const fsSearchClose = document.getElementById('fsSearchClose');
+const fsImgBtn = document.getElementById('fsImgBtn');
+const fsEmojiBtn = document.getElementById('fsEmojiBtn');
+const fsPending = document.getElementById('fsPending');
+const fsPendingImg = document.getElementById('fsPendingImg');
+const fsPendingRemove = document.getElementById('fsPendingRemove');
+const fsEditBar = document.getElementById('fsEditBar');
+const fsEditCancel = document.getElementById('fsEditCancel');
+// quick capture overlay
+const quickCaptureOverlay = document.getElementById('quickCaptureOverlay');
+const qcInput = document.getElementById('qcInput');
+const qcClose = document.getElementById('qcClose');
+const qcPending = document.getElementById('qcPending');
+const qcPendingImg = document.getElementById('qcPendingImg');
+const qcPendingRemove = document.getElementById('qcPendingRemove');
+// gallery overlay
+const galleryOverlay = document.getElementById('galleryOverlay');
+const galleryClose = document.getElementById('galleryClose');
+const galleryGrid = document.getElementById('galleryGrid');
+const galleryEmpty = document.getElementById('galleryEmpty');
 
 // ---------- Helpers ----------
 function uid() {
@@ -179,10 +241,28 @@ function detectDir(text) {
 // Prompt-template blanks like [topic] or {name} — single line only.
 const PLACEHOLDER_RE = /\[[^\[\]\r\n]+\]|\{[^{}\r\n]+\}/g;
 
+// Inline image token: ![img](ppimg://<filename>) with an optional stored
+// display width: ![img](ppimg://<filename>|<px>)
+const IMG_TOKEN_RE = /!\[img\]\(ppimg:\/\/([a-zA-Z0-9._-]+)(?:\|(\d+))?\)/g;
+
+function imgToken(filename, width) {
+  return '![img](ppimg://' + filename + (width ? '|' + Math.round(width) : '') + ')';
+}
+
+// Todo line prefix: "- [ ] " / "- [x] " (leading whitespace allowed)
+const TODO_RE = /^(\s*)- \[( |x)\] /;
+
+// Markdown link: [text](url) — its [text] must not be offered as a placeholder.
+const MDLINK_RE = /\[[^\[\]\r\n]+\]\([^)\r\n]*\)/g;
+
 function findPlaceholderTokens(text) {
   const seen = new Set();
   const tokens = [];
-  for (const m of (text || '').matchAll(PLACEHOLDER_RE)) {
+  // image tokens contain "[img]", todo markers are "[ ]"/"[x]", and markdown
+  // links start with "[text](" — none of these are fillable placeholders
+  const cleaned = (text || '').replace(IMG_TOKEN_RE, '').replace(MDLINK_RE, '');
+  for (const m of cleaned.matchAll(PLACEHOLDER_RE)) {
+    if (m[0] === '[ ]' || m[0] === '[x]') continue;
     if (!seen.has(m[0])) { seen.add(m[0]); tokens.push(m[0]); }
   }
   return tokens;
@@ -311,29 +391,62 @@ function currentLine() {
   return node && node !== editorEl ? node : null;
 }
 
-// Rebuild a line's children as plain text interleaved with .placeholder-tag
-// spans around [bracket] / {brace} matches, preserving the caret offset.
+// Rebuild a line's children as plain text interleaved with decoration spans:
+// .placeholder-tag around [bracket]/{brace} matches, .todo-mark around a
+// "- [ ] " prefix, .img-token around image tokens (plus an <img> thumbnail).
+// Every decoration WRAPS the literal token text, so el.textContent always
+// equals the raw line — getEditorText/caret logic never notice the spans.
+// The <img> thumbnail is the one zero-textContent addition.
 function highlightLine(el) {
   const text = el.textContent;
-  const hadTags = !!el.querySelector('.placeholder-tag');
-  const matches = [...text.matchAll(PLACEHOLDER_RE)];
-  if (!matches.length && !hadTags) return;
+  const hadDecor = !!el.querySelector('.placeholder-tag, .todo-mark, .img-token, .pp-img');
+  const phMatches = settings.placeholdersEnabled ? [...text.matchAll(PLACEHOLDER_RE)] : [];
+  const todoM = text.match(TODO_RE);
+  const imgMatches = [...text.matchAll(IMG_TOKEN_RE)];
+  el.classList.toggle('todo-done', !!(todoM && todoM[2] === 'x'));
+  if (!phMatches.length && !todoM && !imgMatches.length && !hadDecor) return;
 
   const offset = getCaretOffsetIn(el);
   el.innerHTML = '';
   if (text === '') {
     el.appendChild(document.createElement('br'));
   } else {
+    // Merge all decoration ranges; on overlap the earliest start wins
+    // (e.g. "[img]" inside an image token, "[ ]" inside a todo prefix).
+    const ranges = [];
+    if (todoM) ranges.push({ start: 0, end: todoM[0].length, cls: 'todo-mark' });
+    for (const m of imgMatches) {
+      ranges.push({ start: m.index, end: m.index + m[0].length, cls: 'img-token',
+        file: m[1], width: m[2] ? Number(m[2]) : null });
+    }
+    // Ranges of markdown-link [text] parts, so they aren't tagged as placeholders.
+    const linkRanges = [...text.matchAll(MDLINK_RE)].map((m) => [m.index, m.index + m[0].length]);
+    for (const m of phMatches) {
+      const inLink = linkRanges.some(([a, b]) => m.index >= a && m.index < b);
+      if (inLink) continue;
+      ranges.push({ start: m.index, end: m.index + m[0].length, cls: 'placeholder-tag' });
+    }
+    ranges.sort((a, b) => a.start - b.start || b.end - a.end);
+
+    const imgs = [];
     let last = 0;
-    for (const m of matches) {
-      if (m.index > last) el.appendChild(document.createTextNode(text.slice(last, m.index)));
+    for (const r of ranges) {
+      if (r.start < last) continue; // overlaps an earlier decoration
+      if (r.start > last) el.appendChild(document.createTextNode(text.slice(last, r.start)));
       const span = document.createElement('span');
-      span.className = 'placeholder-tag';
-      span.textContent = m[0];
+      span.className = r.cls;
+      span.textContent = text.slice(r.start, r.end);
       el.appendChild(span);
-      last = m.index + m[0].length;
+      if (r.file) imgs.push({ file: r.file, width: r.width });
+      last = r.end;
     }
     if (last < text.length) el.appendChild(document.createTextNode(text.slice(last)));
+
+    // thumbnails after the text (contribute no textContent). Wrapped so a
+    // resize handle can sit in the corner without disturbing editor text.
+    for (const im of imgs) {
+      el.appendChild(makeImgThumb(im.file, im.width));
+    }
   }
   if (offset != null) placeCaretInLine(el, offset);
 }
@@ -405,15 +518,19 @@ function updateLineDirs() {
     if (d.getAttribute('dir') !== want) {
       d.setAttribute('dir', want);
       d.style.direction = want;
-      d.style.textAlign = want === 'rtl' ? 'right' : 'left';
+      // Clean justify: fill both edges but let each line's last row end
+      // naturally (no forced full-width stretch on short/last lines).
+      d.style.textAlign = settings.editorJustify ? 'justify' : (want === 'rtl' ? 'right' : 'left');
+      d.style.textAlignLast = '';
       changed = true;
     }
     // Re-highlight lines you're not actively typing on immediately; the line
     // under the caret is debounced below so spans don't fight the caret
-    // mid-keystroke.
-    if (settings.placeholdersEnabled && d !== activeLine) highlightLine(d);
+    // mid-keystroke. (highlightLine itself skips placeholder tags when the
+    // setting is off but still decorates todos and images.)
+    if (d !== activeLine) highlightLine(d);
   });
-  if (settings.placeholdersEnabled) scheduleHighlight(activeLine);
+  scheduleHighlight(activeLine);
   // Flush the pending layout so the new direction paints this frame.
   if (changed) void editorEl.offsetHeight;
 }
@@ -632,8 +749,41 @@ function updatePlaceholderPanel() {
 }
 
 // ---------- Render ----------
+// Fast Save rail entry — deliberately NOT class "tab" so the drag-reorder,
+// group and context-menu machinery (which query ".tab") never touch it.
+function makeFsTabEl() {
+  const el = document.createElement('div');
+  el.className = 'fs-tab' + (fsActive() ? ' active' : '');
+
+  const icon = document.createElement('span');
+  icon.className = 'fs-tab-icon';
+  icon.innerHTML =
+    '<svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true">' +
+    '<path d="M6 3h12a1 1 0 0 1 1 1v17l-7-4.5L5 21V4a1 1 0 0 1 1-1z" fill="none" ' +
+    'stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>';
+  el.appendChild(icon);
+
+  const nameEl = document.createElement('span');
+  nameEl.className = 'tab-name';
+  nameEl.textContent = 'Fast Save';
+  el.appendChild(nameEl);
+
+  const count = fsMessages().length;
+  if (count) {
+    const badge = document.createElement('span');
+    badge.className = 'fs-tab-count';
+    badge.textContent = count;
+    el.appendChild(badge);
+  }
+
+  el.addEventListener('click', () => switchToFastSave());
+  return el;
+}
+
 function renderTabs() {
   tabListEl.innerHTML = '';
+
+  if (settings.fastSaveEnabled) tabListEl.appendChild(makeFsTabEl());
 
   if (state.tabs.length === 0) {
     const hint = document.createElement('div');
@@ -1002,13 +1152,351 @@ function startRename(tab, tabEl, nameEl, index) {
   });
 }
 
+// ---------- Fast Save view ----------
+function showEditorView() {
+  if (fsEditingId) cancelFsEdit();
+  appEl.classList.remove('fastsave-active');
+  editorBodyEl.classList.remove('hidden');
+  fastSaveViewEl.classList.add('hidden');
+}
+
+function showFastSaveView() {
+  appEl.classList.add('fastsave-active');
+  editorBodyEl.classList.add('hidden');
+  fastSaveViewEl.classList.remove('hidden');
+  updateFsInputDir();
+  renderFsMessages();
+  fsInputEl.focus();
+}
+
+// Show whichever view matches state.activeId (used at startup).
+function applyActiveView() {
+  if (fsActive()) showFastSaveView();
+  else showEditorView();
+}
+
+function switchToFastSave() {
+  if (!settings.fastSaveEnabled) return;
+  if (fsActive()) { fsInputEl.focus(); return; }
+  _previewToken = null; _previewBase = null;
+  clearFindHL();
+  findBarEl.classList.add('hidden');
+  syncEditorToState();
+  state.activeId = FS_ID;
+  showFastSaveView();
+  renderTabs();
+  scheduleSave();
+}
+
+function fmtMsgTime(ts) {
+  const d = new Date(ts);
+  const today = new Date();
+  const sameDay = d.toDateString() === today.toDateString();
+  const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return sameDay ? time : d.toLocaleDateString() + ' ' + time;
+}
+
+// Message model: { id, ts, text, image? } — image is a saved ppimg filename.
+let fsPendingImage = null; // filename staged for the next send (Telegram-style)
+let fsFilterQuery = '';
+let fsEditingId = null;    // id of the message currently being edited, if any
+
+function fsMsgMatches(m, q) {
+  return (m.text || '').toLowerCase().includes(q);
+}
+
+function renderFsMessages() {
+  fsMessagesEl.innerHTML = '';
+  const all = fsMessages();
+  const q = fsFilterQuery.trim().toLowerCase();
+  const msgs = q ? all.filter((m) => fsMsgMatches(m, q)) : all;
+
+  if (q) {
+    fsSearchCount.textContent = msgs.length + (msgs.length === 1 ? ' match' : ' matches');
+  } else {
+    fsSearchCount.textContent = '';
+  }
+
+  if (!msgs.length) {
+    const empty = document.createElement('div');
+    empty.className = 'fs-empty';
+    empty.textContent = q ? 'No messages match your search.'
+      : 'Saved messages appear here.\nType below and press Enter.';
+    fsMessagesEl.appendChild(empty);
+    return;
+  }
+
+  msgs.forEach((m) => {
+    const row = document.createElement('div');
+    row.className = 'fs-msg' + (m.id === fsEditingId ? ' editing' : '');
+    row.dataset.msgId = m.id;
+
+    if (m.image) {
+      const img = document.createElement('img');
+      img.className = 'fs-msg-img';
+      img.src = 'ppimg://' + m.image;
+      img.draggable = false;
+      img.addEventListener('click', () => openLightbox('ppimg://' + m.image));
+      row.appendChild(img);
+    }
+
+    if (m.text) {
+      const body = document.createElement('div');
+      body.className = 'fs-msg-text';
+      body.textContent = m.text;
+      body.setAttribute('dir', detectDir(m.text));
+      row.appendChild(body);
+    }
+
+    const meta = document.createElement('div');
+    meta.className = 'fs-msg-meta';
+
+    const copyB = document.createElement('button');
+    copyB.className = 'fs-msg-btn';
+    copyB.title = 'Copy';
+    copyB.innerHTML =
+      '<svg viewBox="0 0 24 24" width="11" height="11" aria-hidden="true">' +
+      '<rect x="9" y="9" width="11" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/>' +
+      '<path d="M5 15V5a2 2 0 0 1 2-2h8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>';
+    copyB.addEventListener('click', async () => {
+      try { await navigator.clipboard.writeText(m.text || ''); } catch (e) { console.error(e); }
+      copyB.classList.add('copied');
+      setTimeout(() => copyB.classList.remove('copied'), 900);
+    });
+
+    const editB = document.createElement('button');
+    editB.className = 'fs-msg-btn';
+    editB.title = 'Edit';
+    editB.innerHTML =
+      '<svg viewBox="0 0 24 24" width="11" height="11" aria-hidden="true">' +
+      '<path d="M4 20h4l10-10-4-4L4 16v4z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>';
+    editB.addEventListener('click', () => startFsEdit(m.id));
+
+    const delB = document.createElement('button');
+    delB.className = 'fs-msg-btn fs-msg-del';
+    delB.title = 'Delete';
+    delB.innerHTML =
+      '<svg viewBox="0 0 24 24" width="11" height="11" aria-hidden="true">' +
+      '<line x1="6" y1="6" x2="18" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>' +
+      '<line x1="18" y1="6" x2="6" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
+    delB.addEventListener('click', () => {
+      state.fastSave.messages = fsMessages().filter((x) => x.id !== m.id);
+      if (fsEditingId === m.id) cancelFsEdit();
+      renderFsMessages();
+      renderTabs();
+      scheduleSave();
+    });
+
+    const time = document.createElement('span');
+    time.className = 'fs-msg-time';
+    time.textContent = fmtMsgTime(m.ts) + (m.edited ? ' · edited' : '');
+
+    // copy is only meaningful when there's text
+    if (m.text) meta.appendChild(copyB);
+    meta.appendChild(editB);
+    meta.appendChild(delB);
+    meta.appendChild(time);
+    row.appendChild(meta);
+    fsMessagesEl.appendChild(row);
+  });
+
+  if (!q) fsMessagesEl.scrollTop = fsMessagesEl.scrollHeight;
+}
+
+function fsAutoGrow() {
+  fsInputEl.style.height = 'auto';
+  fsInputEl.style.height = Math.min(120, fsInputEl.scrollHeight) + 'px';
+}
+
+function setFsPendingImage(filename) {
+  fsPendingImage = filename || null;
+  if (fsPendingImage) {
+    fsPendingImg.src = 'ppimg://' + fsPendingImage;
+    fsPending.classList.remove('hidden');
+  } else {
+    fsPendingImg.removeAttribute('src');
+    fsPending.classList.add('hidden');
+  }
+}
+
+function fsSendMessage() {
+  const text = fsInputEl.value.replace(/\s+$/, '');
+
+  // Editing an existing message rather than adding a new one.
+  if (fsEditingId) {
+    const m = fsMessages().find((x) => x.id === fsEditingId);
+    if (m) {
+      if (!text.trim() && !m.image) {
+        // cleared a text-only message → delete it
+        state.fastSave.messages = fsMessages().filter((x) => x.id !== m.id);
+      } else {
+        m.text = text;
+        m.edited = true;
+      }
+    }
+    cancelFsEdit();
+    renderFsMessages();
+    renderTabs();
+    scheduleSave();
+    return;
+  }
+
+  if (!text.trim() && !fsPendingImage) return;
+  const msg = { id: uid(), ts: Date.now(), text };
+  if (fsPendingImage) msg.image = fsPendingImage;
+  fsMessages().push(msg);
+  fsInputEl.value = '';
+  setFsPendingImage(null);
+  fsAutoGrow();
+  updateFsInputDir();
+  renderFsMessages();
+  renderTabs(); // refresh the count badge
+  scheduleSave();
+  fsInputEl.focus();
+}
+
+// ---------- Fast Save: edit a message in place ----------
+function startFsEdit(id) {
+  const m = fsMessages().find((x) => x.id === id);
+  if (!m) return;
+  fsEditingId = id;
+  setFsPendingImage(null); // editing keeps the message's own image; don't stage a new one
+  fsInputEl.value = m.text || '';
+  fsEditBar.classList.remove('hidden');
+  renderFsMessages(); // highlight the row being edited
+  fsAutoGrow();
+  updateFsInputDir();
+  fsInputEl.focus();
+  fsInputEl.setSelectionRange(fsInputEl.value.length, fsInputEl.value.length);
+}
+
+function cancelFsEdit() {
+  fsEditingId = null;
+  fsEditBar.classList.add('hidden');
+  fsInputEl.value = '';
+  fsAutoGrow();
+  updateFsInputDir();
+}
+
+fsEditCancel.addEventListener('click', () => { cancelFsEdit(); renderFsMessages(); });
+
+// Per-keystroke RTL/LTR for the chat input, matching the editor's behaviour.
+function updateFsInputDir() {
+  const dir = detectDir(fsInputEl.value);
+  fsInputEl.setAttribute('dir', dir);
+  fsInputEl.style.textAlign = dir === 'rtl' ? 'right' : 'left';
+}
+
+fsSendBtn.addEventListener('click', fsSendMessage);
+fsInputEl.addEventListener('input', () => { fsAutoGrow(); updateFsInputDir(); });
+fsInputEl.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+    e.preventDefault();
+    fsSendMessage();
+  } else if (e.key === 'Escape' && fsEditingId) {
+    e.preventDefault();
+    cancelFsEdit();
+    renderFsMessages();
+  }
+});
+
+// Attach an image to the next Fast Save message (button + Ctrl+V paste).
+fsImgBtn.addEventListener('click', async () => {
+  const res = await window.api.pickImage();
+  if (res && res.filename) { setFsPendingImage(res.filename); fsInputEl.focus(); }
+});
+fsInputEl.addEventListener('paste', (e) => {
+  const items = e.clipboardData && e.clipboardData.items;
+  if (!items) return;
+  const imgItem = [...items].find((it) => it.kind === 'file' && IMG_EXT_BY_MIME[it.type]);
+  if (!imgItem) return;
+  e.preventDefault();
+  const file = imgItem.getAsFile();
+  if (!file) return;
+  saveImageBlob(file).then((r) => { if (r && r.filename) setFsPendingImage(r.filename); });
+});
+fsPendingRemove.addEventListener('click', () => { setFsPendingImage(null); fsInputEl.focus(); });
+
+// ---------- Fast Save: message search / filter ----------
+function openFsSearch() {
+  fsSearchBar.classList.remove('hidden');
+  fsSearchInput.focus();
+  fsSearchInput.select();
+}
+function closeFsSearch() {
+  fsSearchBar.classList.add('hidden');
+  fsSearchInput.value = '';
+  fsFilterQuery = '';
+  renderFsMessages();
+  fsInputEl.focus();
+}
+fsHeaderSearchBtn.addEventListener('click', () => {
+  if (fsSearchBar.classList.contains('hidden')) openFsSearch();
+  else closeFsSearch();
+});
+fsSearchClose.addEventListener('click', closeFsSearch);
+fsSearchInput.addEventListener('input', () => {
+  fsFilterQuery = fsSearchInput.value;
+  renderFsMessages();
+});
+fsSearchInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') { e.preventDefault(); closeFsSearch(); }
+});
+
+// ---------- Fast Save: media gallery ----------
+function openGallery() {
+  galleryGrid.innerHTML = '';
+  const withImg = fsMessages().filter((m) => m.image);
+  galleryEmpty.classList.toggle('hidden', withImg.length > 0);
+  // newest first
+  withImg.slice().reverse().forEach((m) => {
+    const cell = document.createElement('button');
+    cell.className = 'gallery-cell';
+    cell.dataset.msgId = m.id;
+    const img = document.createElement('img');
+    img.className = 'gallery-img';
+    img.src = 'ppimg://' + m.image;
+    img.draggable = false;
+    cell.appendChild(img);
+    cell.addEventListener('click', () => openLightbox('ppimg://' + m.image));
+    galleryGrid.appendChild(cell);
+  });
+  galleryOverlay.classList.remove('hidden');
+}
+function closeGallery() { galleryOverlay.classList.add('hidden'); }
+fsGalleryBtn.addEventListener('click', openGallery);
+galleryClose.addEventListener('click', closeGallery);
+galleryOverlay.addEventListener('click', (e) => {
+  if (e.target === galleryOverlay) closeGallery();
+});
+
+// Jump from the gallery to the chat message an image belongs to (Telegram-style).
+function gotoFsMessage(msgId) {
+  closeGallery();
+  switchToFastSave();
+  // clear any active search so the target is visible
+  fsFilterQuery = '';
+  fsSearchInput.value = '';
+  fsSearchBar.classList.add('hidden');
+  renderFsMessages();
+  requestAnimationFrame(() => {
+    const el = fsMessagesEl.querySelector('[data-msg-id="' + msgId + '"]');
+    if (!el) return;
+    el.scrollIntoView({ block: 'center' });
+    el.classList.add('fs-msg-flash');
+    setTimeout(() => el.classList.remove('fs-msg-flash'), 1600);
+  });
+}
+
 // ---------- Actions ----------
 function switchTab(id) {
+  if (id === FS_ID) { switchToFastSave(); return; }
   _previewToken = null; _previewBase = null;
   clearFindHL();
   // flush current editor into state first
   syncEditorToState();
   state.activeId = id;
+  showEditorView();
   const t = activeTab();
   setEditorText(t ? t.content : '');
   renderTabs();
@@ -1027,6 +1515,7 @@ function addTab(focus = true) {
   const tab = { id: uid(), name: '', custom: false, content: '', dir: 'auto', color: null };
   state.tabs.push(tab);
   state.activeId = tab.id;
+  showEditorView();
   setEditorText('');
   renderTabs();
   updateCounts();
@@ -1136,6 +1625,7 @@ function duplicateTab(id) {
   const idx = state.tabs.indexOf(src);
   state.tabs.splice(idx + 1, 0, tab);
   state.activeId = tab.id;
+  showEditorView();
   setEditorText(tab.content);
   renderTabs();
   updateCounts();
@@ -1221,6 +1711,14 @@ ctxMenuEl.addEventListener('click', (e) => {
     case 'duplicate': duplicateTab(id); break;
     case 'history': openHistory(id); break;
     case 'copy': copyTabContent(id); break;
+    case 'export': {
+      const tab = state.tabs.find((t) => t.id === id);
+      if (tab) {
+        if (tab.id === state.activeId) syncEditorToState();
+        window.api.exportNote(autoName(tab, state.tabs.indexOf(tab)), tab.content, 'md');
+      }
+      break;
+    }
     case 'save-template': openSaveTemplateDialog(id); break;
     case 'pin': togglePin(id); break;
     case 'close': closeTab(id); break;
@@ -1324,6 +1822,7 @@ function createFromTemplate(tmpl) {
   const tab = { id: uid(), name: tmpl.name, custom: true, content: tmpl.content, dir: 'auto', color: null };
   state.tabs.push(tab);
   state.activeId = tab.id;
+  showEditorView();
   setEditorText(tab.content);
   renderTabs();
   updateCounts();
@@ -1504,13 +2003,18 @@ async function loadState() {
   if (hadSaved) {
     state = {
       tabs: saved.tabs,
-      activeId: saved.activeId && saved.tabs.some((t) => t.id === saved.activeId)
-        ? saved.activeId
-        : saved.tabs[0].id,
+      activeId: saved.activeId === FS_ID && settings.fastSaveEnabled
+        ? FS_ID
+        : (saved.activeId && saved.tabs.some((t) => t.id === saved.activeId)
+          ? saved.activeId
+          : saved.tabs[0].id),
       seq: saved.seq || 1,
       templates: saved.templates || [],
       groups: saved.groups || [],
       phValues: saved.phValues || {},
+      fastSave: (saved.fastSave && Array.isArray(saved.fastSave.messages))
+        ? saved.fastSave
+        : { messages: [] },
       lastVersion: saved.lastVersion || null
     };
   } else {
@@ -1519,6 +2023,7 @@ async function loadState() {
     state.templates = [];
     state.groups = [];
     state.phValues = {};
+    state.fastSave = { messages: [] };
     state.lastVersion = null;
   }
   const t = activeTab();
@@ -1578,17 +2083,635 @@ editorEl.addEventListener('keydown', (e) => {
   const offset = pre.toString().length;
 
   const text = line.textContent;
+  // Continue todo lists: Enter after the "- [ ] " prefix of a non-empty todo
+  // line starts the next line with a fresh unchecked prefix.
+  const todoM = text.match(TODO_RE);
+  let contPrefix = '';
+  if (todoM && offset >= todoM[0].length && text.length > todoM[0].length) {
+    contPrefix = todoM[1] + '- [ ] ';
+  }
   const firstLine = makeLine(text.slice(0, offset));
-  const secondLine = makeLine(text.slice(offset));
+  const secondLine = makeLine(contPrefix + text.slice(offset));
   line.replaceWith(firstLine, secondLine);
 
   updateLineDirs();
-  placeCaretInLine(secondLine, 0);
+  placeCaretInLine(secondLine, contPrefix.length);
   // Keep the new line in view as the caret moves past the viewport bottom.
   secondLine.scrollIntoView({ block: 'nearest' });
 
   handleEditorChanged();
 });
+
+// ---------- Todo checklists ----------
+// Rewrite a line's text through a TODO_RE-aware transform and re-decorate.
+function setLineText(line, next, caretOffset) {
+  line.textContent = next;
+  highlightLine(line);
+  if (caretOffset != null) placeCaretInLine(line, Math.max(0, Math.min(next.length, caretOffset)));
+  handleEditorChanged();
+}
+
+// Add/remove the "- [ ] " prefix on the caret line (statusbar button).
+function toggleTodoOnCurrentLine() {
+  if (mdOn || fsActive()) return;
+  editorEl.focus();
+  let line = currentLine();
+  if (!line) {
+    const all = editorLines();
+    line = all[all.length - 1];
+    if (!line) { setEditorText(''); line = editorLines()[0]; }
+  }
+  const text = line.textContent;
+  const offset = getCaretOffsetIn(line);
+  const m = text.match(TODO_RE);
+  if (m) {
+    const removed = m[0].length - m[1].length;
+    setLineText(line, text.replace(TODO_RE, '$1'),
+      offset == null ? null : offset - removed);
+  } else {
+    setLineText(line, text.replace(/^(\s*)/, '$1- [ ] '),
+      offset == null ? text.length + 6 : offset + 6);
+  }
+}
+
+function flipTodoPrefix(lineText) {
+  return lineText.replace(TODO_RE, (s, ws, c) => ws + '- [' + (c === 'x' ? ' ' : 'x') + '] ');
+}
+
+// The .ln lines that the current selection touches (empty if no selection).
+function selectedLines() {
+  const sel = window.getSelection();
+  if (!sel.rangeCount) return [];
+  const range = sel.getRangeAt(0);
+  if (range.collapsed) return [];
+  return editorLines().filter((ln) => range.intersectsNode(ln));
+}
+
+// Todo button: with a multi-line selection, turn every selected line into a
+// todo (or clear them all if they're already todos); otherwise toggle the
+// caret line.
+function applyTodoButton() {
+  if (mdOn || fsActive()) return;
+  const lines = selectedLines();
+  if (lines.length > 1) {
+    const allHave = lines.every((l) => TODO_RE.test(l.textContent));
+    lines.forEach((l) => {
+      const text = l.textContent;
+      if (allHave) l.textContent = text.replace(TODO_RE, '$1');
+      else if (!TODO_RE.test(text)) l.textContent = text.replace(/^(\s*)/, '$1- [ ] ');
+      highlightLine(l);
+    });
+    handleEditorChanged();
+    return;
+  }
+  toggleTodoOnCurrentLine();
+}
+
+// Preserve the editor selection when pressing the button (don't let the
+// button steal focus before the click handler reads the selection).
+todoBtn.addEventListener('mousedown', (e) => e.preventDefault());
+todoBtn.addEventListener('click', applyTodoButton);
+
+// Click a todo mark to check/uncheck it; click a thumbnail to zoom.
+// mousedown + preventDefault keeps the caret where it was.
+editorEl.addEventListener('mousedown', (e) => {
+  const t = e.target;
+  if (!(t instanceof Element)) return;
+  const mark = t.closest('.todo-mark');
+  if (mark) {
+    e.preventDefault();
+    const line = mark.closest('.ln') || mark.parentElement;
+    if (!line) return;
+    line.textContent = flipTodoPrefix(line.textContent);
+    highlightLine(line);
+    handleEditorChanged();
+    return;
+  }
+  if (t.closest('.pp-img-resize')) return; // handled by the resize listener
+  const img = t.closest('.pp-img');
+  if (img) {
+    e.preventDefault();
+    openLightbox(img.getAttribute('src'));
+  }
+});
+
+// ---------- Image thumbnails (editor) ----------
+// A thumbnail is an <img> wrapped in a contenteditable=false span so it adds
+// no text and can carry a corner resize handle. The wrapper records which
+// image file + which editor line it belongs to for resize/download.
+function makeImgThumb(file, width) {
+  const wrap = document.createElement('span');
+  wrap.className = 'pp-img-wrap';
+  wrap.setAttribute('contenteditable', 'false');
+  wrap.dataset.file = file;
+
+  const img = document.createElement('img');
+  img.className = 'pp-img';
+  img.src = 'ppimg://' + file;
+  img.draggable = false;
+  if (width) img.style.width = width + 'px';
+  wrap.appendChild(img);
+
+  if (settings.imageResizable) {
+    const handle = document.createElement('span');
+    handle.className = 'pp-img-resize';
+    handle.title = 'Drag to resize';
+    wrap.appendChild(handle);
+  }
+  return wrap;
+}
+
+// Persist a resized width back into the line's image token so it survives
+// save/reload and the DOM round-trip.
+function writeImgWidth(line, file, width) {
+  if (!line) return;
+  const text = line.textContent;
+  let idx = 0, replaced = false;
+  const next = text.replace(IMG_TOKEN_RE, (m, f) => {
+    if (!replaced && f === file) { replaced = true; return imgToken(f, width); }
+    return m;
+  });
+  if (next !== text) {
+    line.textContent = next;
+    highlightLine(line);
+    handleEditorChanged();
+  }
+}
+
+// Corner-drag resize (editor thumbnails only).
+let imgResizing = null;
+editorEl.addEventListener('mousedown', (e) => {
+  const handle = e.target instanceof Element && e.target.closest('.pp-img-resize');
+  if (!handle || !settings.imageResizable) return;
+  e.preventDefault();
+  const wrap = handle.closest('.pp-img-wrap');
+  const img = wrap && wrap.querySelector('.pp-img');
+  if (!img) return;
+  imgResizing = {
+    img,
+    wrap,
+    line: wrap.closest('.ln'),
+    file: wrap.dataset.file,
+    startX: e.clientX,
+    startW: img.getBoundingClientRect().width
+  };
+  document.body.style.cursor = 'nwse-resize';
+});
+window.addEventListener('mousemove', (e) => {
+  if (!imgResizing) return;
+  const w = Math.max(60, Math.min(900, Math.round(imgResizing.startW + (e.clientX - imgResizing.startX))));
+  imgResizing.img.style.width = w + 'px';
+});
+window.addEventListener('mouseup', () => {
+  if (!imgResizing) return;
+  const r = imgResizing;
+  imgResizing = null;
+  document.body.style.cursor = '';
+  const w = Math.round(r.img.getBoundingClientRect().width);
+  writeImgWidth(r.line, r.file, w);
+});
+
+// Right-click a thumbnail → menu (zoom / save / — for editor images — remove).
+let imgCtxTarget = null; // { file, source, wrap, line }
+
+function showImgContextMenu(e, target) {
+  imgCtxTarget = target;
+  // Show items scoped to a source (data-img-only) only for that source.
+  imgContextMenu.querySelectorAll('[data-img-only]').forEach((el) => {
+    el.style.display = el.dataset.imgOnly === target.source ? '' : 'none';
+  });
+  const dl = imgContextMenu.querySelector('[data-img-action="download"]');
+  if (dl) dl.style.display = settings.imageDownloadEnabled ? '' : 'none';
+
+  imgContextMenu.style.left = e.clientX + 'px';
+  imgContextMenu.style.top = e.clientY + 'px';
+  imgContextMenu.classList.remove('hidden');
+  requestAnimationFrame(() => {
+    const rect = imgContextMenu.getBoundingClientRect();
+    const vw = document.documentElement.clientWidth;
+    const vh = document.documentElement.clientHeight;
+    if (rect.right > vw - 4) imgContextMenu.style.left = Math.max(4, vw - rect.width - 4) + 'px';
+    if (rect.bottom > vh - 4) imgContextMenu.style.top = Math.max(4, vh - rect.height - 4) + 'px';
+  });
+}
+function hideImgContextMenu() {
+  imgContextMenu.classList.add('hidden');
+  imgCtxTarget = null;
+}
+
+function fileFromImgSrc(src) {
+  const m = /^ppimg:\/\/([a-zA-Z0-9._-]+)/.exec(src || '');
+  return m ? m[1] : null;
+}
+
+// Remove one image token (the one behind `wrap`) from its editor line.
+function removeImageFromLine(line, wrap) {
+  if (!line) return;
+  const wraps = [...line.querySelectorAll('.pp-img-wrap')];
+  const nth = Math.max(0, wraps.indexOf(wrap));
+  let seen = -1;
+  const next = line.textContent.replace(IMG_TOKEN_RE, (m) => {
+    seen++;
+    return seen === nth ? '' : m;
+  });
+  line.textContent = next;
+  highlightLine(line);
+  handleEditorChanged();
+}
+
+// Any ppimg image anywhere (editor, preview, chat, gallery) → context menu.
+document.addEventListener('contextmenu', (e) => {
+  const t = e.target;
+  if (!(t instanceof Element)) return;
+  const img = t.closest('.pp-img, .md-img, .fs-msg-img, .gallery-img');
+  if (!img) return;
+  const file = fileFromImgSrc(img.getAttribute('src'));
+  if (!file) return;
+  const isEditor = !!img.closest('#editor');
+  const galleryCell = img.closest('.gallery-cell');
+  // Editor & gallery images always get a menu (Remove / Go to message);
+  // elsewhere only when the right-click-to-save option is enabled.
+  if (!isEditor && !galleryCell && !settings.imageDownloadEnabled) return;
+  e.preventDefault();
+  const wrap = isEditor ? img.closest('.pp-img-wrap') : null;
+  showImgContextMenu(e, {
+    file,
+    source: isEditor ? 'editor' : (galleryCell ? 'gallery' : 'other'),
+    wrap,
+    line: wrap ? wrap.closest('.ln') : null,
+    msgId: galleryCell ? galleryCell.dataset.msgId : null
+  });
+});
+
+imgContextMenu.addEventListener('click', (e) => {
+  const item = e.target.closest('[data-img-action]');
+  if (!item || !imgCtxTarget) return;
+  const { file, wrap, line, msgId } = imgCtxTarget;
+  const action = item.dataset.imgAction;
+  hideImgContextMenu();
+  if (action === 'download') window.api.downloadImage(file);
+  else if (action === 'zoom') openLightbox('ppimg://' + file);
+  else if (action === 'delete' && line) removeImageFromLine(line, wrap);
+  else if (action === 'goto' && msgId) gotoFsMessage(msgId);
+});
+
+document.addEventListener('click', (e) => {
+  if (!imgContextMenu.classList.contains('hidden') && !imgContextMenu.contains(e.target)) {
+    hideImgContextMenu();
+  }
+});
+
+// ---------- Images ----------
+const IMG_EXT_BY_MIME = {
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/gif': 'gif',
+  'image/webp': 'webp'
+};
+
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onerror = () => reject(fr.error);
+    fr.onload = () => {
+      const s = String(fr.result || '');
+      resolve(s.slice(s.indexOf(',') + 1)); // strip "data:...;base64,"
+    };
+    fr.readAsDataURL(blob);
+  });
+}
+
+// Persist an image blob to userData/images via main; returns {filename} or null.
+async function saveImageBlob(blob) {
+  const ext = IMG_EXT_BY_MIME[blob.type];
+  if (!ext) return null;
+  if (blob.size > 10 * 1024 * 1024) {
+    console.warn('image too large (max 10 MB)');
+    return null;
+  }
+  try {
+    const b64 = await blobToBase64(blob);
+    return await window.api.saveImage(b64, ext);
+  } catch (e) {
+    console.error('saving image failed', e);
+    return null;
+  }
+}
+
+// Insert the image token as its own line right after the caret line.
+function insertImageToken(filename) {
+  const t = activeTab();
+  if (!t) return;
+  syncEditorToState();
+  const prev = t.content;
+  const token = '![img](ppimg://' + filename + ')';
+  const lines = t.content.split('\n');
+  let idx = lines.length - 1;
+  const line = currentLine();
+  if (line) {
+    const domIdx = editorLines().indexOf(line);
+    if (domIdx !== -1) idx = domIdx;
+  }
+  lines.splice(idx + 1, 0, token);
+  t.content = lines.join('\n');
+  noteEditForUndo(t, prev);
+  setEditorText(t.content);
+  updateCounts();
+  updatePlaceholderPanel();
+  scheduleSave();
+  if (mdOn) renderMdPreview();
+}
+
+imgBtn.addEventListener('click', async () => {
+  if (mdOn || fsActive() || !activeTab()) return;
+  const res = await window.api.pickImage();
+  if (res && res.filename) insertImageToken(res.filename);
+});
+
+// Paste an image straight from the clipboard. Plain-text paste stays native.
+editorEl.addEventListener('paste', (e) => {
+  const items = e.clipboardData && e.clipboardData.items;
+  if (!items) return;
+  const imgItem = [...items].find((it) => it.kind === 'file' && IMG_EXT_BY_MIME[it.type]);
+  if (!imgItem) return;
+  e.preventDefault();
+  const file = imgItem.getAsFile();
+  if (!file) return;
+  saveImageBlob(file).then((res) => {
+    if (res && res.filename) insertImageToken(res.filename);
+  });
+});
+
+// ---------- Lightbox ----------
+function openLightbox(src) {
+  if (!src) return;
+  lightboxImgEl.src = src;
+  lightboxEl.classList.remove('hidden');
+}
+
+function closeLightbox() {
+  lightboxEl.classList.add('hidden');
+  lightboxImgEl.removeAttribute('src');
+}
+
+lightboxEl.addEventListener('click', closeLightbox);
+
+// ---------- Markdown preview interactions ----------
+// Toggle the underlying "- [ ]"/"- [x]" text for a preview todo item.
+function toggleTodoLineInContent(lineIdx) {
+  const t = activeTab();
+  if (!t) return;
+  const lines = t.content.split('\n');
+  if (lineIdx < 0 || lineIdx >= lines.length || !TODO_RE.test(lines[lineIdx])) return;
+  const prev = t.content;
+  lines[lineIdx] = flipTodoPrefix(lines[lineIdx]);
+  t.content = lines.join('\n');
+  noteEditForUndo(t, prev);
+  setEditorText(t.content);
+  updateCounts();
+  scheduleSave();
+  renderMdPreview();
+}
+
+mdPreviewEl.addEventListener('click', (e) => {
+  const t = e.target;
+  if (!(t instanceof Element)) return;
+  const img = t.closest('.md-img');
+  if (img) { openLightbox(img.getAttribute('src')); return; }
+  const link = t.closest('.md-link');
+  if (link && link.dataset.href) {
+    const url = link.dataset.href;
+    if (/^https?:\/\//i.test(url)) window.api.openExternal(url);
+    return;
+  }
+  const li = t.closest('.md-todo');
+  if (li && li.dataset.line != null) toggleTodoLineInContent(Number(li.dataset.line));
+});
+
+// ---------- Editor text insertion / formatting ----------
+// Selection confined to one .ln line, as character offsets within that line.
+function currentLineSelection() {
+  const sel = window.getSelection();
+  if (!sel.rangeCount) {
+    const line = currentLine();
+    if (!line) return null;
+    const off = getCaretOffsetIn(line);
+    return { line, start: off || 0, end: off || 0 };
+  }
+  const range = sel.getRangeAt(0);
+  let node = range.commonAncestorContainer;
+  while (node && node !== editorEl &&
+    !(node.nodeType === 1 && node.classList && node.classList.contains('ln'))) {
+    node = node.parentNode;
+  }
+  if (!node || node === editorEl) {
+    const line = currentLine();
+    if (!line) return null;
+    const off = getCaretOffsetIn(line);
+    return { line, start: off || 0, end: off || 0 };
+  }
+  const line = node;
+  const pre1 = document.createRange();
+  pre1.selectNodeContents(line);
+  try { pre1.setEnd(range.startContainer, range.startOffset); } catch {}
+  const a = pre1.toString().length;
+  const pre2 = document.createRange();
+  pre2.selectNodeContents(line);
+  try { pre2.setEnd(range.endContainer, range.endOffset); } catch {}
+  const b = pre2.toString().length;
+  return { line, start: Math.min(a, b), end: Math.max(a, b) };
+}
+
+function insertAtCaret(str) {
+  if (mdOn || fsActive()) return;
+  editorEl.focus();
+  let s = currentLineSelection();
+  if (!s) {
+    const all = editorLines();
+    const line = all[all.length - 1];
+    if (!line) { setEditorText(str); return; }
+    s = { line, start: line.textContent.length, end: line.textContent.length };
+  }
+  const text = s.line.textContent;
+  setLineText(s.line, text.slice(0, s.start) + str + text.slice(s.end), s.start + str.length);
+}
+
+// Wrap the selection (or insert a stub at the caret) with markdown markers.
+function surroundSelection(before, after, stub) {
+  if (mdOn || fsActive()) return;
+  editorEl.focus();
+  const s = currentLineSelection();
+  if (!s) return;
+  const text = s.line.textContent;
+  if (s.start === s.end) {
+    const mid = s.start;
+    setLineText(s.line, text.slice(0, mid) + before + (stub || '') + after + text.slice(mid),
+      mid + before.length + (stub ? stub.length : 0));
+  } else {
+    const sel = text.slice(s.start, s.end);
+    setLineText(s.line, text.slice(0, s.start) + before + sel + after + text.slice(s.end),
+      s.end + before.length + after.length);
+  }
+}
+
+// ---------- Emoji picker ----------
+const EMOJIS = ['😀','😄','😁','😊','🙂','😉','😍','😘','😎','🤩','🤔','😐','😴','😢','😭','😡','🥳','🤯','😱','🤗',
+  '👍','👎','👏','🙏','💪','🙌','👌','✌️','🤝','👀','🔥','✨','⭐','🌟','💯','✅','❌','⚠️','❓','❗',
+  '❤️','🧡','💛','💚','💙','💜','🖤','💔','💖','💡','📌','📎','📝','🗒️','📅','⏰','🎯','🚀','🎉','🎁',
+  '☕','🍕','🌙','☀️','🌈','⚡','💧','🎵','💰','🔒'];
+
+let emojiBuilt = false;
+let emojiTarget = 'editor'; // 'editor' | 'fs'
+let emojiAnchor = null;
+
+function insertIntoTextarea(ta, str) {
+  const start = ta.selectionStart != null ? ta.selectionStart : ta.value.length;
+  const end = ta.selectionEnd != null ? ta.selectionEnd : ta.value.length;
+  ta.value = ta.value.slice(0, start) + str + ta.value.slice(end);
+  const pos = start + str.length;
+  ta.setSelectionRange(pos, pos);
+  ta.dispatchEvent(new Event('input', { bubbles: true }));
+  ta.focus();
+}
+
+function insertEmoji(em) {
+  if (emojiTarget === 'fs') insertIntoTextarea(fsInputEl, em);
+  else insertAtCaret(em);
+}
+
+function buildEmojiPanel() {
+  if (emojiBuilt) return;
+  emojiBuilt = true;
+  EMOJIS.forEach((em) => {
+    const b = document.createElement('button');
+    b.className = 'emoji-item';
+    b.textContent = em;
+    b.addEventListener('click', () => {
+      insertEmoji(em);
+      hideEmojiPanel();
+    });
+    emojiPanel.appendChild(b);
+  });
+}
+
+function toggleEmojiPanel(anchorBtn, target) {
+  emojiTarget = target || 'editor';
+  emojiAnchor = anchorBtn || emojiBtn;
+  if (!emojiPanel.classList.contains('hidden')) { hideEmojiPanel(); return; }
+  buildEmojiPanel();
+  const r = emojiAnchor.getBoundingClientRect();
+  emojiPanel.classList.remove('hidden');
+  const pr = emojiPanel.getBoundingClientRect();
+  let left = r.left;
+  if (left + pr.width > document.documentElement.clientWidth - 6) {
+    left = document.documentElement.clientWidth - pr.width - 6;
+  }
+  emojiPanel.style.left = Math.max(6, left) + 'px';
+  emojiPanel.style.top = (r.top - pr.height - 6) + 'px';
+}
+function hideEmojiPanel() { emojiPanel.classList.add('hidden'); }
+
+emojiBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleEmojiPanel(emojiBtn, 'editor'); });
+fsEmojiBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleEmojiPanel(fsEmojiBtn, 'fs'); });
+document.addEventListener('click', (e) => {
+  if (!emojiPanel.classList.contains('hidden') &&
+      !emojiPanel.contains(e.target) && !(emojiAnchor && emojiAnchor.contains(e.target))) {
+    hideEmojiPanel();
+  }
+});
+
+// ---------- Link insertion ----------
+function openLinkDialog() {
+  if (mdOn || fsActive()) return;
+  const s = currentLineSelection();
+  const selected = s ? s.line.textContent.slice(s.start, s.end) : '';
+  linkTextInput.value = selected;
+  linkUrlInput.value = '';
+  linkDialog.classList.remove('hidden');
+  (selected ? linkUrlInput : linkTextInput).focus();
+}
+function closeLinkDialog() { linkDialog.classList.add('hidden'); }
+function confirmLink() {
+  const txt = linkTextInput.value.trim();
+  let url = linkUrlInput.value.trim();
+  if (!url) { closeLinkDialog(); return; }
+  if (!/^[a-z]+:\/\//i.test(url) && !url.startsWith('#') && !url.startsWith('/')) url = 'https://' + url;
+  const label = txt || url;
+  closeLinkDialog();
+  editorEl.focus();
+  const s = currentLineSelection();
+  if (!s) { insertAtCaret('[' + label + '](' + url + ')'); return; }
+  const text = s.line.textContent;
+  const md = '[' + label + '](' + url + ')';
+  setLineText(s.line, text.slice(0, s.start) + md + text.slice(s.end), s.start + md.length);
+}
+linkBtn.addEventListener('click', openLinkDialog);
+linkCancel.addEventListener('click', closeLinkDialog);
+linkSave.addEventListener('click', confirmLink);
+linkUrlInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); confirmLink(); }
+  if (e.key === 'Escape') { closeLinkDialog(); }
+});
+linkTextInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); linkUrlInput.focus(); }
+  if (e.key === 'Escape') { closeLinkDialog(); }
+});
+
+// ---------- Justify toggle ----------
+// Editor lines carry an inline text-align (set per direction), so justify has
+// to rewrite each line's alignment rather than rely on a CSS class.
+function applyJustify() {
+  const on = !!settings.editorJustify;
+  justifyBtn.classList.toggle('active', on);
+  mdPreviewEl.classList.toggle('justify', on);
+  editorLines().forEach((d) => {
+    const dir = d.getAttribute('dir') || 'ltr';
+    d.style.textAlign = on ? 'justify' : (dir === 'rtl' ? 'right' : 'left');
+    d.style.textAlignLast = '';
+  });
+}
+justifyBtn.addEventListener('click', () => {
+  settings.editorJustify = !settings.editorJustify;
+  applyJustify();
+  saveSettingsNow();
+});
+
+// ---------- Clean up spacing ----------
+// Tidies the note's whitespace: collapses runs of spaces/tabs to one, trims
+// trailing spaces per line, and squeezes 3+ blank lines down to one. Image
+// and todo tokens contain no runs of spaces, so they're untouched.
+function cleanUpText(text) {
+  const lines = (text || '').split('\n').map((line) =>
+    line.replace(/[ \t]{2,}/g, ' ').replace(/[ \t]+$/, '')
+  );
+  return lines.join('\n').replace(/\n{3,}/g, '\n\n');
+}
+
+function cleanUpNote() {
+  if (mdOn || fsActive()) return;
+  const t = activeTab();
+  if (!t) return;
+  syncEditorToState();
+  const prev = t.content;
+  const next = cleanUpText(prev);
+  if (next === prev) {
+    // brief "nothing to do" acknowledgement
+    cleanBtn.classList.add('active');
+    setTimeout(() => cleanBtn.classList.remove('active'), 400);
+    return;
+  }
+  noteEditForUndo(t, prev);
+  t.content = next;
+  setEditorText(next);
+  updateCounts();
+  updatePlaceholderPanel();
+  if (!t.custom) renderTabs();
+  scheduleSave();
+  editorEl.focus();
+  placeCaretEnd();
+}
+
+cleanBtn.addEventListener('click', cleanUpNote);
 
 addBtn.addEventListener('click', () => addTab());
 
@@ -1620,6 +2743,8 @@ closeBtn.addEventListener('click', () => window.api.close());
 // keyboard layout, including Persian.
 document.addEventListener('keydown', (e) => {
   if (!e.ctrlKey) return;
+  // editor-only shortcuts are meaningless while the Fast Save chat is shown
+  if (fsActive() && (e.code === 'KeyF' || e.code === 'KeyH' || e.code === 'KeyM')) return;
   if (!e.shiftKey && e.code === 'KeyT') {
     e.preventDefault();
     addTab();
@@ -1662,6 +2787,14 @@ document.addEventListener('keydown', (e) => {
   } else if (!e.shiftKey && e.code === 'KeyM') {
     e.preventDefault();
     setMdPreview(!mdOn);
+  } else if (!e.shiftKey && e.code === 'KeyB') {
+    if (fsActive() || mdOn) return;
+    e.preventDefault();
+    surroundSelection('**', '**', 'bold');
+  } else if (!e.shiftKey && e.code === 'KeyK') {
+    if (fsActive() || mdOn) return;
+    e.preventDefault();
+    openLinkDialog();
   }
 });
 
@@ -1699,11 +2832,12 @@ window.addEventListener('keyup', (e) => {
 });
 
 function cycleTab(dir) {
-  const ordered = orderedTabs();
-  if (ordered.length < 2) return;
-  const idx = ordered.findIndex((t) => t.id === state.activeId);
-  const next = (idx + dir + ordered.length) % ordered.length;
-  switchTab(ordered[next].id);
+  const ids = orderedTabs().map((t) => t.id);
+  if (settings.fastSaveEnabled) ids.unshift(FS_ID);
+  if (ids.length < 2) return;
+  const idx = ids.indexOf(state.activeId);
+  const next = (idx + dir + ids.length) % ids.length;
+  switchTab(ids[next]);
 }
 
 // ---------- Settings: apply ----------
@@ -1770,7 +2904,24 @@ function applySettings() {
   placeholderBarEl.classList.toggle('wrap-stack', !barRight && settings.placeholderBarWrap === 'stack');
   document.documentElement.style.setProperty(
     '--placeholder-width', (settings.placeholderBarWidth || 220) + 'px');
+  applyPlaceholderCollapsed();
+  applyJustify();
 }
+
+// ---------- Placeholder panel collapse ----------
+function applyPlaceholderCollapsed() {
+  const c = !!settings.placeholderBarCollapsed;
+  placeholderBarEl.classList.toggle('collapsed', c);
+  editorBodyEl.classList.toggle('ph-collapsed', c);
+  placeholderCollapseEl.classList.toggle('collapsed', c);
+  placeholderCollapseEl.title = c ? 'Expand' : 'Collapse';
+}
+
+placeholderCollapseEl.addEventListener('click', () => {
+  settings.placeholderBarCollapsed = !settings.placeholderBarCollapsed;
+  applyPlaceholderCollapsed();
+  saveSettingsNow();
+});
 
 async function saveSettingsNow() {
   try { await window.api.saveSettings(settings); } catch (e) { console.error(e); }
@@ -1850,6 +3001,10 @@ function syncSettingsUI() {
   opacityRangeEl.value = settings.windowOpacity || 100;
   opacityValueEl.textContent = (settings.windowOpacity || 100) + '%';
   toggleTrayEl.checked = !!settings.closeToTray;
+  toggleFastSaveEl.checked = !!settings.fastSaveEnabled;
+  toggleQuickCaptureEl.checked = !!settings.quickCaptureEnabled;
+  toggleImageResizeEl.checked = !!settings.imageResizable;
+  toggleImageDownloadEl.checked = !!settings.imageDownloadEnabled;
   togglePlaceholdersEl.checked = settings.placeholdersEnabled;
   resizeRow.classList.toggle('disabled', settings.tabPosition === 'top');
   placeholderPositionSeg.querySelectorAll('.seg-btn').forEach((b) => {
@@ -1933,6 +3088,72 @@ toggleTrayEl.addEventListener('change', () => {
   saveSettingsNow();
 });
 
+toggleFastSaveEl.addEventListener('change', () => {
+  settings.fastSaveEnabled = toggleFastSaveEl.checked;
+  if (!settings.fastSaveEnabled && fsActive()) {
+    // leave the chat view; messages are kept for when it's re-enabled
+    const ordered = orderedTabs();
+    if (ordered.length) switchTab(ordered[0].id);
+    else addTab(false);
+  }
+  renderTabs();
+  saveSettingsNow();
+});
+
+toggleQuickCaptureEl.addEventListener('change', async () => {
+  const want = toggleQuickCaptureEl.checked;
+  let real = false;
+  try { real = await window.api.setQuickCapture(want); } catch {}
+  settings.quickCaptureEnabled = want ? !!real : false;
+  // snap back if the shortcut is taken by another app
+  toggleQuickCaptureEl.checked = settings.quickCaptureEnabled;
+  saveSettingsNow();
+});
+
+toggleImageResizeEl.addEventListener('change', () => {
+  settings.imageResizable = toggleImageResizeEl.checked;
+  if (!mdOn && !fsActive()) setEditorText(getEditorText()); // add/remove handles
+  saveSettingsNow();
+});
+
+toggleImageDownloadEl.addEventListener('change', () => {
+  settings.imageDownloadEnabled = toggleImageDownloadEl.checked;
+  saveSettingsNow();
+});
+
+// ---------- Backup: export / import ----------
+exportDataBtn.addEventListener('click', async () => {
+  await doSave(); // flush pending edits to disk first
+  const res = await window.api.exportData();
+  if (res && res.ok) {
+    exportDataLabel.textContent = 'Exported ✓';
+  } else if (res && !res.canceled) {
+    exportDataLabel.textContent = 'Export failed';
+  }
+  setTimeout(() => { exportDataLabel.textContent = 'Export all data…'; }, 2500);
+});
+
+importDataBtn.addEventListener('click', () => {
+  importConfirmDialog.classList.remove('hidden');
+});
+
+function closeImportConfirm() {
+  importConfirmDialog.classList.add('hidden');
+}
+
+importCancelBtn.addEventListener('click', closeImportConfirm);
+
+importConfirmBtn.addEventListener('click', async () => {
+  closeImportConfirm();
+  const res = await window.api.importData();
+  if (res && res.ok) {
+    window.api.relaunchApp(); // reload everything through the normal startup path
+  } else if (res && res.invalid) {
+    importDataLabel.textContent = 'Invalid backup file';
+    setTimeout(() => { importDataLabel.textContent = 'Import backup…'; }, 2500);
+  }
+});
+
 togglePlaceholdersEl.addEventListener('change', () => {
   settings.placeholdersEnabled = togglePlaceholdersEl.checked;
   if (settings.placeholdersEnabled) updateLineDirs();
@@ -1962,11 +3183,15 @@ placeholderWrapSeg.addEventListener('click', (e) => {
 resetBtn.addEventListener('click', async () => {
   settings = { ...DEFAULT_SETTINGS };
   await window.api.setStartup(false);
+  try {
+    settings.quickCaptureEnabled = !!(await window.api.setQuickCapture(true));
+  } catch { settings.quickCaptureEnabled = false; }
   applySettings();
   syncSettingsUI();
   renderTabs();
   updateLineDirs();
   updatePlaceholderPanel();
+  applyActiveView();
   saveSettingsNow();
 });
 
@@ -2007,7 +3232,7 @@ window.addEventListener('mouseup', () => {
 // ---------- Placeholder panel resizer (right position only) ----------
 let placeholderResizing = false;
 placeholderResizerEl.addEventListener('mousedown', (e) => {
-  if (settings.placeholderBarPosition !== 'right') return;
+  if (settings.placeholderBarPosition !== 'right' || settings.placeholderBarCollapsed) return;
   placeholderResizing = true;
   placeholderResizerEl.classList.add('active');
   document.body.style.cursor = 'col-resize';
@@ -2177,6 +3402,82 @@ function setMdPreview(on) {
 
 mdBtn.addEventListener('click', () => setMdPreview(!mdOn));
 
+// Title-bar search: opens the right search for the active view.
+searchBtn.addEventListener('click', () => {
+  if (fsActive()) openFsSearch();
+  else openFind(false);
+});
+
+// ---------- Quick capture (Ctrl+Shift+Space floating box) ----------
+let qcPendingImage = null;
+
+function setQcPendingImage(filename) {
+  qcPendingImage = filename || null;
+  if (qcPendingImage) {
+    qcPendingImg.src = 'ppimg://' + qcPendingImage;
+    qcPending.classList.remove('hidden');
+  } else {
+    qcPendingImg.removeAttribute('src');
+    qcPending.classList.add('hidden');
+  }
+}
+
+function openQuickCapture() {
+  qcInput.value = '';
+  setQcPendingImage(null);
+  quickCaptureOverlay.classList.remove('hidden');
+  qcInput.focus();
+}
+
+function closeQuickCapture() {
+  quickCaptureOverlay.classList.add('hidden');
+  qcInput.value = '';
+  setQcPendingImage(null);
+}
+
+// Save the quick-capture content as a Fast Save message.
+function commitQuickCapture() {
+  const text = qcInput.value.replace(/\s+$/, '');
+  if (!text.trim() && !qcPendingImage) { closeQuickCapture(); return; }
+  const msg = { id: uid(), ts: Date.now(), text };
+  if (qcPendingImage) msg.image = qcPendingImage;
+  fsMessages().push(msg);
+  closeQuickCapture();
+  renderTabs();
+  if (fsActive()) renderFsMessages();
+  scheduleSave();
+}
+
+qcClose.addEventListener('click', closeQuickCapture);
+qcInput.addEventListener('input', () => {
+  const dir = detectDir(qcInput.value);
+  qcInput.setAttribute('dir', dir);
+  qcInput.style.textAlign = dir === 'rtl' ? 'right' : 'left';
+});
+qcInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+    e.preventDefault();
+    commitQuickCapture();
+  } else if (e.key === 'Escape') {
+    e.preventDefault();
+    closeQuickCapture();
+  }
+});
+qcInput.addEventListener('paste', (e) => {
+  const items = e.clipboardData && e.clipboardData.items;
+  if (!items) return;
+  const imgItem = [...items].find((it) => it.kind === 'file' && IMG_EXT_BY_MIME[it.type]);
+  if (!imgItem) return;
+  e.preventDefault();
+  const file = imgItem.getAsFile();
+  if (!file) return;
+  saveImageBlob(file).then((r) => { if (r && r.filename) setQcPendingImage(r.filename); });
+});
+qcPendingRemove.addEventListener('click', () => { setQcPendingImage(null); qcInput.focus(); });
+quickCaptureOverlay.addEventListener('click', (e) => {
+  if (e.target === quickCaptureOverlay) closeQuickCapture();
+});
+
 // ---- Search across all tabs ----
 let findAllTabs = false;
 
@@ -2197,6 +3498,43 @@ function renderFindResults(q) {
   findResultsEl.innerHTML = '';
   const qLower = q.toLowerCase();
   let any = false;
+
+  // Fast Save messages participate in all-tabs search too
+  if (settings.fastSaveEnabled && fsMessages().length) {
+    const joined = fsMessages().map((m) => m.text).join('\n');
+    const lower = joined.toLowerCase();
+    let p = 0, count = 0, first = -1;
+    while ((p = lower.indexOf(qLower, p)) !== -1) {
+      if (first === -1) first = p;
+      count++;
+      p++;
+    }
+    if (count) {
+      any = true;
+      const start = Math.max(0, first - 24);
+      let snip = joined.slice(start, first + q.length + 40).replace(/\s+/g, ' ').trim();
+      if (start > 0) snip = '…' + snip;
+      if (first + q.length + 40 < joined.length) snip += '…';
+
+      const row = document.createElement('div');
+      row.className = 'find-result-row';
+      const name = document.createElement('span');
+      name.className = 'find-result-name';
+      name.textContent = 'Fast Save';
+      const badge = document.createElement('span');
+      badge.className = 'find-result-count';
+      badge.textContent = count;
+      const prev = document.createElement('span');
+      prev.className = 'find-result-snippet';
+      prev.textContent = snip;
+      prev.setAttribute('dir', detectDir(snip));
+      row.appendChild(name);
+      row.appendChild(badge);
+      row.appendChild(prev);
+      row.addEventListener('click', () => switchToFastSave());
+      findResultsEl.appendChild(row);
+    }
+  }
 
   state.tabs.forEach((t) => {
     if (t.id === state.activeId) return;
@@ -2313,15 +3651,25 @@ const CURRENT_VERSION = document.getElementById('aboutVersion').textContent.repl
 const WHATS_NEW =
   "What's new in v" + CURRENT_VERSION + " ✨\n" +
   '\n' +
-  '• Tab groups — right-click a tab → Group, collapse/expand from the sidebar\n' +
-  '• Tab history — right-click a tab → History… to restore earlier versions\n' +
-  '• Search all tabs — Ctrl+F, then hit the "all tabs" toggle\n' +
-  '• Markdown preview — Ctrl+M or the "md" button in the status bar\n' +
-  '• Font size — Ctrl + scroll on the editor, Ctrl+= / Ctrl+- / Ctrl+0, or Settings\n' +
-  '• Window opacity — slider in Settings → System\n' +
-  '• Close to tray — PromptPad can keep running in the system tray\n' +
-  '• Placeholder suggestions — fields now remember your previous values\n' +
-  '• Fixed — Pin from the right-click menu now always works\n' +
+  'PromptPad 2.0 — a big one.\n' +
+  '\n' +
+  '• Fast Save — a Telegram-style "saved messages" note above your tabs.\n' +
+  '   Type and press Enter to save; attach images (paste or 🖼) with a\n' +
+  '   caption, edit or delete any message, search them, and browse them\n' +
+  '   in a media gallery (right-click → Go to message).\n' +
+  '• Quick capture — Ctrl+Shift+Space pops a small floating box from\n' +
+  '   anywhere, without raising the app. Type/paste, Enter → Fast Save.\n' +
+  '• Images in notes — paste (Ctrl+V), the image button, or drop a file.\n' +
+  '   Drag a corner to resize, right-click to save or remove, click to zoom.\n' +
+  '• Todo checklists — the checkbox button or "- [ ] "; select many lines\n' +
+  '   to turn them all into todos at once; click a box to toggle done.\n' +
+  '• Formatting — Ctrl+B bold, Ctrl+K link, emoji picker, justify, and a\n' +
+  '   clean-up button that tidies extra spaces. Links open from the md view.\n' +
+  '• Search button in the title bar — all-tabs and Fast Save search.\n' +
+  '• Collapsible placeholder panel — collapses to a slim arrow.\n' +
+  '• Backup — export/import all data as JSON in Settings → Backup;\n' +
+  '   export a single note to .md/.txt from its right-click menu.\n' +
+  '• Drag & drop — drop .txt/.md files to make tabs, images to insert.\n' +
   '\n' +
   'You can close this tab — it won\'t come back until the next update.';
 
@@ -2393,6 +3741,75 @@ checkUpdateBtn.addEventListener('click', async () => {
   checkUpdateBtn.classList.remove('checking');
 });
 
+// ---------- Drag & drop files ----------
+// Dropping .txt/.md files creates a tab per file; images are inserted into
+// the current note. Internal tab drags carry no Files entry, so the guard
+// keeps them on their own code path.
+function createTabFromFile(name, content) {
+  syncEditorToState();
+  const tab = {
+    id: uid(),
+    name: String(name || '').trim().slice(0, 60) || 'Imported',
+    custom: true,
+    content,
+    dir: 'auto',
+    color: null
+  };
+  state.tabs.push(tab);
+  state.activeId = tab.id;
+  showEditorView();
+  setEditorText(tab.content);
+  renderTabs();
+  updateCounts();
+  updatePlaceholderPanel();
+  scheduleSave();
+}
+
+// Make sure a real note is active before inserting a dropped image.
+function ensureEditorTab() {
+  if (!fsActive() && activeTab()) return;
+  const ordered = orderedTabs();
+  if (ordered.length) switchTab(ordered[0].id);
+  else addTab(false);
+}
+
+window.addEventListener('dragover', (e) => {
+  if (e.dataTransfer && Array.from(e.dataTransfer.types).includes('Files')) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+    dropHintEl.classList.remove('hidden');
+  }
+});
+
+window.addEventListener('dragleave', (e) => {
+  if (!e.relatedTarget) dropHintEl.classList.add('hidden');
+});
+
+window.addEventListener('drop', async (e) => {
+  dropHintEl.classList.add('hidden');
+  const files = e.dataTransfer && e.dataTransfer.files;
+  if (!files || !files.length) return;
+  e.preventDefault();
+
+  for (const f of Array.from(files)) {
+    if (IMG_EXT_BY_MIME[f.type]) {
+      const res = await saveImageBlob(f);
+      if (res && res.filename) {
+        ensureEditorTab();
+        insertImageToken(res.filename);
+      }
+    } else if (/\.(txt|md|markdown)$/i.test(f.name)) {
+      if (f.size > 2 * 1024 * 1024) continue; // 2 MB cap
+      try {
+        const text = await f.text();
+        createTabFromFile(f.name.replace(/\.[^.]+$/, ''), text);
+      } catch (err) {
+        console.error('reading dropped file failed', err);
+      }
+    }
+  }
+});
+
 // ---------- Init ----------
 (async function init() {
   const savedSettings = await window.api.loadSettings();
@@ -2403,18 +3820,46 @@ checkUpdateBtn.addEventListener('click', async () => {
 
   const hadSaved = await loadState();
   maybeShowWhatsNew(hadSaved);
+  applyActiveView();
 
   const onTop = await window.api.getAlwaysOnTop();
   pinBtn.classList.toggle('active', onTop);
 
   buildCtxColorRow();
 
-  // close overlays with Escape (priority: ctx menu > find bar > save dialog > templates > settings)
+  // A quick-capture popup (separate window) forwards its text/image here; we
+  // append it to Fast Save without the app window ever coming to the front.
+  window.api.onQcMessage((payload) => {
+    if (!payload) return;
+    const text = (payload.text || '').replace(/\s+$/, '');
+    if (!text.trim() && !payload.image) return;
+    const msg = { id: uid(), ts: Date.now(), text };
+    if (payload.image) msg.image = payload.image;
+    fsMessages().push(msg);
+    renderTabs();
+    if (fsActive()) renderFsMessages();
+    scheduleSave();
+  });
+  if (settings.quickCaptureEnabled) {
+    try {
+      settings.quickCaptureEnabled = !!(await window.api.setQuickCapture(true));
+    } catch { settings.quickCaptureEnabled = false; }
+  }
+
+  // close overlays with Escape (priority: lightbox > ctx menu > find bar > dialogs > overlays)
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
+    if (!emojiPanel.classList.contains('hidden')) { hideEmojiPanel(); return; }
+    if (!imgContextMenu.classList.contains('hidden')) { hideImgContextMenu(); return; }
+    if (!lightboxEl.classList.contains('hidden')) { closeLightbox(); return; }
+    if (!quickCaptureOverlay.classList.contains('hidden')) { closeQuickCapture(); return; }
+    if (!galleryOverlay.classList.contains('hidden')) { closeGallery(); return; }
+    if (!linkDialog.classList.contains('hidden')) { closeLinkDialog(); return; }
     if (!ctxMenuEl.classList.contains('hidden')) { hideCtxMenu(); return; }
+    if (!importConfirmDialog.classList.contains('hidden')) { closeImportConfirm(); return; }
+    if (fsActive() && !fsSearchBar.classList.contains('hidden')) { closeFsSearch(); return; }
     if (!findBarEl.classList.contains('hidden')) { closeFind(); return; }
-    if (mdOn) { setMdPreview(false); return; }
+    if (mdOn && !fsActive()) { setMdPreview(false); return; }
     if (!saveTemplateDialog.classList.contains('hidden')) { closeSaveTemplateDialog(); return; }
     if (!groupNameDialog.classList.contains('hidden')) { closeGroupDialog(); return; }
     if (!historyOverlay.classList.contains('hidden')) { closeHistory(); return; }
@@ -2422,7 +3867,7 @@ checkUpdateBtn.addEventListener('click', async () => {
     if (!settingsOverlay.classList.contains('hidden')) { closeSettings(); return; }
   });
 
-  editorEl.focus();
+  if (!fsActive()) editorEl.focus();
 
   // auto-check for updates after short delay (silent — banner only if newer version found)
   if (settings.autoCheckUpdates) {

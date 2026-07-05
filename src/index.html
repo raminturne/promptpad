@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta http-equiv="Content-Security-Policy"
-        content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self';" />
+        content="default-src 'self'; img-src 'self' ppimg:; style-src 'self' 'unsafe-inline'; script-src 'self';" />
   <title>PromptPad</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
@@ -16,6 +16,12 @@
         <span class="brand-name">promptpad</span>
       </div>
       <div class="win-controls">
+        <button id="searchBtn" class="win-btn" title="Search (Ctrl+F)">
+          <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+            <circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" stroke-width="1.7"/>
+            <line x1="16" y1="16" x2="21" y2="21" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+          </svg>
+        </button>
         <button id="settingsBtn" class="win-btn" title="Settings">
           <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
             <circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.7"/>
@@ -70,7 +76,14 @@
       <main class="editor">
         <div class="editor-body" id="editorBody">
           <div id="placeholderBar" class="placeholder-bar hidden">
-            <span id="placeholderCount" class="placeholder-count"></span>
+            <div class="placeholder-head">
+              <button id="placeholderCollapse" class="placeholder-collapse" title="Collapse">
+                <svg viewBox="0 0 24 24" width="10" height="10" aria-hidden="true">
+                  <polyline points="6 9 12 15 18 9" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </button>
+              <span id="placeholderCount" class="placeholder-count"></span>
+            </div>
             <div id="placeholderFields" class="placeholder-fields"></div>
           </div>
           <div id="placeholderResizer" class="placeholder-resizer" title="Drag to resize"></div>
@@ -105,6 +118,85 @@
             <div id="mdPreview" class="md-preview hidden"></div>
           </div>
         </div>
+        <!-- Fast Save: chat-style quick notes (replaces the editor when active) -->
+        <div id="fastSaveView" class="fastsave-view hidden">
+          <div class="fs-header">
+            <span class="fs-header-title">Fast Save</span>
+            <div class="fs-header-actions">
+              <button id="fsSearchBtn" class="fs-header-btn" title="Search messages">
+                <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+                  <circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" stroke-width="1.7"/>
+                  <line x1="16" y1="16" x2="21" y2="21" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+                </svg>
+              </button>
+              <button id="fsGalleryBtn" class="fs-header-btn" title="Media gallery">
+                <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+                  <rect x="3" y="5" width="8" height="8" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.6"/>
+                  <rect x="13" y="5" width="8" height="8" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.6"/>
+                  <rect x="3" y="15" width="8" height="4" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.6"/>
+                  <rect x="13" y="15" width="8" height="4" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.6"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+          <div id="fsSearchBar" class="fs-searchbar hidden">
+            <input id="fsSearchInput" class="fs-search-input" type="text" spellcheck="false"
+              autocomplete="off" placeholder="Search saved messages…" />
+            <span id="fsSearchCount" class="fs-search-count"></span>
+            <button id="fsSearchClose" class="fs-header-btn" title="Close">
+              <svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true">
+                <line x1="18" y1="6" x2="6" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                <line x1="6" y1="6" x2="18" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              </svg>
+            </button>
+          </div>
+          <div id="fsMessages" class="fs-messages"></div>
+          <div class="fs-inputwrap">
+            <div id="fsEditBar" class="fs-editbar hidden">
+              <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><path d="M4 20h4l10-10-4-4L4 16v4z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
+              <span>Editing message</span>
+              <button id="fsEditCancel" class="fs-editbar-cancel" title="Cancel (Esc)">
+                <svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true">
+                  <line x1="18" y1="6" x2="6" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                  <line x1="6" y1="6" x2="18" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+              </button>
+            </div>
+            <div id="fsPending" class="fs-pending hidden">
+              <img id="fsPendingImg" class="fs-pending-img" alt="" />
+              <button id="fsPendingRemove" class="fs-pending-remove" title="Remove">
+                <svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true">
+                  <line x1="18" y1="6" x2="6" y2="18" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+                  <line x1="6" y1="6" x2="18" y2="18" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+                </svg>
+              </button>
+            </div>
+            <div class="fs-inputbar">
+              <button id="fsEmojiBtn" class="fs-input-btn" title="Emoji">
+                <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+                  <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.6"/>
+                  <circle cx="9" cy="10" r="1" fill="currentColor"/>
+                  <circle cx="15" cy="10" r="1" fill="currentColor"/>
+                  <path d="M8.5 14.5a4.5 4.5 0 0 0 7 0" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+                </svg>
+              </button>
+              <button id="fsImgBtn" class="fs-input-btn" title="Attach image">
+                <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+                  <rect x="3" y="4" width="18" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/>
+                  <circle cx="9" cy="10" r="1.7" fill="currentColor"/>
+                  <path d="M4 17.5l4.5-4.5 3.5 3.5 3-3 5 5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </button>
+              <textarea id="fsInput" class="fs-input" rows="1" spellcheck="false"
+                placeholder="Type and press Enter to save… (Shift+Enter = new line)"></textarea>
+              <button id="fsSend" class="fs-send" title="Save (Enter)">
+                <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+                  <polyline points="6 14 12 8 18 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
         <footer class="statusbar">
           <div class="counts">
             <span id="charCount">0 chars</span>
@@ -112,6 +204,49 @@
             <span id="tokenCount">~0 tokens</span>
           </div>
           <div class="status-actions">
+            <div class="format-cluster">
+            <button id="todoBtn" class="copy-btn" title="Toggle todo on this line">
+              <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
+                <rect x="4" y="4" width="16" height="16" rx="4" fill="none" stroke="currentColor" stroke-width="1.6"/>
+                <path d="M8.5 12.5l2.5 2.5 4.5-5.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
+            <button id="emojiBtn" class="copy-btn" title="Emoji">
+              <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
+                <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.6"/>
+                <circle cx="9" cy="10" r="1" fill="currentColor"/>
+                <circle cx="15" cy="10" r="1" fill="currentColor"/>
+                <path d="M8.5 14.5a4.5 4.5 0 0 0 7 0" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+              </svg>
+            </button>
+            <button id="imgBtn" class="copy-btn" title="Insert image">
+              <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
+                <rect x="3" y="4" width="18" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/>
+                <circle cx="9" cy="10" r="1.7" fill="currentColor"/>
+                <path d="M4 17.5l4.5-4.5 3.5 3.5 3-3 5 5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
+            <button id="linkBtn" class="copy-btn" title="Insert link (Ctrl+K)">
+              <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
+                <path d="M10 14a3.5 3.5 0 0 0 5 0l3-3a3.5 3.5 0 0 0-5-5l-1.5 1.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M14 10a3.5 3.5 0 0 0-5 0l-3 3a3.5 3.5 0 0 0 5 5l1.5-1.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
+            <button id="justifyBtn" class="copy-btn" title="Justify text">
+              <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
+                <line x1="4" y1="7" x2="20" y2="7" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+                <line x1="4" y1="12" x2="20" y2="12" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+                <line x1="4" y1="17" x2="20" y2="17" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+              </svg>
+            </button>
+            <button id="cleanBtn" class="copy-btn" title="Clean up spacing">
+              <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
+                <path d="M19 4l-2.5 2.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+                <path d="M14 6l4 4-7.5 7.5a2 2 0 0 1-1.4.6H5v-4.1a2 2 0 0 1 .6-1.4L14 6z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+                <path d="M9 11l4 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+              </svg>
+            </button>
+            </div>
             <button id="mdBtn" class="copy-btn" title="Markdown preview (Ctrl+M)">
               <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
                 <rect x="2.5" y="5" width="19" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/>
@@ -174,6 +309,16 @@
 
           <!-- Tabs -->
           <section class="set-group">
+            <div class="set-toggle-row">
+              <div class="set-toggle-text">
+                <span>Fast Save</span>
+                <small>Chat-style quick notes pinned above your tabs</small>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="toggleFastSave" />
+                <span class="slider"></span>
+              </label>
+            </div>
             <div class="set-toggle-row">
               <div class="set-toggle-text">
                 <span>Pinning</span>
@@ -240,6 +385,30 @@
             </div>
           </section>
 
+          <!-- Images -->
+          <section class="set-group">
+            <div class="set-toggle-row">
+              <div class="set-toggle-text">
+                <span>Resize images</span>
+                <small>Drag an image's corner to make it bigger or smaller</small>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="toggleImageResize" />
+                <span class="slider"></span>
+              </label>
+            </div>
+            <div class="set-toggle-row">
+              <div class="set-toggle-text">
+                <span>Save images on right-click</span>
+                <small>Right-click an image to download a copy</small>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="toggleImageDownload" />
+                <span class="slider"></span>
+              </label>
+            </div>
+          </section>
+
           <!-- System -->
           <section class="set-group">
             <div class="set-toggle-row">
@@ -279,6 +448,31 @@
                 <span class="slider"></span>
               </label>
             </div>
+            <div class="set-toggle-row">
+              <div class="set-toggle-text">
+                <span>Global quick capture</span>
+                <small>Ctrl+Shift+Space opens Fast Save from anywhere</small>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="toggleQuickCapture" />
+                <span class="slider"></span>
+              </label>
+            </div>
+          </section>
+
+          <!-- Backup -->
+          <section class="set-group">
+            <h3 class="set-label">Backup</h3>
+            <button id="exportDataBtn" class="check-update-btn">
+              <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M4 19h16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <span id="exportDataLabel">Export all data…</span>
+            </button>
+            <button id="importDataBtn" class="check-update-btn">
+              <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><path d="M12 15V3M7 8l5-5 5 5M4 19h16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <span id="importDataLabel">Import backup…</span>
+            </button>
+            <p class="backup-note">Import replaces all notes and settings — a backup of your
+              current data is saved automatically first. Inserted images are not included.</p>
           </section>
 
           <!-- About -->
@@ -287,7 +481,7 @@
             <div class="about-box">
               <div class="about-brand">
                 <span class="brand-dot"></span>
-                <span>PromptPad <em id="aboutVersion">v1.5.0</em></span>
+                <span>PromptPad <em id="aboutVersion">v2.0.0</em></span>
               </div>
               <p class="about-desc">A compact notepad for writing AI prompts.</p>
               <div class="about-links">
@@ -332,6 +526,7 @@
       <div class="ctx-item" data-action="history">History…</div>
       <div class="ctx-sep"></div>
       <div class="ctx-item" data-action="copy">Copy content</div>
+      <div class="ctx-item" data-action="export">Export as file…</div>
       <div class="ctx-item" data-action="save-template">Save as template…</div>
       <div class="ctx-sep"></div>
       <div class="ctx-colors">
@@ -358,6 +553,17 @@
       <div class="mini-dialog-actions">
         <button id="groupNameCancel" class="mini-dialog-cancel">Cancel</button>
         <button id="groupNameSave" class="mini-dialog-save">Create</button>
+      </div>
+    </div>
+
+    <!-- Import backup confirm dialog -->
+    <div id="importConfirmDialog" class="mini-dialog hidden">
+      <span class="mini-dialog-label">Import backup</span>
+      <p class="mini-dialog-text">This replaces all current notes and settings.
+        A backup of your current data is saved automatically. Continue?</p>
+      <div class="mini-dialog-actions">
+        <button id="importCancel" class="mini-dialog-cancel">Cancel</button>
+        <button id="importConfirm" class="mini-dialog-save">Choose file…</button>
       </div>
     </div>
 
@@ -408,8 +614,84 @@
         <div class="templates-body" id="templatesList"></div>
       </div>
     </div>
+    <!-- Insert link dialog -->
+    <div id="linkDialog" class="mini-dialog hidden">
+      <span class="mini-dialog-label">Insert link</span>
+      <input id="linkTextInput" type="text" placeholder="Text to show" />
+      <input id="linkUrlInput" type="text" placeholder="https://…" />
+      <div class="mini-dialog-actions">
+        <button id="linkCancel" class="mini-dialog-cancel">Cancel</button>
+        <button id="linkSave" class="mini-dialog-save">Insert</button>
+      </div>
+    </div>
+
+    <!-- Emoji picker -->
+    <div id="emojiPanel" class="emoji-panel hidden"></div>
+
+    <!-- Image context menu -->
+    <div id="imgContextMenu" class="ctx-menu hidden">
+      <div class="ctx-item" data-img-action="goto" data-img-only="gallery">Go to message</div>
+      <div class="ctx-sep" data-img-only="gallery"></div>
+      <div class="ctx-item" data-img-action="zoom">View full size</div>
+      <div class="ctx-item" data-img-action="download">Save image…</div>
+      <div class="ctx-sep" data-img-only="editor"></div>
+      <div class="ctx-item ctx-danger" data-img-action="delete" data-img-only="editor">Remove from note</div>
+    </div>
+
+    <!-- Quick-capture floating box (Ctrl+Shift+Space) -->
+    <div id="quickCaptureOverlay" class="overlay hidden">
+      <div class="qc-card">
+        <div class="qc-head">
+          <span class="qc-title">Quick capture → Fast Save</span>
+          <button id="qcClose" class="win-btn" title="Close (Esc)">
+            <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+              <line x1="6" y1="6" x2="18" y2="18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+              <line x1="18" y1="6" x2="6" y2="18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+            </svg>
+          </button>
+        </div>
+        <div id="qcPending" class="fs-pending hidden">
+          <img id="qcPendingImg" class="fs-pending-img" alt="" />
+          <button id="qcPendingRemove" class="fs-pending-remove" title="Remove">
+            <svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true">
+              <line x1="18" y1="6" x2="6" y2="18" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+              <line x1="6" y1="6" x2="18" y2="18" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+            </svg>
+          </button>
+        </div>
+        <textarea id="qcInput" class="qc-input" rows="3" spellcheck="false"
+          placeholder="Type or paste… Enter to save, Shift+Enter for a new line"></textarea>
+        <div class="qc-hint">Saved to Fast Save · Esc to cancel</div>
+      </div>
+    </div>
+
+    <!-- Media gallery (Fast Save) -->
+    <div id="galleryOverlay" class="overlay hidden">
+      <div class="gallery-card">
+        <div class="templates-head">
+          <span class="templates-title">media</span>
+          <button id="galleryClose" class="win-btn" title="Close">
+            <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+              <line x1="6" y1="6" x2="18" y2="18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+              <line x1="18" y1="6" x2="6" y2="18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+            </svg>
+          </button>
+        </div>
+        <div class="templates-empty hidden" id="galleryEmpty">No images saved yet.</div>
+        <div class="gallery-grid" id="galleryGrid"></div>
+      </div>
+    </div>
+
+    <!-- Image lightbox -->
+    <div id="lightbox" class="lightbox hidden">
+      <img id="lightboxImg" alt="" />
+    </div>
+
+    <!-- Drag & drop hint -->
+    <div id="dropHint" class="drop-hint hidden">Drop files to add</div>
   </div>
 
+  <script src="themes.js"></script>
   <script src="markdown.js"></script>
   <script src="renderer.js"></script>
 </body>

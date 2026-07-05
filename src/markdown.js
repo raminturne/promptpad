@@ -9,14 +9,17 @@
       .replace(/"/g, '&quot;');
   }
 
-  // Inline: `code`, **bold**, *italic*, [text](url) — links render as
+  // Inline: images, `code`, **bold**, *italic*, [text](url) — links render as
   // styled text (not clickable) to avoid navigation inside the app.
+  // Image sources are restricted to the app's own ppimg:// scheme; the
+  // filename charset can't break out of the src attribute.
   function inline(s) {
     return s
+      .replace(/!\[img\]\(ppimg:\/\/([a-zA-Z0-9._-]+)\)/g, '<img class="md-img" src="ppimg://$1" alt="">')
       .replace(/`([^`]+)`/g, '<code>$1</code>')
       .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
       .replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>')
-      .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, '<span class="md-link" title="$2">$1</span>');
+      .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, '<span class="md-link" data-href="$2" title="$2">$1</span>');
   }
 
   function render(text) {
@@ -71,6 +74,20 @@
           i++;
         }
         out.push('<blockquote>' + buf.join('<br>') + '</blockquote>');
+        continue;
+      }
+
+      // todo item (- [ ] / - [x]) — must run before the generic ul rule.
+      // data-line points back at the source line so the preview checkbox
+      // can toggle the underlying note text.
+      const todo = raw.match(/^\s*- \[( |x)\] (.*)$/);
+      if (todo) {
+        if (listType !== 'ul') { closeList(); out.push('<ul>'); listType = 'ul'; }
+        const done = todo[1] === 'x';
+        out.push('<li class="md-todo' + (done ? ' done' : '') + '" data-line="' + i + '">' +
+          '<span class="md-todo-box">' + (done ? '☑' : '☐') + '</span> ' +
+          inline(esc(todo[2])) + '</li>');
+        i++;
         continue;
       }
 

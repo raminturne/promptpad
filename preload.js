@@ -15,5 +15,17 @@ contextBridge.exposeInMainWorld('api', {
   openExternal: (url) => ipcRenderer.send('open-external', url),
   checkUpdate: () => ipcRenderer.invoke('check-update'),
   setOpacity: (v) => ipcRenderer.send('set-opacity', v),
-  setCloseToTray: (enabled) => ipcRenderer.send('set-close-to-tray', enabled)
+  setCloseToTray: (enabled) => ipcRenderer.send('set-close-to-tray', enabled),
+  pickImage: () => ipcRenderer.invoke('pick-image'),
+  saveImage: (base64, ext) => ipcRenderer.invoke('save-image', base64, ext),
+  downloadImage: (filename) => ipcRenderer.invoke('download-image', filename),
+  exportData: () => ipcRenderer.invoke('export-data'),
+  importData: () => ipcRenderer.invoke('import-data'),
+  relaunchApp: () => ipcRenderer.send('relaunch-app'),
+  exportNote: (name, content, ext) => ipcRenderer.invoke('export-note', name, content, ext),
+  setQuickCapture: (enabled) => ipcRenderer.invoke('set-quick-capture', enabled),
+  onQuickCapture: (cb) => ipcRenderer.on('quick-capture', () => cb()),
+  qcSubmit: (payload) => ipcRenderer.send('qc-submit', payload),
+  qcClose: () => ipcRenderer.send('qc-close'),
+  onQcMessage: (cb) => ipcRenderer.on('qc-message', (_e, payload) => cb(payload))
 });

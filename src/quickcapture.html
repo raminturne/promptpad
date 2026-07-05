@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; img-src 'self' ppimg:; style-src 'self' 'unsafe-inline'; script-src 'self';" />
+  <title>Quick capture</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      /* Base palette (overridden by quickcapture.js from the saved theme) */
+      --bg: #1B211A; --text: #D3DAD9; --sidebar: #161b15;
+      --elevated: #222a21; --elevated-hi: #2a332a;
+      --accent: #7fbf8b; --danger: #e08a7a;
+      /* Derived — recompute automatically when base vars change */
+      --border: color-mix(in srgb, var(--text) 16%, transparent);
+      --muted: color-mix(in srgb, var(--text) 42%, transparent);
+      --accent-soft: color-mix(in srgb, var(--accent) 14%, transparent);
+      --accent-glow: color-mix(in srgb, var(--accent) 38%, transparent);
+      --font: "Cascadia Code", "Cascadia Mono", Consolas, ui-monospace, monospace;
+    }
+    html, body { height: 100%; background: transparent; overflow: hidden; }
+    body {
+      font-family: var(--font);
+      -webkit-font-smoothing: antialiased;
+      user-select: none;
+      padding: 6px;
+    }
+    .qcw {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      background:
+        radial-gradient(120% 80% at 100% 0%, var(--accent-soft), transparent 55%),
+        var(--bg);
+      border: 1px solid var(--accent-glow);
+      border-radius: 12px;
+      box-shadow: 0 16px 44px rgba(0,0,0,.55);
+      padding: 10px 12px 12px;
+    }
+    .qcw-head {
+      -webkit-app-region: drag;
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 8px;
+    }
+    .qcw-head span {
+      font-size: 11.5px; letter-spacing: .5px; color: var(--muted); font-weight: 600;
+    }
+    .qcw-close {
+      -webkit-app-region: no-drag;
+      border: none; background: transparent; color: var(--muted);
+      cursor: pointer; font-size: 15px; line-height: 1; padding: 2px 5px; border-radius: 5px;
+    }
+    .qcw-close:hover { color: var(--danger); background: color-mix(in srgb, var(--danger) 16%, transparent); }
+    .qcw-pending { position: relative; display: inline-block; margin-bottom: 8px; line-height: 0; }
+    .qcw-pending img {
+      max-height: 70px; max-width: 150px; border-radius: 8px;
+      border: 1px solid var(--border);
+    }
+    .qcw-pending-remove {
+      position: absolute; top: -6px; right: -6px;
+      width: 20px; height: 20px; display: grid; place-items: center;
+      border: none; background: var(--danger); color: #fff; border-radius: 50%;
+      cursor: pointer; font-size: 12px; box-shadow: 0 2px 6px rgba(0,0,0,.4);
+    }
+    textarea {
+      flex: 1;
+      resize: none;
+      background: var(--elevated);
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 14px;
+      line-height: 1.5;
+      padding: 9px 11px;
+      outline: none;
+      user-select: text;
+    }
+    textarea:focus { border-color: var(--accent); }
+    textarea::-webkit-scrollbar { width: 8px; }
+    textarea::-webkit-scrollbar-thumb { background: var(--border); border-radius: 8px; }
+    ::-webkit-scrollbar-button { width: 0; height: 0; display: none; }
+    .qcw-hint { font-size: 10px; color: var(--muted); margin-top: 7px; text-align: center; }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <div class="qcw">
+    <div class="qcw-head">
+      <span>Quick capture → Fast Save</span>
+      <button id="close" class="qcw-close" title="Close (Esc)">✕</button>
+    </div>
+    <div id="pending" class="qcw-pending hidden">
+      <img id="pendingImg" alt="" />
+      <button id="pendingRemove" class="qcw-pending-remove" title="Remove">✕</button>
+    </div>
+    <textarea id="input" spellcheck="false"
+      placeholder="Type or paste… Enter to save, Shift+Enter for a new line"></textarea>
+    <div class="qcw-hint">Saved to Fast Save · Esc to cancel</div>
+  </div>
+  <script src="themes.js"></script>
+  <script src="quickcapture.js"></script>
+</body>
+</html>

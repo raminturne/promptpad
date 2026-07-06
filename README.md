@@ -4,25 +4,23 @@ A compact, always-on-top desktop notepad for writing and organizing AI prompts. 
 
 Minimal, fast, and right next to your work — with tabs, 14 themes, live placeholder fill, templates, find & replace, a Telegram-style Fast Save, inline images, todo checklists, and a global quick-capture hotkey.
 
-## ✨ New in 2.0
-
-| Images & todo checklists | Fast Save (Telegram-style) | Quick capture |
-|:---:|:---:|:---:|
-| ![Images and todos](screenshots/06-images-todos.png) | ![Fast Save](screenshots/07-fast-save.png) | ![Quick capture](screenshots/09-quick-capture.png) |
-
-| Markdown preview | Media gallery | Settings |
-|:---:|:---:|:---:|
-| ![Markdown preview](screenshots/10-markdown.png) | ![Gallery](screenshots/08-gallery.png) | ![Settings](screenshots/11-settings.png) |
-
 ## 📸 Screenshots
 
-| Dark theme + Placeholders | Light theme |
-|:---:|:---:|
-| ![Dark theme](screenshots/01-default.png) | ![Light theme](screenshots/02-light-theme.png) |
-
-| Settings (Dark / Light) | Right-click context menu | Templates |
+| Editor — bold, todos, images, placeholders | Tabs — multi-select, colors, groups | Group right-click menu |
 |:---:|:---:|:---:|
-| ![Settings](screenshots/03-settings.png) | ![Context menu](screenshots/04-context-menu.png) | ![Templates](screenshots/05-templates.png) |
+| ![Editor](screenshots/01-editor.png) | ![Tabs and groups](screenshots/02-tabs-groups.png) | ![Group menu](screenshots/03-group-menu.png) |
+
+| Fast Save (Telegram-style) | Per-tab file attachments | Quick capture |
+|:---:|:---:|:---:|
+| ![Fast Save](screenshots/04-fast-save.png) | ![Files panel](screenshots/05-files-panel.png) | ![Quick capture](screenshots/06-quick-capture.png) |
+
+| Markdown preview | Media gallery | Templates |
+|:---:|:---:|:---:|
+| ![Markdown preview](screenshots/07-markdown.png) | ![Gallery](screenshots/08-gallery.png) | ![Templates](screenshots/09-templates.png) |
+
+| Settings |
+|:---:|
+| ![Settings](screenshots/10-settings.png) |
 
 ## ✨ Features
 
@@ -30,18 +28,21 @@ Minimal, fast, and right next to your work — with tabs, 14 themes, live placeh
 - **Tabs** — left sidebar or browser-style top layout
   - Add with `+`, click to switch, drag & drop to reorder
   - **Pin** tabs so they stay on top of the list
-  - Auto-named from first line, double-click to rename
-  - **Right-click context menu** — Rename, Duplicate, Copy content, Save as template, color (8 colors), Pin/Unpin, Close
+  - Auto-named from first line; `Shift+click` or double-click to rename
+  - **Multi-select** — `Ctrl+click` to pick several tabs, `Ctrl+Shift+click` for a range, then right-click for bulk actions: rename as `1/name, 2/name…`, set a color, move to a group, or close them all
+  - **Colors** tint the tab's left edge; group headers can be colored as a whole (right-click a group → Rename, Duplicate, Copy/Export content, Color, Pin, Ungroup)
+  - **Per-tab files** — attach files to a tab with the "Attach File" button; open, save a copy, reveal, or remove them from the files panel
+  - **Right-click context menu** — Rename, Duplicate, Copy content, Export as file, Save as template, color (8 colors), Pin/Unpin, Close
 - **14 themes** — 7 dark (Forest, Midnight, Carbon, Plum, Ember, Dracula, Mono) + 7 light (Paper, Sky, Sage, Rose, Latte, Lavender, Snow), grouped in Settings
 - **Placeholder quick-fill** — write `[bracket]` or `{brace}` blanks; they highlight automatically and a fill bar lets you type values one by one
   - **Live preview** — typed value appears inside the prompt in real-time before you confirm
   - Enter jumps to the next field
   - Bar can sit above the prompt or as a resizable side panel; one scrollable line or stacked rows
-- **Fast Save** — a chat-style "saved messages" note pinned above your tabs (like Telegram). Type and press Enter to save; each message keeps a timestamp with copy / **edit** / delete buttons and per-message RTL. Attach images (paste or button) with an optional caption, search your messages, and browse them all in a **media gallery** (right-click an image → **Go to message**). Toggle it off in Settings.
+- **Fast Save** — a chat-style "saved messages" note pinned above your tabs (like Telegram), renameable by `Shift+click`ing its label. Type and press Enter to save; each message keeps a timestamp with copy / **edit** / delete buttons and per-message RTL. Attach images or **files** (paste or button) with an optional caption, `Ctrl+click` to multi-select and delete messages, search your messages, and browse images in a **media gallery** (right-click an image → **Go to message**). Toggle it off in Settings.
 - **Quick capture** — press `Ctrl+Shift+Space` anywhere (even when the window is hidden) to pop a floating box; type or paste and hit Enter to drop it straight into Fast Save. Toggle in Settings.
 - **Images** — paste (`Ctrl+V`), the image button, or drag & drop a file into a note. Thumbnails render inline; **drag a corner to resize**, **right-click to save a copy**, click to zoom. Both resize and right-click-save are toggleable in Settings → Images.
 - **Todo checklists** — the checkbox button or type `- [ ] `; select several lines to turn them all into todos at once; click a checkbox to toggle done. Renders in the editor and the markdown preview.
-- **Formatting toolbar** — `Ctrl+B` bold, `Ctrl+K` (or the link button) to insert a hyperlink, an **emoji picker**, a **justify** toggle, and a **clean-up** button that tidies extra spaces and blank lines. Links open in your browser from the markdown preview.
+- **Formatting toolbar** — `Ctrl+B` bold (marks stay hidden, just the bold text shows), `Ctrl+K` (or the link button) to insert a hyperlink, an **emoji picker**, a **justify** toggle, a **clean-up** button that tidies extra spaces and blank lines, and a **paste** button. Every button can be shown or hidden from Settings → Toolbar buttons. Links open in your browser from the markdown preview.
 - **Markdown preview** — `Ctrl+M` or the `md` button; supports headings, lists, code, quotes, images, todos, and clickable links.
 - **Find & Replace** — the title-bar search button or `Ctrl+F` to search with highlighted matches and match counter; `Ctrl+H` to replace one or all; an "all tabs" toggle also searches Fast Save
 - **Backup** — export/import all your data as a single JSON file in Settings → Backup (a safety backup is written before every import). Export any single note to `.md`/`.txt` from its right-click menu.

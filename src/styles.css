@@ -503,6 +503,12 @@ body {
   padding: 0 2px;
 }
 
+/* Inline bold: embolden the text between the markers; the "**" marks stay in
+   the DOM (so getEditorText/round-trip still see the raw markdown) but are
+   collapsed to zero width so they never render — always hidden, cursor or not. */
+.editor-area .md-bold { font-weight: 700; }
+.editor-area .md-mark { font-size: 0; }
+
 .editor-area.is-empty::before {
   content: attr(data-placeholder);
   position: absolute;
@@ -594,7 +600,19 @@ body {
 .format-cluster::-webkit-scrollbar { height: 0; display: none; }
 .format-cluster .copy-btn { flex-shrink: 0; }
 /* icon-only formatting buttons stay compact */
-#todoBtn, #emojiBtn, #imgBtn, #linkBtn, #justifyBtn, #cleanBtn { padding: 0 6px; }
+#todoBtn, #emojiBtn, #imgBtn, #linkBtn, #justifyBtn, #cleanBtn, #mdBtn, #pasteBtn, #copyBtn { padding: 0 6px; }
+/* copy: show a check while "copied" instead of a text label */
+#copyBtn .copy-check { display: none; }
+#copyBtn.copied .copy-check { display: block; }
+#copyBtn.copied > svg:first-child { display: none; }
+/* Attach File — wider + accent so it reads as a distinct action */
+.copy-btn--wide {
+  padding: 0 11px;
+  border-color: var(--accent-glow);
+  color: var(--accent);
+  letter-spacing: 0.3px;
+}
+.copy-btn--wide:hover { background: var(--accent-soft); border-color: var(--accent); }
 
 /* markdown preview pane */
 .md-preview {
@@ -2068,3 +2086,265 @@ body {
 .qc-input::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 8px; }
 .qc-input::-webkit-scrollbar-thumb:hover { background: var(--muted); }
 .qc-hint { font-size: 10px; color: var(--muted); margin-top: 7px; text-align: center; }
+
+/* =========================================================
+   v2.1 — TAB SELECTION, FULL-TAB COLOR, MENUS, FILES, FS FILES
+   ========================================================= */
+
+/* --- toolbar-buttons settings row --- */
+.set-hint { font-size: 10.5px; color: var(--muted); margin: -4px 0 10px; line-height: 1.5; }
+.toolbar-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.toolbar-chip {
+  padding: 5px 11px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted-2);
+  font-family: var(--font);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.13s, color 0.13s, border-color 0.13s;
+  user-select: none;
+}
+.toolbar-chip:hover { color: var(--text); background: var(--elevated); }
+.toolbar-chip.active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+/* --- multi-select tabs --- */
+.tab.selected {
+  box-shadow: inset 0 0 0 1.5px var(--accent);
+}
+.tab.selected::after {
+  content: "";
+  position: absolute;
+  top: 6px; right: 7px;
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 2px var(--bg);
+}
+.app.layout-top .tab.selected::after { top: 4px; right: 5px; }
+
+/* --- normal tab color = the left accent bar (replaces the old dot) --- */
+.tab.has-color::before {
+  transform: translateY(-50%) scaleY(1);
+  background: var(--tab-color);
+  box-shadow: none;
+}
+.app.layout-top .tab.has-color::before {
+  transform: scaleX(1);
+  background: var(--tab-color);
+}
+
+/* --- group color = the whole group header tinted (members untouched) --- */
+.tab-group-header.has-color {
+  background: color-mix(in srgb, var(--group-color) 24%, transparent);
+  color: var(--text);
+}
+.tab-group-header.has-color:hover {
+  background: color-mix(in srgb, var(--group-color) 34%, transparent);
+}
+.tab-group-header.has-color .tab-group-name { color: var(--text); }
+.tab-group-header.has-color .tab-group-count {
+  background: color-mix(in srgb, var(--group-color) 45%, transparent);
+}
+
+/* --- multi-select & group context menus --- */
+.ctx-multi-head {
+  padding: 6px 10px 4px;
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 0.4px;
+}
+
+/* --- files button badge (status bar) --- */
+.files-count {
+  font-size: 9px;
+  line-height: 1;
+  background: var(--accent);
+  color: var(--bg);
+  border-radius: 999px;
+  padding: 1px 5px;
+  margin-left: 4px;
+}
+
+/* --- files overlay panel --- */
+.files-toolbar {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.files-add-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 12px;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-glow);
+  color: var(--accent);
+  border-radius: 7px;
+  cursor: pointer;
+  font-family: var(--font);
+  font-size: 12px;
+  transition: all 0.14s;
+}
+.files-add-btn:hover { background: var(--accent); color: var(--bg); }
+.file-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.file-row:last-child { border-bottom: none; }
+.file-row-info { flex: 1; min-width: 0; }
+.file-row-name {
+  font-size: 12.5px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.file-row-meta { font-size: 10.5px; color: var(--muted); margin-top: 1px; }
+.file-row-actions { display: flex; gap: 5px; flex-shrink: 0; }
+.file-act {
+  height: 24px;
+  padding: 0 9px;
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  color: var(--muted-2);
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: var(--font);
+  font-size: 11px;
+  transition: all 0.14s;
+}
+.file-act:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.file-act.file-remove:hover {
+  border-color: var(--danger);
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+}
+.files-note {
+  font-size: 10px;
+  color: var(--muted);
+  padding: 8px 14px;
+  border-top: 1px solid var(--border);
+  line-height: 1.5;
+  flex-shrink: 0;
+}
+
+/* --- Fast Save: message selection --- */
+.fs-msg.selected {
+  box-shadow: inset 0 0 0 1.5px var(--accent);
+  background: var(--accent-soft);
+}
+
+/* --- Fast Save: message file chip --- */
+.fs-msg-file {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 9px;
+  margin-bottom: 4px;
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  border-radius: 9px;
+}
+.fs-msg-file-icon { color: var(--accent); flex-shrink: 0; display: flex; }
+.fs-msg-file-info { flex: 1; min-width: 0; }
+.fs-msg-file-name {
+  font-size: 12px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.fs-msg-file-size { font-size: 10px; color: var(--muted); }
+.fs-msg-file-btn {
+  height: 22px;
+  padding: 0 8px;
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  color: var(--muted-2);
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: var(--font);
+  font-size: 10.5px;
+  flex-shrink: 0;
+  transition: all 0.14s;
+}
+.fs-msg-file-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+
+/* --- Fast Save: pending file chip (composer) --- */
+.fs-pending-file {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 8px 12px 0;
+  padding: 6px 9px;
+  background: var(--elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: 9px;
+}
+.fs-pending-file svg { color: var(--accent); flex-shrink: 0; }
+.fs-pending-file-name {
+  flex: 1; min-width: 0;
+  font-size: 11.5px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.fs-pending-file-remove {
+  display: grid;
+  place-items: center;
+  width: 20px; height: 20px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  border-radius: 50%;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.fs-pending-file-remove:hover { color: var(--danger); background: color-mix(in srgb, var(--danger) 14%, transparent); }
+
+/* --- Fast Save: multi-select action bar --- */
+.fs-selectbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 12px;
+  background: var(--accent-soft);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--accent);
+}
+.fs-selectbar-actions { display: flex; gap: 6px; }
+.fs-selectbar-del, .fs-selectbar-clear {
+  height: 24px;
+  padding: 0 11px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: var(--font);
+  font-size: 11.5px;
+  border: 1px solid transparent;
+  transition: all 0.14s;
+}
+.fs-selectbar-del {
+  background: color-mix(in srgb, var(--danger) 16%, transparent);
+  border-color: color-mix(in srgb, var(--danger) 40%, transparent);
+  color: var(--danger);
+}
+.fs-selectbar-del:hover { background: var(--danger); color: #fff; }
+.fs-selectbar-clear {
+  background: transparent;
+  border-color: var(--border-strong);
+  color: var(--muted-2);
+}
+.fs-selectbar-clear:hover { color: var(--text); background: var(--elevated); }

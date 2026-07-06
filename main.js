@@ -3,8 +3,14 @@ const path = require('path');
 const fs = require('fs');
 const { pathToFileURL } = require('url');
 
+// Match the taskbar shortcut's AppUserModelID (electron-builder uses the
+// build.appId) so a window restored from the tray merges with the pinned
+// icon instead of spawning a second taskbar entry.
+app.setAppUserModelId('com.raminturne.promptpad');
+
 let DATA_FILE;
 let IMAGES_DIR;
+let FILES_DIR;
 let mainWindow = null;
 let qcWindow = null;
 let tray = null;
@@ -137,7 +143,9 @@ if (!app.requestSingleInstanceLock()) {
 
   DATA_FILE = path.join(app.getPath('userData'), 'promptpad-data.json');
   IMAGES_DIR = path.join(app.getPath('userData'), 'images');
+  FILES_DIR = path.join(app.getPath('userData'), 'files');
   try { fs.mkdirSync(IMAGES_DIR, { recursive: true }); } catch {}
+  try { fs.mkdirSync(FILES_DIR, { recursive: true }); } catch {}
 
   // Serve saved images to the renderer. Filenames are whitelisted to a safe
   // charset so the handler can never read outside IMAGES_DIR.
@@ -323,6 +331,78 @@ if (!app.requestSingleInstanceLock()) {
       console.error('pick-image failed', err);
       return null;
     }
+  });
+
+  // ---- Per-tab / Fast Save file attachments ----
+  // Stored copies live in FILES_DIR under a random name; storedName is always
+  // whitelisted before it touches the filesystem.
+  const safeStored = (s) => typeof s === 'string' && /^[a-z0-9._-]+$/i.test(s) && !s.includes('..');
+  const storedPath = (s) => path.join(FILES_DIR, s);
+
+  function newStoredName(ext) {
+    const e = String(ext || '').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 12);
+    return 'f' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6) + (e ? '.' + e : '');
+  }
+
+  ipcMain.handle('pick-files', async () => {
+    if (!mainWindow) return [];
+    const res = await dialog.showOpenDialog(mainWindow, {
+      title: 'Add files',
+      properties: ['openFile', 'multiSelections']
+    });
+    if (res.canceled || !res.filePaths.length) return [];
+    const out = [];
+    for (const src of res.filePaths) {
+      try {
+        const ext = path.extname(src).slice(1).toLowerCase();
+        const storedName = newStoredName(ext);
+        fs.copyFileSync(src, storedPath(storedName));
+        const size = fs.statSync(storedPath(storedName)).size;
+        out.push({ name: path.basename(src), storedName, size, ext });
+      } catch (err) {
+        console.error('pick-files copy failed', err);
+      }
+    }
+    return out;
+  });
+
+  ipcMain.handle('save-file-as', async (_e, storedName, name) => {
+    if (!mainWindow || !safeStored(storedName)) return { ok: false };
+    if (!fs.existsSync(storedPath(storedName))) return { ok: false };
+    const res = await dialog.showSaveDialog(mainWindow, {
+      title: 'Save file',
+      defaultPath: (typeof name === 'string' && name) ? name : storedName
+    });
+    if (res.canceled || !res.filePath) return { ok: false, canceled: true };
+    try {
+      fs.copyFileSync(storedPath(storedName), res.filePath);
+      return { ok: true, path: res.filePath };
+    } catch (err) {
+      console.error('save-file-as failed', err);
+      return { ok: false };
+    }
+  });
+
+  ipcMain.handle('open-file', async (_e, storedName) => {
+    if (!safeStored(storedName)) return { ok: false };
+    const p = storedPath(storedName);
+    if (!fs.existsSync(p)) return { ok: false };
+    const err = await shell.openPath(p);
+    return { ok: !err, error: err || undefined };
+  });
+
+  ipcMain.handle('reveal-file', (_e, storedName) => {
+    if (!safeStored(storedName)) return { ok: false };
+    const p = storedPath(storedName);
+    if (!fs.existsSync(p)) return { ok: false };
+    shell.showItemInFolder(p);
+    return { ok: true };
+  });
+
+  ipcMain.handle('delete-file', (_e, storedName) => {
+    if (!safeStored(storedName)) return { ok: false };
+    try { fs.unlinkSync(storedPath(storedName)); } catch {}
+    return { ok: true };
   });
 
   // ---- Backup: export / import ----

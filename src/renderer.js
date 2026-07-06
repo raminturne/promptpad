@@ -55,10 +55,21 @@ const DEFAULT_SETTINGS = {
   quickCaptureEnabled: true,
   imageResizable: true,
   imageDownloadEnabled: true,
-  editorJustify: false
+  editorJustify: false,
+  fastSaveName: 'Fast Save',
+  // which status-bar buttons are shown (toggle in Settings → Toolbar)
+  toolbar: {
+    todo: true, emoji: true, link: true, justify: true, clean: true,
+    md: true, paste: true, copy: true, img: true, files: true
+  }
 };
 
 let settings = { ...DEFAULT_SETTINGS };
+
+// Multi-select state (tab rail + Fast Save messages)
+const selectedTabIds = new Set();
+let lastClickedTabId = null;
+const selectedMsgIds = new Set();
 
 // ---------- DOM ----------
 const tabListEl = document.getElementById('tabList');
@@ -66,7 +77,6 @@ const editorEl = document.getElementById('editor');
 const charCountEl = document.getElementById('charCount');
 const tokenCountEl = document.getElementById('tokenCount');
 const copyBtn = document.getElementById('copyBtn');
-const copyLabel = document.getElementById('copyLabel');
 const addBtn = document.getElementById('addBtn');
 const pinBtn = document.getElementById('pinBtn');
 const minBtn = document.getElementById('minBtn');
@@ -221,6 +231,39 @@ const galleryOverlay = document.getElementById('galleryOverlay');
 const galleryClose = document.getElementById('galleryClose');
 const galleryGrid = document.getElementById('galleryGrid');
 const galleryEmpty = document.getElementById('galleryEmpty');
+// paste button
+const pasteBtn = document.getElementById('pasteBtn');
+// toolbar-buttons settings row
+const toolbarRow = document.getElementById('toolbarRow');
+// per-tab files
+const filesBtn = document.getElementById('filesBtn');
+const filesCountEl = document.getElementById('filesCount');
+const filesOverlay = document.getElementById('filesOverlay');
+const filesClose = document.getElementById('filesClose');
+const filesAddBtn = document.getElementById('filesAddBtn');
+const filesListEl = document.getElementById('filesList');
+const filesEmptyEl = document.getElementById('filesEmpty');
+// tab multi-select + group menus
+const tabMultiMenu = document.getElementById('tabMultiMenu');
+const tabMultiHead = document.getElementById('tabMultiHead');
+const multiColorRow = document.getElementById('multiColorRow');
+const multiGroupList = document.getElementById('multiGroupList');
+const groupContextMenu = document.getElementById('groupContextMenu');
+const groupColorRow = document.getElementById('groupColorRow');
+const multiRenameDialog = document.getElementById('multiRenameDialog');
+const multiRenameInput = document.getElementById('multiRenameInput');
+const multiRenameCancel = document.getElementById('multiRenameCancel');
+const multiRenameSave = document.getElementById('multiRenameSave');
+// Fast Save file attach + header title + multi-select
+const fsFileBtn = document.getElementById('fsFileBtn');
+const fsPendingFile = document.getElementById('fsPendingFile');
+const fsPendingFileName = document.getElementById('fsPendingFileName');
+const fsPendingFileRemove = document.getElementById('fsPendingFileRemove');
+const fsHeaderTitle = document.getElementById('fsHeaderTitle');
+const fsSelectBar = document.getElementById('fsSelectBar');
+const fsSelectCount = document.getElementById('fsSelectCount');
+const fsSelectDelete = document.getElementById('fsSelectDelete');
+const fsSelectClear = document.getElementById('fsSelectClear');
 
 // ---------- Helpers ----------
 function uid() {
@@ -254,6 +297,9 @@ const TODO_RE = /^(\s*)- \[( |x)\] /;
 
 // Markdown link: [text](url) — its [text] must not be offered as a placeholder.
 const MDLINK_RE = /\[[^\[\]\r\n]+\]\([^)\r\n]*\)/g;
+
+// Inline bold: **text** — shown bold in the editor with dimmed ** markers.
+const MD_BOLD_RE = /\*\*([^*\r\n]+)\*\*/g;
 
 function findPlaceholderTokens(text) {
   const seen = new Set();
@@ -399,12 +445,13 @@ function currentLine() {
 // The <img> thumbnail is the one zero-textContent addition.
 function highlightLine(el) {
   const text = el.textContent;
-  const hadDecor = !!el.querySelector('.placeholder-tag, .todo-mark, .img-token, .pp-img');
+  const hadDecor = !!el.querySelector('.placeholder-tag, .todo-mark, .img-token, .pp-img, .md-bold, .md-mark');
   const phMatches = settings.placeholdersEnabled ? [...text.matchAll(PLACEHOLDER_RE)] : [];
   const todoM = text.match(TODO_RE);
   const imgMatches = [...text.matchAll(IMG_TOKEN_RE)];
+  const boldMatches = [...text.matchAll(MD_BOLD_RE)];
   el.classList.toggle('todo-done', !!(todoM && todoM[2] === 'x'));
-  if (!phMatches.length && !todoM && !imgMatches.length && !hadDecor) return;
+  if (!phMatches.length && !todoM && !imgMatches.length && !boldMatches.length && !hadDecor) return;
 
   const offset = getCaretOffsetIn(el);
   el.innerHTML = '';
@@ -418,6 +465,9 @@ function highlightLine(el) {
     for (const m of imgMatches) {
       ranges.push({ start: m.index, end: m.index + m[0].length, cls: 'img-token',
         file: m[1], width: m[2] ? Number(m[2]) : null });
+    }
+    for (const m of boldMatches) {
+      ranges.push({ start: m.index, end: m.index + m[0].length, cls: 'md-bold' });
     }
     // Ranges of markdown-link [text] parts, so they aren't tagged as placeholders.
     const linkRanges = [...text.matchAll(MDLINK_RE)].map((m) => [m.index, m.index + m[0].length]);
@@ -433,11 +483,21 @@ function highlightLine(el) {
     for (const r of ranges) {
       if (r.start < last) continue; // overlaps an earlier decoration
       if (r.start > last) el.appendChild(document.createTextNode(text.slice(last, r.start)));
-      const span = document.createElement('span');
-      span.className = r.cls;
-      span.textContent = text.slice(r.start, r.end);
-      el.appendChild(span);
-      if (r.file) imgs.push({ file: r.file, width: r.width });
+      if (r.cls === 'md-bold') {
+        // **text** → dimmed "**" marks + bold inner text (all literal, so the
+        // raw "**text**" still round-trips through getEditorText).
+        const inner = text.slice(r.start + 2, r.end - 2);
+        const mk1 = document.createElement('span'); mk1.className = 'md-mark'; mk1.textContent = '**';
+        const b = document.createElement('span'); b.className = 'md-bold'; b.textContent = inner;
+        const mk2 = document.createElement('span'); mk2.className = 'md-mark'; mk2.textContent = '**';
+        el.appendChild(mk1); el.appendChild(b); el.appendChild(mk2);
+      } else {
+        const span = document.createElement('span');
+        span.className = r.cls;
+        span.textContent = text.slice(r.start, r.end);
+        el.appendChild(span);
+        if (r.file) imgs.push({ file: r.file, width: r.width });
+      }
       last = r.end;
     }
     if (last < text.length) el.appendChild(document.createTextNode(text.slice(last)));
@@ -579,6 +639,7 @@ function updateCounts() {
   const chars = text.length;
   charCountEl.textContent = chars.toLocaleString('en-US') + (chars === 1 ? ' char' : ' chars');
   tokenCountEl.textContent = '~' + estimateTokens(text).toLocaleString('en-US') + ' tokens';
+  updateFilesButton();
 }
 
 // ---------- Placeholder fill bar ----------
@@ -765,7 +826,7 @@ function makeFsTabEl() {
 
   const nameEl = document.createElement('span');
   nameEl.className = 'tab-name';
-  nameEl.textContent = 'Fast Save';
+  nameEl.textContent = fsLabel();
   el.appendChild(nameEl);
 
   const count = fsMessages().length;
@@ -776,8 +837,43 @@ function makeFsTabEl() {
     el.appendChild(badge);
   }
 
-  el.addEventListener('click', () => switchToFastSave());
+  el.addEventListener('click', (e) => {
+    if (e.shiftKey) { e.stopPropagation(); startFsRename(el, nameEl); return; }
+    switchToFastSave();
+  });
+  // double-click also renames
+  nameEl.addEventListener('dblclick', (e) => { e.stopPropagation(); startFsRename(el, nameEl); });
   return el;
+}
+
+function fsLabel() {
+  return (settings.fastSaveName && settings.fastSaveName.trim()) || 'Fast Save';
+}
+
+// Inline-rename the Fast Save label (persists to settings.fastSaveName).
+function startFsRename(el, nameEl) {
+  const input = document.createElement('input');
+  input.className = 'tab-name-input';
+  input.value = fsLabel();
+  input.setAttribute('dir', detectDir(input.value));
+  input.addEventListener('input', () => input.setAttribute('dir', detectDir(input.value)));
+  el.replaceChild(input, nameEl);
+  input.focus();
+  input.select();
+  const commit = () => {
+    const v = input.value.trim();
+    settings.fastSaveName = v || 'Fast Save';
+    saveSettingsNow();
+    renderTabs();
+    if (fsHeaderTitle) fsHeaderTitle.textContent = fsLabel();
+  };
+  input.addEventListener('blur', commit);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+    if (e.key === 'Escape') { input.value = fsLabel(); input.blur(); }
+    e.stopPropagation();
+  });
+  input.addEventListener('click', (e) => e.stopPropagation());
 }
 
 function renderTabs() {
@@ -802,9 +898,13 @@ function renderTabs() {
     const el = document.createElement('div');
     el.className = 'tab' + (tab.id === state.activeId ? ' active' : '') +
       (tab.pinned ? ' pinned' : '') +
-      (tab.id === lastPinnedId ? ' pin-divider' : '');
+      (tab.id === lastPinnedId ? ' pin-divider' : '') +
+      (selectedTabIds.has(tab.id) ? ' selected' : '') +
+      (tab.color ? ' has-color' : '');
     el.dataset.id = tab.id;
     el.draggable = true;
+    // Full-tab tint (whole tab takes the color, not just a dot)
+    if (tab.color) el.style.setProperty('--tab-color', tab.color);
 
     // pin toggle (tiny icon)
     const pinEl = document.createElement('button');
@@ -815,13 +915,6 @@ function renderTabs() {
       '<path d="M14 3l7 7-3 1-1 4-4 4-2-6-6-2 4-4 4-1 1-3z" fill="none" ' +
       'stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>';
     el.appendChild(pinEl);
-
-    if (tab.color) {
-      const colorDot = document.createElement('span');
-      colorDot.className = 'tab-color-dot';
-      colorDot.style.background = tab.color;
-      el.appendChild(colorDot);
-    }
 
     const nameEl = document.createElement('span');
     nameEl.className = 'tab-name';
@@ -836,9 +929,15 @@ function renderTabs() {
     closeEl.title = 'Close';
     el.appendChild(closeEl);
 
-    // switch tab
+    // switch / rename / multi-select
     el.addEventListener('click', (e) => {
       if (e.target.closest('.tab-close') || e.target.closest('.tab-pin')) return;
+      // don't hijack clicks inside the inline rename box
+      if (e.target.closest('.tab-name-input')) return;
+      if (e.ctrlKey && e.shiftKey) { rangeSelectTo(tab.id); return; }
+      if (e.ctrlKey) { toggleTabSelection(tab.id); return; }
+      if (e.shiftKey) { startRename(tab, el, nameEl, i); return; }
+      if (selectedTabIds.size) { selectedTabIds.clear(); }
       switchTab(tab.id);
     });
 
@@ -860,16 +959,25 @@ function renderTabs() {
       togglePin(tab.id);
     });
 
-    // drag & drop
+    // drag & drop (not while renaming)
     el.addEventListener('dragstart', (e) => {
+      if (e.target.closest('.tab-name-input')) { e.preventDefault(); return; }
       el.classList.add('dragging');
       e.dataTransfer.effectAllowed = 'move';
       try { e.dataTransfer.setData('text/plain', tab.id); } catch {}
     });
     el.addEventListener('dragend', onDragEnd);
 
-    // right-click context menu
-    el.addEventListener('contextmenu', (e) => { showCtxMenu(e, tab.id); });
+    // right-click context menu — bulk menu when this tab is part of a
+    // multi-selection, otherwise the normal single-tab menu.
+    el.addEventListener('contextmenu', (e) => {
+      if (selectedTabIds.size > 1 && selectedTabIds.has(tab.id)) {
+        showTabMultiMenu(e);
+      } else {
+        if (selectedTabIds.size) { selectedTabIds.clear(); renderTabs(); }
+        showCtxMenu(e, tab.id);
+      }
+    });
 
     return el;
   };
@@ -888,8 +996,10 @@ function renderTabs() {
   // 1) pinned tabs always on top, regardless of group
   ordered.filter((t) => t.pinned).forEach((t) => tabListEl.appendChild(makeTabEl(t)));
 
-  // 2) each group: header + members (hidden when collapsed)
-  groups.forEach((g) => {
+  // 2) each group: header + members (hidden when collapsed).
+  //    Pinned groups sort to the top (stable within each bucket).
+  const orderedGroups = [...groups].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0));
+  orderedGroups.forEach((g) => {
     const members = ordered.filter((t) => !t.pinned && t.groupId === g.id);
     tabListEl.appendChild(makeGroupHeader(g, members.length));
     if (!g.collapsed) members.forEach((t) => tabListEl.appendChild(makeTabEl(t)));
@@ -902,8 +1012,10 @@ function renderTabs() {
 
 function makeGroupHeader(group, count) {
   const el = document.createElement('div');
-  el.className = 'tab-group-header' + (group.collapsed ? ' collapsed' : '');
+  el.className = 'tab-group-header' + (group.collapsed ? ' collapsed' : '') +
+    (group.color ? ' has-color' : '');
   el.dataset.groupId = group.id;
+  if (group.color) el.style.setProperty('--group-color', group.color);
 
   const chev = document.createElement('span');
   chev.className = 'tab-group-chevron';
@@ -946,6 +1058,8 @@ function makeGroupHeader(group, count) {
     e.stopPropagation();
     dissolveGroup(group.id);
   });
+
+  el.addEventListener('contextmenu', (e) => showGroupCtxMenu(e, group.id));
 
   return el;
 }
@@ -1013,6 +1127,7 @@ function buildCtxGroupList(tab) {
 
 function openGroupDialog(tabId) {
   groupNameDialog.dataset.tabId = tabId;
+  groupNameDialog.dataset.multi = '';
   groupNameInput.value = '';
   groupNameDialog.classList.remove('hidden');
   groupNameInput.focus();
@@ -1021,18 +1136,25 @@ function openGroupDialog(tabId) {
 function closeGroupDialog() {
   groupNameDialog.classList.add('hidden');
   groupNameDialog.dataset.tabId = '';
+  groupNameDialog.dataset.multi = '';
 }
 
 function confirmGroupDialog() {
   const tabId = groupNameDialog.dataset.tabId;
+  const isMulti = groupNameDialog.dataset.multi === '1';
   const name = groupNameInput.value.trim();
   if (!name) { closeGroupDialog(); return; }
   if (!state.groups) state.groups = [];
   const group = { id: uid(), name, collapsed: false };
   state.groups.push(group);
   closeGroupDialog();
-  if (tabId) setTabGroup(tabId, group.id);
-  else { renderTabs(); scheduleSave(); }
+  if (isMulti) {
+    selectedTabIds.forEach((id) => setTabGroupSilent(id, group.id));
+    renderTabs();
+    scheduleSave();
+  } else if (tabId) {
+    setTabGroup(tabId, group.id);
+  } else { renderTabs(); scheduleSave(); }
 }
 
 groupNameCancel.addEventListener('click', closeGroupDialog);
@@ -1155,16 +1277,21 @@ function startRename(tab, tabEl, nameEl, index) {
 // ---------- Fast Save view ----------
 function showEditorView() {
   if (fsEditingId) cancelFsEdit();
+  selectedMsgIds.clear();
+  fsSelectBar.classList.add('hidden');
   appEl.classList.remove('fastsave-active');
   editorBodyEl.classList.remove('hidden');
   fastSaveViewEl.classList.add('hidden');
 }
 
 function showFastSaveView() {
+  selectedTabIds.clear();
   appEl.classList.add('fastsave-active');
   editorBodyEl.classList.add('hidden');
   fastSaveViewEl.classList.remove('hidden');
+  if (fsHeaderTitle) fsHeaderTitle.textContent = fsLabel();
   updateFsInputDir();
+  updateFsSelectBar();
   renderFsMessages();
   fsInputEl.focus();
 }
@@ -1198,6 +1325,7 @@ function fmtMsgTime(ts) {
 
 // Message model: { id, ts, text, image? } — image is a saved ppimg filename.
 let fsPendingImage = null; // filename staged for the next send (Telegram-style)
+let fsPendingFileMeta = null; // {name, storedName, size, ext} staged for the next send
 let fsFilterQuery = '';
 let fsEditingId = null;    // id of the message currently being edited, if any
 
@@ -1228,16 +1356,55 @@ function renderFsMessages() {
 
   msgs.forEach((m) => {
     const row = document.createElement('div');
-    row.className = 'fs-msg' + (m.id === fsEditingId ? ' editing' : '');
+    row.className = 'fs-msg' + (m.id === fsEditingId ? ' editing' : '') +
+      (selectedMsgIds.has(m.id) ? ' selected' : '');
     row.dataset.msgId = m.id;
+
+    // Ctrl+click anywhere on the bubble (not on a button/image) toggles select.
+    row.addEventListener('click', (e) => {
+      if (!e.ctrlKey) return;
+      if (e.target.closest('button') || e.target.closest('img')) return;
+      e.preventDefault();
+      toggleMsgSelection(m.id);
+    });
 
     if (m.image) {
       const img = document.createElement('img');
       img.className = 'fs-msg-img';
       img.src = 'ppimg://' + m.image;
       img.draggable = false;
-      img.addEventListener('click', () => openLightbox('ppimg://' + m.image));
+      img.addEventListener('click', (e) => { if (e.ctrlKey) { toggleMsgSelection(m.id); return; } openLightbox('ppimg://' + m.image); });
       row.appendChild(img);
+    }
+
+    if (m.file) {
+      const chip = document.createElement('div');
+      chip.className = 'fs-msg-file';
+      const ic = document.createElement('span');
+      ic.className = 'fs-msg-file-icon';
+      ic.innerHTML = '<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M6 3h8l4 4v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M14 3v4h4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>';
+      const info = document.createElement('div');
+      info.className = 'fs-msg-file-info';
+      const nm = document.createElement('div');
+      nm.className = 'fs-msg-file-name';
+      nm.textContent = m.file.name;
+      nm.setAttribute('dir', detectDir(m.file.name));
+      const sz = document.createElement('div');
+      sz.className = 'fs-msg-file-size';
+      sz.textContent = fmtSize(m.file.size);
+      info.appendChild(nm); info.appendChild(sz);
+      const openB = document.createElement('button');
+      openB.className = 'fs-msg-file-btn';
+      openB.title = 'Open';
+      openB.textContent = 'Open';
+      openB.addEventListener('click', () => window.api.openFile(m.file.storedName));
+      const saveB = document.createElement('button');
+      saveB.className = 'fs-msg-file-btn';
+      saveB.title = 'Save as…';
+      saveB.textContent = 'Save';
+      saveB.addEventListener('click', () => window.api.saveFileAs(m.file.storedName, m.file.name));
+      chip.appendChild(ic); chip.appendChild(info); chip.appendChild(openB); chip.appendChild(saveB);
+      row.appendChild(chip);
     }
 
     if (m.text) {
@@ -1341,18 +1508,64 @@ function fsSendMessage() {
     return;
   }
 
-  if (!text.trim() && !fsPendingImage) return;
+  if (!text.trim() && !fsPendingImage && !fsPendingFileMeta) return;
   const msg = { id: uid(), ts: Date.now(), text };
   if (fsPendingImage) msg.image = fsPendingImage;
+  if (fsPendingFileMeta) msg.file = fsPendingFileMeta;
   fsMessages().push(msg);
   fsInputEl.value = '';
   setFsPendingImage(null);
+  setFsPendingFile(null);
   fsAutoGrow();
   updateFsInputDir();
   renderFsMessages();
   renderTabs(); // refresh the count badge
   scheduleSave();
   fsInputEl.focus();
+}
+
+// Stage / clear a file for the next Fast Save message.
+function setFsPendingFile(meta) {
+  fsPendingFileMeta = meta || null;
+  if (fsPendingFileMeta) {
+    fsPendingFileName.textContent = fsPendingFileMeta.name + '  ·  ' + fmtSize(fsPendingFileMeta.size);
+    fsPendingFile.classList.remove('hidden');
+  } else {
+    fsPendingFileName.textContent = '';
+    fsPendingFile.classList.add('hidden');
+  }
+}
+
+// ---------- Fast Save: message multi-select ----------
+function toggleMsgSelection(id) {
+  if (selectedMsgIds.has(id)) selectedMsgIds.delete(id);
+  else selectedMsgIds.add(id);
+  updateFsSelectBar();
+  renderFsMessages();
+}
+function clearMsgSelection() {
+  if (!selectedMsgIds.size) return;
+  selectedMsgIds.clear();
+  updateFsSelectBar();
+  renderFsMessages();
+}
+function updateFsSelectBar() {
+  const n = selectedMsgIds.size;
+  if (n) {
+    fsSelectCount.textContent = n + (n === 1 ? ' selected' : ' selected');
+    fsSelectBar.classList.remove('hidden');
+  } else {
+    fsSelectBar.classList.add('hidden');
+  }
+}
+function deleteSelectedMsgs() {
+  if (!selectedMsgIds.size) return;
+  state.fastSave.messages = fsMessages().filter((m) => !selectedMsgIds.has(m.id));
+  selectedMsgIds.clear();
+  updateFsSelectBar();
+  renderFsMessages();
+  renderTabs();
+  scheduleSave();
 }
 
 // ---------- Fast Save: edit a message in place ----------
@@ -1416,6 +1629,17 @@ fsInputEl.addEventListener('paste', (e) => {
   saveImageBlob(file).then((r) => { if (r && r.filename) setFsPendingImage(r.filename); });
 });
 fsPendingRemove.addEventListener('click', () => { setFsPendingImage(null); fsInputEl.focus(); });
+
+// Attach a file to the next Fast Save message (Telegram-style).
+fsFileBtn.addEventListener('click', async () => {
+  const picked = await window.api.pickFiles();
+  if (picked && picked.length) { setFsPendingFile(picked[0]); fsInputEl.focus(); }
+});
+fsPendingFileRemove.addEventListener('click', () => { setFsPendingFile(null); fsInputEl.focus(); });
+
+// Fast Save multi-select action bar
+fsSelectDelete.addEventListener('click', deleteSelectedMsgs);
+fsSelectClear.addEventListener('click', clearMsgSelection);
 
 // ---------- Fast Save: message search / filter ----------
 function openFsSearch() {
@@ -1729,6 +1953,231 @@ document.addEventListener('click', (e) => {
   if (!ctxMenuEl.classList.contains('hidden') && !ctxMenuEl.contains(e.target)) {
     hideCtxMenu();
   }
+});
+
+// ---------- Tab multi-selection ----------
+function toggleTabSelection(id) {
+  if (selectedTabIds.has(id)) selectedTabIds.delete(id);
+  else selectedTabIds.add(id);
+  lastClickedTabId = id;
+  renderTabs();
+}
+
+// Add every tab between the last-clicked one and this one (in rail order).
+function rangeSelectTo(id) {
+  const order = orderedTabs().map((t) => t.id);
+  const a = order.indexOf(lastClickedTabId);
+  const b = order.indexOf(id);
+  if (b === -1) return;
+  if (a === -1) { selectedTabIds.add(id); lastClickedTabId = id; renderTabs(); return; }
+  const [lo, hi] = a <= b ? [a, b] : [b, a];
+  for (let k = lo; k <= hi; k++) selectedTabIds.add(order[k]);
+  lastClickedTabId = id;
+  renderTabs();
+}
+
+function clearTabSelection() {
+  if (!selectedTabIds.size) return;
+  selectedTabIds.clear();
+  renderTabs();
+}
+
+// Position a floating menu at the cursor, clamped to the viewport.
+function placeMenuAt(menuEl, e) {
+  menuEl.style.left = e.clientX + 'px';
+  menuEl.style.top = e.clientY + 'px';
+  menuEl.classList.remove('hidden');
+  requestAnimationFrame(() => {
+    const rect = menuEl.getBoundingClientRect();
+    const vw = document.documentElement.clientWidth;
+    const vh = document.documentElement.clientHeight;
+    if (rect.right > vw - 4) menuEl.style.left = Math.max(4, vw - rect.width - 4) + 'px';
+    if (rect.bottom > vh - 4) menuEl.style.top = Math.max(4, vh - rect.height - 4) + 'px';
+  });
+}
+
+// Build a color swatch row into `container`; onPick(color) fires per swatch.
+// `activeColor` (optional) marks the currently-selected swatch.
+function buildColorRow(container, onPick, activeColor) {
+  container.innerHTML = '';
+  TAB_COLORS.forEach((color) => {
+    const sw = document.createElement('span');
+    sw.className = 'ctx-swatch' + (color === null ? ' ctx-swatch--none' : '') +
+      (color === (activeColor || null) ? ' active' : '');
+    if (color) sw.style.background = color;
+    sw.title = color || 'None';
+    sw.addEventListener('click', (e) => { e.stopPropagation(); onPick(color); });
+    container.appendChild(sw);
+  });
+}
+
+// Build a group picker into `container`; onPick(groupId|null) per option.
+function buildGroupPicker(container, onPick, onNew) {
+  container.innerHTML = '';
+  const mk = (label, cb) => {
+    const b = document.createElement('button');
+    b.className = 'ctx-group-item';
+    b.textContent = label;
+    b.setAttribute('dir', detectDir(label));
+    b.addEventListener('click', (e) => { e.stopPropagation(); cb(); });
+    container.appendChild(b);
+  };
+  mk('None', () => onPick(null));
+  (state.groups || []).forEach((g) => mk(g.name, () => onPick(g.id)));
+  mk('+ New…', onNew);
+}
+
+function showTabMultiMenu(e) {
+  e.preventDefault();
+  const n = selectedTabIds.size;
+  tabMultiHead.textContent = n + (n === 1 ? ' tab selected' : ' tabs selected');
+  buildColorRow(multiColorRow, (color) => {
+    selectedTabIds.forEach((id) => { const t = state.tabs.find((x) => x.id === id); if (t) t.color = color || null; });
+    hideTabMultiMenu();
+    renderTabs();
+    scheduleSave();
+  });
+  buildGroupPicker(multiGroupList,
+    (gid) => {
+      selectedTabIds.forEach((id) => setTabGroupSilent(id, gid));
+      if (gid) { const g = (state.groups || []).find((x) => x.id === gid); if (g) g.collapsed = false; }
+      hideTabMultiMenu();
+      renderTabs();
+      scheduleSave();
+    },
+    () => { hideTabMultiMenu(); openMultiGroupDialog(); });
+  placeMenuAt(tabMultiMenu, e);
+}
+function hideTabMultiMenu() { tabMultiMenu.classList.add('hidden'); }
+
+// Assign group without re-rendering (used in bulk loops).
+function setTabGroupSilent(tabId, groupId) {
+  const t = state.tabs.find((x) => x.id === tabId);
+  if (t) t.groupId = groupId;
+}
+
+tabMultiMenu.addEventListener('click', (e) => {
+  const item = e.target.closest('[data-multi-action]');
+  if (!item) return;
+  const action = item.dataset.multiAction;
+  hideTabMultiMenu();
+  if (action === 'rename') {
+    multiRenameInput.value = '';
+    multiRenameDialog.classList.remove('hidden');
+    multiRenameInput.focus();
+  } else if (action === 'close') {
+    const ids = [...selectedTabIds];
+    selectedTabIds.clear();
+    ids.forEach((id) => closeTab(id));
+  }
+});
+
+// Apply "1/base", "2/base" … to the selected tabs in rail order.
+function applyMultiRename(base) {
+  const order = orderedTabs().filter((t) => selectedTabIds.has(t.id));
+  order.forEach((t, idx) => { t.name = (idx + 1) + '/' + base; t.custom = true; });
+  renderTabs();
+  scheduleSave();
+}
+multiRenameCancel.addEventListener('click', () => multiRenameDialog.classList.add('hidden'));
+function confirmMultiRename() {
+  const base = multiRenameInput.value.trim();
+  multiRenameDialog.classList.add('hidden');
+  if (base) applyMultiRename(base);
+}
+multiRenameSave.addEventListener('click', confirmMultiRename);
+multiRenameInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); confirmMultiRename(); }
+  if (e.key === 'Escape') { multiRenameDialog.classList.add('hidden'); }
+});
+
+// Create a new group and move all selected tabs into it.
+function openMultiGroupDialog() {
+  groupNameDialog.dataset.multi = '1';
+  groupNameInput.value = '';
+  groupNameDialog.classList.remove('hidden');
+  groupNameInput.focus();
+}
+
+// ---------- Group-header context menu ----------
+let groupCtxId = null;
+function showGroupCtxMenu(e, groupId) {
+  e.preventDefault();
+  groupCtxId = groupId;
+  const group = (state.groups || []).find((g) => g.id === groupId);
+  const pinItem = groupContextMenu.querySelector('[data-group-action="pin"]');
+  if (pinItem) pinItem.textContent = (group && group.pinned) ? 'Unpin group' : 'Pin group';
+  buildColorRow(groupColorRow, (color) => {
+    // Color the group header itself — members stay untouched.
+    if (group) group.color = color || null;
+    hideGroupCtxMenu();
+    renderTabs();
+    scheduleSave();
+  }, group && group.color);
+  placeMenuAt(groupContextMenu, e);
+}
+
+// All member tabs of a group, joined "## name" + content with --- separators.
+function groupContentJoined(groupId) {
+  syncEditorToState();
+  const members = orderedTabs().filter((t) => t.groupId === groupId);
+  return members
+    .map((t) => '## ' + autoName(t, state.tabs.indexOf(t)) + '\n\n' + (t.content || ''))
+    .join('\n\n---\n\n');
+}
+
+// Duplicate a group and all its member tabs into a new group.
+function duplicateGroup(groupId) {
+  syncEditorToState();
+  const src = (state.groups || []).find((g) => g.id === groupId);
+  if (!src) return;
+  const ng = { id: uid(), name: src.name + ' copy', collapsed: false, color: src.color || null, pinned: !!src.pinned };
+  state.groups.push(ng);
+  const members = orderedTabs().filter((t) => t.groupId === groupId);
+  members.forEach((t) => {
+    state.tabs.push({
+      id: uid(), name: t.name, custom: t.custom, content: t.content,
+      dir: t.dir, color: t.color || null, groupId: ng.id
+    });
+  });
+  renderTabs();
+  scheduleSave();
+}
+function hideGroupCtxMenu() { groupContextMenu.classList.add('hidden'); groupCtxId = null; }
+
+groupContextMenu.addEventListener('click', (e) => {
+  const item = e.target.closest('[data-group-action]');
+  if (!item || !groupCtxId) return;
+  const id = groupCtxId;
+  const action = item.dataset.groupAction;
+  const group = (state.groups || []).find((g) => g.id === id);
+  hideGroupCtxMenu();
+  switch (action) {
+    case 'rename': {
+      const headerEl = tabListEl.querySelector('.tab-group-header[data-group-id="' + id + '"]');
+      const nameEl = headerEl && headerEl.querySelector('.tab-group-name');
+      if (nameEl && group) startGroupRename(group, nameEl);
+      break;
+    }
+    case 'duplicate': duplicateGroup(id); break;
+    case 'copy': {
+      const text = groupContentJoined(id);
+      if (text) navigator.clipboard.writeText(text).catch((err) => console.error(err));
+      break;
+    }
+    case 'export':
+      if (group) window.api.exportNote(group.name, groupContentJoined(id), 'md');
+      break;
+    case 'pin':
+      if (group) { group.pinned = !group.pinned; renderTabs(); scheduleSave(); }
+      break;
+    case 'ungroup': dissolveGroup(id); break;
+  }
+});
+
+document.addEventListener('click', (e) => {
+  if (!tabMultiMenu.classList.contains('hidden') && !tabMultiMenu.contains(e.target)) hideTabMultiMenu();
+  if (!groupContextMenu.classList.contains('hidden') && !groupContextMenu.contains(e.target)) hideGroupCtxMenu();
 });
 
 // ---------- Templates ----------
@@ -2720,16 +3169,121 @@ copyBtn.addEventListener('click', async () => {
   if (!t || !t.content) return;
   try {
     await navigator.clipboard.writeText(t.content);
-    copyBtn.classList.add('copied');
-    copyLabel.textContent = 'copied!';
-    setTimeout(() => {
-      copyBtn.classList.remove('copied');
-      copyLabel.textContent = 'copy';
-    }, 1300);
+    copyBtn.classList.add('copied'); // swaps to a check + accent tint (CSS)
+    setTimeout(() => copyBtn.classList.remove('copied'), 1300);
   } catch (e) {
     console.error('copy failed', e);
   }
 });
+
+// Paste clipboard text into the editor at the caret. Routed through
+// execCommand so it fires the normal input pipeline (multi-line split,
+// per-line RTL, undo).
+pasteBtn.addEventListener('click', async () => {
+  if (mdOn || fsActive()) return;
+  let text = '';
+  try { text = await navigator.clipboard.readText(); } catch (e) { console.error('paste failed', e); return; }
+  if (!text) return;
+  editorEl.focus();
+  const ok = document.execCommand('insertText', false, text);
+  if (!ok) insertAtCaret(text);
+  pasteBtn.classList.add('copied');
+  setTimeout(() => pasteBtn.classList.remove('copied'), 700);
+});
+
+// ---------- Per-tab file attachments ----------
+function fmtSize(bytes) {
+  const b = Number(bytes) || 0;
+  if (b < 1024) return b + ' B';
+  if (b < 1024 * 1024) return (b / 1024).toFixed(1) + ' KB';
+  return (b / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+// Reflect the active tab's file count on the status-bar files button.
+function updateFilesButton() {
+  const t = activeTab();
+  const n = (t && t.files && t.files.length) || 0;
+  if (!filesCountEl) return;
+  if (n) { filesCountEl.textContent = n; filesCountEl.classList.remove('hidden'); }
+  else filesCountEl.classList.add('hidden');
+}
+
+function openFilesPanel() {
+  if (fsActive() || !activeTab()) return;
+  renderFilesList();
+  filesOverlay.classList.remove('hidden');
+}
+function closeFilesPanel() { filesOverlay.classList.add('hidden'); }
+
+function renderFilesList() {
+  const t = activeTab();
+  filesListEl.innerHTML = '';
+  const files = (t && t.files) || [];
+  filesEmptyEl.classList.toggle('hidden', files.length > 0);
+  files.forEach((f) => {
+    const row = document.createElement('div');
+    row.className = 'file-row';
+
+    const info = document.createElement('div');
+    info.className = 'file-row-info';
+    const nameEl = document.createElement('div');
+    nameEl.className = 'file-row-name';
+    nameEl.textContent = f.name;
+    nameEl.title = f.name;
+    nameEl.setAttribute('dir', detectDir(f.name));
+    const meta = document.createElement('div');
+    meta.className = 'file-row-meta';
+    meta.textContent = fmtSize(f.size);
+    info.appendChild(nameEl);
+    info.appendChild(meta);
+
+    const actions = document.createElement('div');
+    actions.className = 'file-row-actions';
+    const mkBtn = (label, cls, cb) => {
+      const b = document.createElement('button');
+      b.className = 'file-act ' + cls;
+      b.textContent = label;
+      b.addEventListener('click', cb);
+      actions.appendChild(b);
+    };
+    mkBtn('Open', 'file-open', () => window.api.openFile(f.storedName));
+    mkBtn('Save as…', 'file-save', () => window.api.saveFileAs(f.storedName, f.name));
+    mkBtn('Reveal', 'file-reveal', () => window.api.revealFile(f.storedName));
+    mkBtn('Remove', 'file-remove', () => removeTabFile(f.id));
+
+    row.appendChild(info);
+    row.appendChild(actions);
+    filesListEl.appendChild(row);
+  });
+}
+
+async function addFilesToTab() {
+  const t = activeTab();
+  if (!t) return;
+  const picked = await window.api.pickFiles();
+  if (!picked || !picked.length) return;
+  t.files = t.files || [];
+  picked.forEach((f) => t.files.push({ id: uid(), ...f }));
+  renderFilesList();
+  updateFilesButton();
+  scheduleSave();
+}
+
+function removeTabFile(id) {
+  const t = activeTab();
+  if (!t || !t.files) return;
+  const f = t.files.find((x) => x.id === id);
+  if (f) window.api.deleteFile(f.storedName);
+  t.files = t.files.filter((x) => x.id !== id);
+  renderFilesList();
+  updateFilesButton();
+  scheduleSave();
+}
+
+filesBtn.addEventListener('click', openFilesPanel);
+filesClose.addEventListener('click', closeFilesPanel);
+filesAddBtn.addEventListener('click', addFilesToTab);
+filesOverlay.addEventListener('click', (e) => { if (e.target === filesOverlay) closeFilesPanel(); });
 
 pinBtn.addEventListener('click', async () => {
   const on = await window.api.toggleAlwaysOnTop();
@@ -2906,6 +3460,51 @@ function applySettings() {
     '--placeholder-width', (settings.placeholderBarWidth || 220) + 'px');
   applyPlaceholderCollapsed();
   applyJustify();
+  applyToolbarButtons();
+}
+
+// ---------- Toolbar buttons show/hide ----------
+const TOOLBAR_BUTTONS = [
+  { key: 'todo', label: 'Todo', el: () => todoBtn },
+  { key: 'emoji', label: 'Emoji', el: () => emojiBtn },
+  { key: 'link', label: 'Link', el: () => linkBtn },
+  { key: 'justify', label: 'Justify', el: () => justifyBtn },
+  { key: 'clean', label: 'Clean', el: () => cleanBtn },
+  { key: 'md', label: 'Markdown', el: () => mdBtn },
+  { key: 'paste', label: 'Paste', el: () => pasteBtn },
+  { key: 'copy', label: 'Copy', el: () => copyBtn },
+  { key: 'img', label: 'Image', el: () => imgBtn },
+  { key: 'files', label: 'Attach File', el: () => filesBtn }
+];
+
+function toolbarPref(key) {
+  return !settings.toolbar || settings.toolbar[key] !== false;
+}
+
+function applyToolbarButtons() {
+  TOOLBAR_BUTTONS.forEach((b) => {
+    const el = b.el();
+    if (el) el.classList.toggle('hidden', !toolbarPref(b.key));
+  });
+}
+
+// Row of clickable chips (one per button) — click toggles that button on/off.
+function buildToolbarChips() {
+  if (!toolbarRow) return;
+  toolbarRow.innerHTML = '';
+  TOOLBAR_BUTTONS.forEach((b) => {
+    const chip = document.createElement('button');
+    chip.className = 'toolbar-chip' + (toolbarPref(b.key) ? ' active' : '');
+    chip.textContent = b.label;
+    chip.addEventListener('click', () => {
+      if (!settings.toolbar) settings.toolbar = {};
+      settings.toolbar[b.key] = !toolbarPref(b.key);
+      chip.classList.toggle('active', toolbarPref(b.key));
+      applyToolbarButtons();
+      saveSettingsNow();
+    });
+    toolbarRow.appendChild(chip);
+  });
 }
 
 // ---------- Placeholder panel collapse ----------
@@ -2989,6 +3588,7 @@ function buildFontPicker() {
 function syncSettingsUI() {
   buildThemeSwatches();
   buildFontPicker();
+  buildToolbarChips();
   updateFontSizeLabel();
   layoutSeg.querySelectorAll('.seg-btn').forEach((b) => {
     b.classList.toggle('active', b.dataset.layout === settings.tabPosition);
@@ -3651,25 +4251,23 @@ const CURRENT_VERSION = document.getElementById('aboutVersion').textContent.repl
 const WHATS_NEW =
   "What's new in v" + CURRENT_VERSION + " ✨\n" +
   '\n' +
-  'PromptPad 2.0 — a big one.\n' +
+  'PromptPad 2.1 — tabs & files.\n' +
   '\n' +
-  '• Fast Save — a Telegram-style "saved messages" note above your tabs.\n' +
-  '   Type and press Enter to save; attach images (paste or 🖼) with a\n' +
-  '   caption, edit or delete any message, search them, and browse them\n' +
-  '   in a media gallery (right-click → Go to message).\n' +
-  '• Quick capture — Ctrl+Shift+Space pops a small floating box from\n' +
-  '   anywhere, without raising the app. Type/paste, Enter → Fast Save.\n' +
-  '• Images in notes — paste (Ctrl+V), the image button, or drop a file.\n' +
-  '   Drag a corner to resize, right-click to save or remove, click to zoom.\n' +
-  '• Todo checklists — the checkbox button or "- [ ] "; select many lines\n' +
-  '   to turn them all into todos at once; click a box to toggle done.\n' +
-  '• Formatting — Ctrl+B bold, Ctrl+K link, emoji picker, justify, and a\n' +
-  '   clean-up button that tidies extra spaces. Links open from the md view.\n' +
-  '• Search button in the title bar — all-tabs and Fast Save search.\n' +
-  '• Collapsible placeholder panel — collapses to a slim arrow.\n' +
-  '• Backup — export/import all data as JSON in Settings → Backup;\n' +
-  '   export a single note to .md/.txt from its right-click menu.\n' +
-  '• Drag & drop — drop .txt/.md files to make tabs, images to insert.\n' +
+  '• Multi-select tabs — Ctrl+click to pick several (Ctrl+Shift+click for a\n' +
+  '   range), then right-click for bulk actions: rename as 1/name, 2/name…,\n' +
+  '   set a color, move to a group, or close them all at once.\n' +
+  '• Shift+click a tab to rename it.\n' +
+  '• Group headers — right-click to rename, duplicate, copy/export content,\n' +
+  '   color the whole group, pin it to the top, or ungroup.\n' +
+  '• Per-tab files — the files button by the status bar: attach files to a\n' +
+  '   tab, then open / save a copy / reveal / remove them.\n' +
+  '• Fast Save files — attach a file to a message (like Telegram), and\n' +
+  '   Ctrl+click messages to multi-select and delete. Rename the Fast Save\n' +
+  '   label by Shift+clicking it.\n' +
+  '• Paste button next to Copy.\n' +
+  '• Bold (Ctrl+B) now hides the ** marks — just clean bold text.\n' +
+  '• Settings → Toolbar buttons — show or hide any status-bar button.\n' +
+  '• Fix — restoring from the tray no longer makes a duplicate taskbar icon.\n' +
   '\n' +
   'You can close this tab — it won\'t come back until the next update.';
 
@@ -3814,6 +4412,8 @@ window.addEventListener('drop', async (e) => {
 (async function init() {
   const savedSettings = await window.api.loadSettings();
   settings = { ...DEFAULT_SETTINGS, ...(savedSettings || {}) };
+  // ensure every toolbar key exists even if an older save lacked some
+  settings.toolbar = { ...DEFAULT_SETTINGS.toolbar, ...(settings.toolbar || {}) };
   // reflect real OS startup state
   try { settings.launchAtStartup = await window.api.getStartup(); } catch {}
   applySettings();
@@ -3851,12 +4451,18 @@ window.addEventListener('drop', async (e) => {
     if (e.key !== 'Escape') return;
     if (!emojiPanel.classList.contains('hidden')) { hideEmojiPanel(); return; }
     if (!imgContextMenu.classList.contains('hidden')) { hideImgContextMenu(); return; }
+    if (!tabMultiMenu.classList.contains('hidden')) { hideTabMultiMenu(); return; }
+    if (!groupContextMenu.classList.contains('hidden')) { hideGroupCtxMenu(); return; }
     if (!lightboxEl.classList.contains('hidden')) { closeLightbox(); return; }
     if (!quickCaptureOverlay.classList.contains('hidden')) { closeQuickCapture(); return; }
     if (!galleryOverlay.classList.contains('hidden')) { closeGallery(); return; }
+    if (!filesOverlay.classList.contains('hidden')) { closeFilesPanel(); return; }
     if (!linkDialog.classList.contains('hidden')) { closeLinkDialog(); return; }
+    if (!multiRenameDialog.classList.contains('hidden')) { multiRenameDialog.classList.add('hidden'); return; }
     if (!ctxMenuEl.classList.contains('hidden')) { hideCtxMenu(); return; }
     if (!importConfirmDialog.classList.contains('hidden')) { closeImportConfirm(); return; }
+    if (fsActive() && selectedMsgIds.size) { clearMsgSelection(); return; }
+    if (selectedTabIds.size) { clearTabSelection(); return; }
     if (fsActive() && !fsSearchBar.classList.contains('hidden')) { closeFsSearch(); return; }
     if (!findBarEl.classList.contains('hidden')) { closeFind(); return; }
     if (mdOn && !fsActive()) { setMdPreview(false); return; }

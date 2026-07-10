@@ -1,4 +1,4 @@
-const { app, protocol } = require('electron');
+const { app, protocol, clipboard, nativeImage } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { pathToFileURL } = require('url');
@@ -142,8 +142,14 @@ if (!app.requestSingleInstanceLock()) {
   const { BrowserWindow, ipcMain, shell, Tray, Menu, dialog, net, globalShortcut } = require('electron');
 
   DATA_FILE = path.join(app.getPath('userData'), 'promptpad-data.json');
-  IMAGES_DIR = path.join(app.getPath('userData'), 'images');
-  FILES_DIR = path.join(app.getPath('userData'), 'files');
+
+  // Images/files live under a base folder that defaults to userData but can be
+  // redirected by the user (Settings → Storage) to any writable folder.
+  const savedForStorage = readData();
+  const storagePath = savedForStorage && savedForStorage.settings && savedForStorage.settings.storagePath;
+  const storageBase = storagePath || app.getPath('userData');
+  IMAGES_DIR = path.join(storageBase, 'images');
+  FILES_DIR = path.join(storageBase, 'files');
   try { fs.mkdirSync(IMAGES_DIR, { recursive: true }); } catch {}
   try { fs.mkdirSync(FILES_DIR, { recursive: true }); } catch {}
 
@@ -163,6 +169,18 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   // ---- IPC ----
+  ipcMain.handle('copy-image-clipboard', (_e, filename) => {
+    try {
+      const img = nativeImage.createFromPath(path.join(IMAGES_DIR, filename));
+      if (img.isEmpty()) return false;
+      clipboard.writeImage(img);
+      return true;
+    } catch (err) {
+      console.error('copy image failed', err);
+      return false;
+    }
+  });
+
   ipcMain.handle('load-notes', () => {
     const data = readData();
     return data && data.notes ? data.notes : null;
@@ -312,6 +330,16 @@ if (!app.requestSingleInstanceLock()) {
     }
   });
 
+  ipcMain.handle('reveal-image', (_e, filename) => {
+    if (typeof filename !== 'string' || !/^[a-z0-9._-]+$/i.test(filename) || filename.includes('..')) {
+      return { ok: false };
+    }
+    const p = path.join(IMAGES_DIR, filename);
+    if (!fs.existsSync(p)) return { ok: false };
+    shell.showItemInFolder(p);
+    return { ok: true };
+  });
+
   ipcMain.handle('pick-image', async () => {
     if (!mainWindow) return null;
     const res = await dialog.showOpenDialog(mainWindow, {
@@ -403,6 +431,59 @@ if (!app.requestSingleInstanceLock()) {
     if (!safeStored(storedName)) return { ok: false };
     try { fs.unlinkSync(storedPath(storedName)); } catch {}
     return { ok: true };
+  });
+
+  // ---- Storage location (where attached images/files are kept) ----
+  ipcMain.handle('get-storage-path', () => {
+    const data = readData();
+    const custom = data && data.settings && data.settings.storagePath;
+    return { path: custom || app.getPath('userData'), isDefault: !custom };
+  });
+
+  ipcMain.handle('pick-storage-folder', async () => {
+    if (!mainWindow) return null;
+    const res = await dialog.showOpenDialog(mainWindow, {
+      title: 'Choose a folder for images & files',
+      properties: ['openDirectory', 'createDirectory']
+    });
+    if (res.canceled || !res.filePaths.length) return null;
+    return res.filePaths[0];
+  });
+
+  ipcMain.handle('set-storage-path', (_e, newBase) => {
+    if (typeof newBase !== 'string' || !newBase) return { ok: false };
+    try {
+      const newImages = path.join(newBase, 'images');
+      const newFiles = path.join(newBase, 'files');
+      if (path.resolve(newImages) === path.resolve(IMAGES_DIR)) {
+        return { ok: true, path: newBase }; // already there — no-op
+      }
+      fs.mkdirSync(newImages, { recursive: true });
+      fs.mkdirSync(newFiles, { recursive: true });
+      // Copy first (so a failure never leaves us with data missing from both
+      // places), only remove the old folders once the copy has succeeded.
+      fs.cpSync(IMAGES_DIR, newImages, { recursive: true });
+      fs.cpSync(FILES_DIR, newFiles, { recursive: true });
+      const oldImages = IMAGES_DIR, oldFiles = FILES_DIR;
+      IMAGES_DIR = newImages;
+      FILES_DIR = newFiles;
+      try { fs.rmSync(oldImages, { recursive: true, force: true }); } catch {}
+      try { fs.rmSync(oldFiles, { recursive: true, force: true }); } catch {}
+      const data = readData() || {};
+      data.settings = { ...(data.settings || {}), storagePath: newBase };
+      writeData(data);
+      return { ok: true, path: newBase };
+    } catch (err) {
+      console.error('set-storage-path failed', err);
+      return { ok: false, error: String(err && err.message || err) };
+    }
+  });
+
+  ipcMain.handle('open-storage-folder', () => {
+    const data = readData();
+    const base = (data && data.settings && data.settings.storagePath) || app.getPath('userData');
+    shell.openPath(base);
+    return true;
   });
 
   // ---- Backup: export / import ----
@@ -559,7 +640,7 @@ if (!app.requestSingleInstanceLock()) {
   // Tray icon — always available for quick show/hide; the "close to tray"
   // setting only controls what the window × button does.
   try {
-    tray = new Tray(path.join(__dirname, 'build', 'icon.ico'));
+    tray = new Tray(path.join(__dirname, 'build', process.platform === 'win32' ? 'icon.ico' : 'icon.png'));
     tray.setToolTip('PromptPad');
     tray.setContextMenu(Menu.buildFromTemplate([
       { label: 'Show PromptPad', click: () => { if (mainWindow) { mainWindow.show(); mainWindow.focus(); } } },

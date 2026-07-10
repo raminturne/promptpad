@@ -176,6 +176,11 @@ const fsSendBtn = document.getElementById('fsSend');
 const toggleFastSaveEl = document.getElementById('toggleFastSave');
 // quick capture
 const toggleQuickCaptureEl = document.getElementById('toggleQuickCapture');
+// storage
+const storagePathValueEl = document.getElementById('storagePathValue');
+const changeStorageBtn = document.getElementById('changeStorageBtn');
+const changeStorageLabel = document.getElementById('changeStorageLabel');
+const openStorageBtn = document.getElementById('openStorageBtn');
 // backup
 const exportDataBtn = document.getElementById('exportDataBtn');
 const exportDataLabel = document.getElementById('exportDataLabel');
@@ -203,6 +208,7 @@ const linkCancel = document.getElementById('linkCancel');
 const linkSave = document.getElementById('linkSave');
 // image context menu
 const imgContextMenu = document.getElementById('imgContextMenu');
+const textContextMenu = document.getElementById('textContextMenu');
 const toggleImageResizeEl = document.getElementById('toggleImageResize');
 const toggleImageDownloadEl = document.getElementById('toggleImageDownload');
 // fast save extras
@@ -2638,7 +2644,7 @@ editorEl.addEventListener('mousedown', (e) => {
   }
   if (t.closest('.pp-img-resize')) return; // handled by the resize listener
   const img = t.closest('.pp-img');
-  if (img) {
+  if (img && e.button === 0) {
     e.preventDefault();
     openLightbox(img.getAttribute('src'));
   }
@@ -2792,6 +2798,15 @@ document.addEventListener('contextmenu', (e) => {
   });
 });
 
+// Copy an image to the OS clipboard via Electron's native clipboard API.
+async function copyImageToClipboard(file) {
+  try {
+    await window.api.copyImageToClipboard(file);
+  } catch (err) {
+    console.error('copy image failed', err);
+  }
+}
+
 imgContextMenu.addEventListener('click', (e) => {
   const item = e.target.closest('[data-img-action]');
   if (!item || !imgCtxTarget) return;
@@ -2799,6 +2814,8 @@ imgContextMenu.addEventListener('click', (e) => {
   const action = item.dataset.imgAction;
   hideImgContextMenu();
   if (action === 'download') window.api.downloadImage(file);
+  else if (action === 'copy') copyImageToClipboard(file);
+  else if (action === 'reveal') window.api.revealImage(file);
   else if (action === 'zoom') openLightbox('ppimg://' + file);
   else if (action === 'delete' && line) removeImageFromLine(line, wrap);
   else if (action === 'goto' && msgId) gotoFsMessage(msgId);
@@ -2807,6 +2824,91 @@ imgContextMenu.addEventListener('click', (e) => {
 document.addEventListener('click', (e) => {
   if (!imgContextMenu.classList.contains('hidden') && !imgContextMenu.contains(e.target)) {
     hideImgContextMenu();
+  }
+});
+
+// ---------- Generic text edit context menu (cut/copy/paste/select all) ----------
+// Fallback for any editable field or plain text selection that isn't already
+// handled by a more specific menu (tabs, groups, images — all of which call
+// e.preventDefault() themselves, so this only fires when nothing else did).
+let textCtxTarget = null;
+
+function showTextContextMenu(e, target, isEditable, hasSelection) {
+  textCtxTarget = target;
+  const setRow = (action, show, enabled) => {
+    const el = textContextMenu.querySelector('[data-text-action="' + action + '"]');
+    if (!el) return;
+    el.style.display = show ? '' : 'none';
+    el.classList.toggle('disabled', show && !enabled);
+  };
+  setRow('cut', isEditable, hasSelection);
+  setRow('copy', true, hasSelection);
+  setRow('paste', isEditable, true);
+  setRow('selectall', isEditable, true);
+  textContextMenu.querySelectorAll('.ctx-sep').forEach((s) => { s.style.display = isEditable ? '' : 'none'; });
+
+  textContextMenu.style.left = e.clientX + 'px';
+  textContextMenu.style.top = e.clientY + 'px';
+  textContextMenu.classList.remove('hidden');
+  requestAnimationFrame(() => {
+    const rect = textContextMenu.getBoundingClientRect();
+    const vw = document.documentElement.clientWidth;
+    const vh = document.documentElement.clientHeight;
+    if (rect.right > vw - 4) textContextMenu.style.left = Math.max(4, vw - rect.width - 4) + 'px';
+    if (rect.bottom > vh - 4) textContextMenu.style.top = Math.max(4, vh - rect.height - 4) + 'px';
+  });
+}
+function hideTextContextMenu() {
+  textContextMenu.classList.add('hidden');
+  textCtxTarget = null;
+}
+
+document.addEventListener('contextmenu', (e) => {
+  if (e.defaultPrevented) return; // a more specific menu already handled this
+  const t = e.target;
+  if (!(t instanceof Element)) return;
+  const isField = t.matches('input, textarea');
+  const isEditable = isField || t.isContentEditable;
+  let hasSelection;
+  if (isField) {
+    hasSelection = t.selectionStart !== t.selectionEnd;
+  } else {
+    hasSelection = !!window.getSelection().toString();
+  }
+  if (!isEditable && !hasSelection) return; // nothing to do — leave no menu, as before
+  e.preventDefault();
+  showTextContextMenu(e, t, isEditable, hasSelection);
+});
+
+// mousedown (not click) so the menu never steals focus/selection from the
+// field the user right-clicked — the commands below act on whatever still
+// has focus at the time of the click.
+textContextMenu.addEventListener('mousedown', (e) => e.preventDefault());
+
+textContextMenu.addEventListener('click', async (e) => {
+  const item = e.target.closest('[data-text-action]');
+  if (!item || item.classList.contains('disabled') || !textCtxTarget) return;
+  const action = item.dataset.textAction;
+  const target = textCtxTarget;
+  hideTextContextMenu();
+  target.focus();
+  if (action === 'cut') document.execCommand('cut');
+  else if (action === 'copy') document.execCommand('copy');
+  else if (action === 'selectall') document.execCommand('selectAll');
+  else if (action === 'paste') {
+    // execCommand('paste') is blocked by Chromium's clipboard-read policy for
+    // untrusted script; read via the async Clipboard API instead (same
+    // pattern as the toolbar's paste button) and insert at the caret.
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text) document.execCommand('insertText', false, text);
+    } catch (err) { console.error('paste failed', err); }
+  }
+});
+
+document.addEventListener('click', (e) => {
+  if (!textContextMenu.classList.contains('hidden') && !textContextMenu.contains(e.target)) {
+    hideTextContextMenu();
   }
 });
 
@@ -2925,6 +3027,17 @@ function toggleTodoLineInContent(lineIdx) {
 mdPreviewEl.addEventListener('click', (e) => {
   const t = e.target;
   if (!(t instanceof Element)) return;
+  const copyCodeBtn = t.closest('.md-code-copy');
+  if (copyCodeBtn) {
+    const codeEl = copyCodeBtn.closest('.md-codeblock').querySelector('code');
+    if (codeEl) {
+      navigator.clipboard.writeText(codeEl.textContent).then(() => {
+        copyCodeBtn.classList.add('copied');
+        setTimeout(() => copyCodeBtn.classList.remove('copied'), 900);
+      }).catch((err) => console.error('copy code failed', err));
+    }
+    return;
+  }
   const img = t.closest('.md-img');
   if (img) { openLightbox(img.getAttribute('src')); return; }
   const link = t.closest('.md-link');
@@ -3616,8 +3729,19 @@ function syncSettingsUI() {
   placeholderWrapRow.classList.toggle('disabled', settings.placeholderBarPosition === 'right');
 }
 
+async function refreshStoragePathDisplay() {
+  try {
+    const res = await window.api.getStoragePath();
+    if (res && res.path) {
+      storagePathValueEl.textContent = res.path + (res.isDefault ? '  (default)' : '');
+      storagePathValueEl.title = res.path;
+    }
+  } catch (e) { console.error('get-storage-path failed', e); }
+}
+
 function openSettings() {
   syncSettingsUI();
+  refreshStoragePathDisplay();
   settingsOverlay.classList.remove('hidden');
 }
 function closeSettings() {
@@ -3720,6 +3844,25 @@ toggleImageDownloadEl.addEventListener('change', () => {
   settings.imageDownloadEnabled = toggleImageDownloadEl.checked;
   saveSettingsNow();
 });
+
+// ---------- Storage location ----------
+changeStorageBtn.addEventListener('click', async () => {
+  const folder = await window.api.pickStorageFolder();
+  if (!folder) return;
+  changeStorageBtn.disabled = true;
+  changeStorageLabel.textContent = 'Moving…';
+  const res = await window.api.setStoragePath(folder);
+  changeStorageBtn.disabled = false;
+  if (res && res.ok) {
+    changeStorageLabel.textContent = 'Moved ✓';
+    refreshStoragePathDisplay();
+  } else {
+    changeStorageLabel.textContent = 'Failed — ' + (res && res.error ? res.error : 'unknown error');
+  }
+  setTimeout(() => { changeStorageLabel.textContent = 'Change location…'; }, 3000);
+});
+
+openStorageBtn.addEventListener('click', () => window.api.openStorageFolder());
 
 // ---------- Backup: export / import ----------
 exportDataBtn.addEventListener('click', async () => {
@@ -4251,23 +4394,16 @@ const CURRENT_VERSION = document.getElementById('aboutVersion').textContent.repl
 const WHATS_NEW =
   "What's new in v" + CURRENT_VERSION + " ✨\n" +
   '\n' +
-  'PromptPad 2.1 — tabs & files.\n' +
-  '\n' +
-  '• Multi-select tabs — Ctrl+click to pick several (Ctrl+Shift+click for a\n' +
-  '   range), then right-click for bulk actions: rename as 1/name, 2/name…,\n' +
-  '   set a color, move to a group, or close them all at once.\n' +
-  '• Shift+click a tab to rename it.\n' +
-  '• Group headers — right-click to rename, duplicate, copy/export content,\n' +
-  '   color the whole group, pin it to the top, or ungroup.\n' +
-  '• Per-tab files — the files button by the status bar: attach files to a\n' +
-  '   tab, then open / save a copy / reveal / remove them.\n' +
-  '• Fast Save files — attach a file to a message (like Telegram), and\n' +
-  '   Ctrl+click messages to multi-select and delete. Rename the Fast Save\n' +
-  '   label by Shift+clicking it.\n' +
-  '• Paste button next to Copy.\n' +
-  '• Bold (Ctrl+B) now hides the ** marks — just clean bold text.\n' +
-  '• Settings → Toolbar buttons — show or hide any status-bar button.\n' +
-  '• Fix — restoring from the tray no longer makes a duplicate taskbar icon.\n' +
+  '• Fix — right-click on an image now actually opens its menu (it silently\n' +
+  '   did nothing before); Copy image is also far more reliable now.\n' +
+  '• Image right-click menu — added Copy image and Show in folder.\n' +
+  '• Markdown code blocks — a copy button in the top-left corner, and the\n' +
+  '   scrollbar now matches the rest of the app instead of the OS default.\n' +
+  '• A generic Cut / Copy / Paste / Select All right-click menu now works\n' +
+  '   everywhere text can be edited — the editor, Fast Save, dialogs, even\n' +
+  '   the separate quick-capture popup.\n' +
+  '• Settings → Storage — see where attached images/files are kept and\n' +
+  '   move them to any folder you want; your notes stay put either way.\n' +
   '\n' +
   'You can close this tab — it won\'t come back until the next update.';
 
@@ -4451,6 +4587,7 @@ window.addEventListener('drop', async (e) => {
     if (e.key !== 'Escape') return;
     if (!emojiPanel.classList.contains('hidden')) { hideEmojiPanel(); return; }
     if (!imgContextMenu.classList.contains('hidden')) { hideImgContextMenu(); return; }
+    if (!textContextMenu.classList.contains('hidden')) { hideTextContextMenu(); return; }
     if (!tabMultiMenu.classList.contains('hidden')) { hideTabMultiMenu(); return; }
     if (!groupContextMenu.classList.contains('hidden')) { hideGroupCtxMenu(); return; }
     if (!lightboxEl.classList.contains('hidden')) { closeLightbox(); return; }

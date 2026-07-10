@@ -43,7 +43,20 @@
         i++;
         while (i < lines.length && !/^```/.test(lines[i])) { buf.push(esc(lines[i])); i++; }
         i++; // skip closing fence
-        out.push('<pre><code>' + buf.join('\n') + '</code></pre>');
+        out.push(
+          '<div class="md-codeblock">' +
+          '<button class="md-code-copy" type="button" title="Copy code" aria-label="Copy code">' +
+          '<svg class="md-code-copy-icon" viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">' +
+          '<rect x="9" y="9" width="11" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/>' +
+          '<path d="M5 15V5a2 2 0 0 1 2-2h8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>' +
+          '</svg>' +
+          '<svg class="md-code-copy-check" viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">' +
+          '<path d="M5 12.5l4.5 4.5L19 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>' +
+          '</svg>' +
+          '</button>' +
+          '<pre><code>' + buf.join('\n') + '</code></pre>' +
+          '</div>'
+        );
         continue;
       }
 

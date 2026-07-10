@@ -64,6 +64,10 @@ input.addEventListener('keydown', (e) => {
     submit();
   } else if (e.key === 'Escape') {
     e.preventDefault();
+    if (!document.getElementById('textContextMenu').classList.contains('hidden')) {
+      document.getElementById('textContextMenu').classList.add('hidden');
+      return;
+    }
     window.api.qcClose();
   }
 });
@@ -84,5 +88,39 @@ input.addEventListener('paste', (e) => {
 
 document.getElementById('close').addEventListener('click', () => window.api.qcClose());
 pendingRemove.addEventListener('click', () => { setPending(null); input.focus(); });
+
+// Cut/copy/paste/select-all context menu for the textarea (this popup is a
+// separate Electron window, so the main window's text-menu logic doesn't
+// reach it — same behavior, duplicated here for this one field).
+const textMenu = document.getElementById('textContextMenu');
+input.addEventListener('contextmenu', (e) => {
+  e.preventDefault();
+  const hasSelection = input.selectionStart !== input.selectionEnd;
+  textMenu.querySelector('[data-text-action="cut"]').classList.toggle('disabled', !hasSelection);
+  textMenu.querySelector('[data-text-action="copy"]').classList.toggle('disabled', !hasSelection);
+  textMenu.style.left = e.clientX + 'px';
+  textMenu.style.top = e.clientY + 'px';
+  textMenu.classList.remove('hidden');
+});
+textMenu.addEventListener('mousedown', (e) => e.preventDefault());
+textMenu.addEventListener('click', async (e) => {
+  const item = e.target.closest('[data-text-action]');
+  if (!item || item.classList.contains('disabled')) return;
+  const action = item.dataset.textAction;
+  textMenu.classList.add('hidden');
+  input.focus();
+  if (action === 'cut') document.execCommand('cut');
+  else if (action === 'copy') document.execCommand('copy');
+  else if (action === 'selectall') document.execCommand('selectAll');
+  else if (action === 'paste') {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text) document.execCommand('insertText', false, text);
+    } catch (err) { console.error('paste failed', err); }
+  }
+});
+document.addEventListener('click', (e) => {
+  if (!textMenu.classList.contains('hidden') && !textMenu.contains(e.target)) textMenu.classList.add('hidden');
+});
 
 input.focus();

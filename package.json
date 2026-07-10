@@ -1,6 +1,6 @@
 {
   "name": "promptpad",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "description": "A compact, always-on-top notepad widget for writing AI prompts",
   "main": "main.js",
   "author": "PromptPad",
@@ -50,6 +50,25 @@
       "createStartMenuShortcut": true,
       "shortcutName": "PromptPad",
       "deleteAppDataOnUninstall": false
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.png",
+      "category": "Utility",
+      "maintainer": "PromptPad"
     }
   }
 }

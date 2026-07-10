@@ -83,6 +83,16 @@
     ::-webkit-scrollbar-button { width: 0; height: 0; display: none; }
     .qcw-hint { font-size: 10px; color: var(--muted); margin-top: 7px; text-align: center; }
     .hidden { display: none !important; }
+    .ctx-menu {
+      position: fixed; z-index: 9999;
+      background: var(--elevated); border: 1px solid var(--border);
+      border-radius: 9px; padding: 4px; min-width: 140px;
+      box-shadow: 0 8px 28px rgba(0,0,0,.45);
+    }
+    .ctx-item { padding: 6px 10px; border-radius: 5px; cursor: pointer; font-size: 12.5px; color: var(--text); }
+    .ctx-item:hover { background: var(--elevated-hi); }
+    .ctx-item.disabled { color: var(--muted); cursor: default; pointer-events: none; }
+    .ctx-sep { height: 1px; background: var(--border); margin: 3px 4px; }
   </style>
 </head>
 <body>
@@ -98,6 +108,13 @@
     <textarea id="input" spellcheck="false"
       placeholder="Type or paste… Enter to save, Shift+Enter for a new line"></textarea>
     <div class="qcw-hint">Saved to Fast Save · Esc to cancel</div>
+  </div>
+  <div id="textContextMenu" class="ctx-menu hidden">
+    <div class="ctx-item" data-text-action="cut">Cut</div>
+    <div class="ctx-item" data-text-action="copy">Copy</div>
+    <div class="ctx-item" data-text-action="paste">Paste</div>
+    <div class="ctx-sep"></div>
+    <div class="ctx-item" data-text-action="selectall">Select All</div>
   </div>
   <script src="themes.js"></script>
   <script src="quickcapture.js"></script>

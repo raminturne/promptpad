@@ -503,6 +503,26 @@
             </div>
           </section>
 
+          <!-- Storage -->
+          <section class="set-group">
+            <h3 class="set-label">Storage</h3>
+            <div class="storage-path-row">
+              <span id="storagePathValue" class="storage-path-value">Loading…</span>
+            </div>
+            <div class="storage-btn-row">
+              <button id="changeStorageBtn" class="check-update-btn">
+                <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><path d="M4 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+                <span id="changeStorageLabel">Change location…</span>
+              </button>
+              <button id="openStorageBtn" class="check-update-btn">
+                <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><path d="M3 7a1 1 0 0 1 1-1h4l2 2h9a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+                Open folder
+              </button>
+            </div>
+            <p class="backup-note">Where attached images and files are kept. Changing this moves
+              your existing images/files there — your notes database always stays in the app's own data folder.</p>
+          </section>
+
           <!-- Backup -->
           <section class="set-group">
             <h3 class="set-label">Backup</h3>
@@ -524,7 +544,7 @@
             <div class="about-box">
               <div class="about-brand">
                 <span class="brand-dot"></span>
-                <span>PromptPad <em id="aboutVersion">v2.1.0</em></span>
+                <span>PromptPad <em id="aboutVersion">v2.1.1</em></span>
               </div>
               <p class="about-desc">A compact notepad for writing AI prompts.</p>
               <div class="about-links">
@@ -718,14 +738,43 @@
     <!-- Emoji picker -->
     <div id="emojiPanel" class="emoji-panel hidden"></div>
 
+    <!-- Generic text edit context menu (cut/copy/paste/select all) -->
+    <div id="textContextMenu" class="ctx-menu hidden">
+      <div class="ctx-item" data-text-action="cut">Cut</div>
+      <div class="ctx-item" data-text-action="copy">Copy</div>
+      <div class="ctx-item" data-text-action="paste">Paste</div>
+      <div class="ctx-sep"></div>
+      <div class="ctx-item" data-text-action="selectall">Select All</div>
+    </div>
+
     <!-- Image context menu -->
     <div id="imgContextMenu" class="ctx-menu hidden">
-      <div class="ctx-item" data-img-action="goto" data-img-only="gallery">Go to message</div>
+      <div class="ctx-item ctx-item--icon" data-img-action="goto" data-img-only="gallery">
+        <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><path d="M9 18l6-6-6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Go to message
+      </div>
       <div class="ctx-sep" data-img-only="gallery"></div>
-      <div class="ctx-item" data-img-action="zoom">View full size</div>
-      <div class="ctx-item" data-img-action="download">Save image…</div>
+      <div class="ctx-item ctx-item--icon" data-img-action="zoom">
+        <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="1.8"/><line x1="15.5" y1="15.5" x2="20" y2="20" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><line x1="10.5" y1="7.5" x2="10.5" y2="13.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><line x1="7.5" y1="10.5" x2="13.5" y2="10.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        View full size
+      </div>
+      <div class="ctx-item ctx-item--icon" data-img-action="copy">
+        <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M5 15V5a2 2 0 0 1 2-2h8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        Copy image
+      </div>
+      <div class="ctx-item ctx-item--icon" data-img-action="download">
+        <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M4 19h16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Save image…
+      </div>
+      <div class="ctx-item ctx-item--icon" data-img-action="reveal">
+        <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><path d="M3 7a1 1 0 0 1 1-1h4l2 2h9a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+        Show in folder
+      </div>
       <div class="ctx-sep" data-img-only="editor"></div>
-      <div class="ctx-item ctx-danger" data-img-action="delete" data-img-only="editor">Remove from note</div>
+      <div class="ctx-item ctx-item--icon ctx-danger" data-img-action="delete" data-img-only="editor">
+        <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><line x1="6" y1="6" x2="18" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="18" y1="6" x2="6" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        Remove from note
+      </div>
     </div>
 
     <!-- Quick-capture floating box (Ctrl+Shift+Space) -->

@@ -646,15 +646,44 @@ body {
   padding: 1px 5px;
   font-size: 0.92em;
 }
+.md-codeblock { position: relative; margin: 0.5em 0; }
 .md-preview pre {
   background: var(--elevated);
   border: 1px solid var(--elevated-hi);
   border-radius: 7px;
-  padding: 10px 12px;
-  margin: 0.5em 0;
+  /* extra top room so the copy button (top-left) never overlaps code text */
+  padding: 34px 12px 10px;
+  margin: 0;
   overflow-x: auto;
 }
 .md-preview pre code { background: none; border: none; padding: 0; }
+/* scrollbar to match the rest of the app, not the OS default */
+.md-preview pre::-webkit-scrollbar { height: 8px; width: 8px; }
+.md-preview pre::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 8px; }
+.md-preview pre::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+
+/* Copy-code button, top-left of the block, always visible but subtle */
+.md-code-copy {
+  position: absolute;
+  top: 6px; left: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px; height: 24px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--elevated) 80%, transparent);
+  color: var(--muted-2);
+  cursor: pointer;
+  opacity: 0.75;
+  transition: opacity 0.14s, color 0.14s, border-color 0.14s, background 0.14s;
+}
+.md-codeblock:hover .md-code-copy { opacity: 1; }
+.md-code-copy:hover { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+.md-code-copy-check { display: none; }
+.md-code-copy.copied { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); opacity: 1; }
+.md-code-copy.copied .md-code-copy-icon { display: none; }
+.md-code-copy.copied .md-code-copy-check { display: block; }
 .md-preview blockquote {
   border-inline-start: 3px solid var(--accent);
   background: var(--accent-soft);
@@ -1032,6 +1061,9 @@ body {
   transition: background 0.1s;
 }
 .ctx-item:hover { background: var(--elevated-hi); }
+.ctx-item--icon { display: flex; align-items: center; gap: 8px; }
+.ctx-item--icon svg { flex-shrink: 0; opacity: 0.85; }
+.ctx-item.disabled { color: var(--muted); cursor: default; pointer-events: none; }
 
 .ctx-danger { color: var(--danger); }
 .ctx-danger:hover { background: color-mix(in srgb, var(--danger) 12%, transparent); }
@@ -1783,6 +1815,24 @@ body {
   line-height: 1.55;
   margin-top: 9px;
 }
+
+.storage-path-row { margin-bottom: 2px; }
+.storage-path-value {
+  display: block;
+  font-size: 11px;
+  color: var(--muted-2);
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  padding: 6px 9px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  direction: ltr;
+  text-align: left;
+}
+.storage-btn-row { display: flex; gap: 8px; }
+.storage-btn-row .check-update-btn { width: auto; flex: 1; margin-top: 8px; }
 
 .mini-dialog-text {
   font-size: 12px;

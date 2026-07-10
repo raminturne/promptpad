@@ -146,3 +146,8 @@ entry.writeUInt32LE(22, 12); // offset (6 + 16)
 const ico = Buffer.concat([icondir, entry, png]);
 fs.writeFileSync(path.join(__dirname, 'icon.ico'), ico);
 console.log('Wrote build/icon.ico (' + ico.length + ' bytes)');
+
+// Plain PNG too — used for the Linux build icon and the Linux/macOS tray
+// (electron-builder's linux target wants a PNG, not an ICO).
+fs.writeFileSync(path.join(__dirname, 'icon.png'), png);
+console.log('Wrote build/icon.png (' + png.length + ' bytes)');

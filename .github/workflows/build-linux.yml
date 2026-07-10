@@ -16,6 +16,11 @@ on:
       - 'v*'
   workflow_dispatch:
 
+# The default GITHUB_TOKEN is read-only unless a workflow explicitly asks
+# for more — without this, attaching files to a release gets a 403.
+permissions:
+  contents: write
+
 jobs:
   build-linux:
     runs-on: ubuntu-latest

@@ -203,6 +203,7 @@ body {
 .tab.active::before { transform: translateY(-50%) scaleY(1); }
 
 .tab.dragging { opacity: 0.55; background: var(--elevated-hi); cursor: grabbing; }
+.tab-group-header.dragging-group { opacity: 0.55; cursor: grabbing; }
 
 /* tab group headers */
 .tab-group-header {
@@ -222,6 +223,8 @@ body {
 .tab-group-header:hover { color: var(--text); background: var(--elevated); }
 .tab-group-chevron { display: flex; transition: transform 0.16s; }
 .tab-group-header.collapsed .tab-group-chevron { transform: rotate(-90deg); }
+.tab-group-pin { display: flex; flex-shrink: 0; color: var(--accent); }
+.tab-group-pin svg path { fill: var(--accent-soft); }
 .tab-group-name {
   white-space: nowrap;
   overflow: hidden;

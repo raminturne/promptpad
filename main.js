@@ -32,16 +32,24 @@ protocol.registerSchemesAsPrivileged([
   { scheme: 'ppimg', privileges: { secure: true, supportFetchAPI: true, stream: true } }
 ]);
 
+// All reads/writes of DATA_FILE go through here, so the parsed contents can
+// be cached — otherwise every debounced autosave re-reads and re-parses the
+// whole file synchronously just to merge one key.
+let dataCache = null;
+
 function readData() {
+  if (dataCache) return dataCache;
   try {
     const raw = fs.readFileSync(DATA_FILE, 'utf-8');
-    return JSON.parse(raw);
+    dataCache = JSON.parse(raw);
   } catch {
-    return null;
+    dataCache = null;
   }
+  return dataCache;
 }
 
 function writeData(data) {
+  dataCache = data;
   try {
     fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2), 'utf-8');
     return true;
@@ -221,7 +229,10 @@ if (!app.requestSingleInstanceLock()) {
 
   ipcMain.handle('save-settings', (_e, settings) => {
     const data = readData() || {};
-    data.settings = settings;
+    // Merge rather than overwrite: fields like storagePath are written only
+    // via set-storage-path and never round-trip through the renderer's own
+    // settings object, so a full overwrite here would silently drop them.
+    data.settings = { ...(data.settings || {}), ...settings };
     return writeData(data);
   });
 

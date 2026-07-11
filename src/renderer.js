@@ -449,8 +449,19 @@ function currentLine() {
 // Every decoration WRAPS the literal token text, so el.textContent always
 // equals the raw line — getEditorText/caret logic never notice the spans.
 // The <img> thumbnail is the one zero-textContent addition.
+// updateLineDirs() re-highlights every line on every keystroke, so decorated
+// lines (image thumbnails especially) must not rebuild their DOM unless the
+// line's text actually changed — that rebuild is what made typing lag and
+// thumbnails flicker in image-heavy tabs. hlEpoch invalidates the cache when
+// a setting changes how lines decorate (e.g. placeholders on/off).
+let hlEpoch = 0;
+function invalidateHighlights() { hlEpoch++; }
+
 function highlightLine(el) {
   const text = el.textContent;
+  if (el._hlText === text && el._hlEpoch === hlEpoch) return;
+  el._hlText = text;
+  el._hlEpoch = hlEpoch;
   const hadDecor = !!el.querySelector('.placeholder-tag, .todo-mark, .img-token, .pp-img, .md-bold, .md-mark');
   const phMatches = settings.placeholdersEnabled ? [...text.matchAll(PLACEHOLDER_RE)] : [];
   const todoM = text.match(TODO_RE);
@@ -631,6 +642,18 @@ function autoName(tab, index) {
     return firstLine.length > 30 ? firstLine.slice(0, 30) + '…' : firstLine;
   }
   return 'Prompt ' + (index + 1);
+}
+
+// Refresh one tab's auto-name label in place (no rail rebuild). Used while
+// typing; the tab may legitimately be absent (collapsed group, mid-rename).
+function updateActiveTabName(tab) {
+  const nameEl = tabListEl.querySelector('.tab[data-id="' + tab.id + '"] .tab-name');
+  if (!nameEl) return;
+  const dispName = autoName(tab, state.tabs.indexOf(tab));
+  if (nameEl.textContent !== dispName) {
+    nameEl.textContent = dispName;
+    nameEl.setAttribute('dir', detectDir(dispName));
+  }
 }
 
 // Rough token estimate (~4 chars per token)
@@ -1021,6 +1044,7 @@ function makeGroupHeader(group, count) {
   el.className = 'tab-group-header' + (group.collapsed ? ' collapsed' : '') +
     (group.color ? ' has-color' : '');
   el.dataset.groupId = group.id;
+  el.draggable = true;
   if (group.color) el.style.setProperty('--group-color', group.color);
 
   const chev = document.createElement('span');
@@ -1030,6 +1054,17 @@ function makeGroupHeader(group, count) {
     '<polyline points="6 9 12 15 18 9" fill="none" stroke="currentColor" ' +
     'stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   el.appendChild(chev);
+
+  if (group.pinned) {
+    const pinEl = document.createElement('span');
+    pinEl.className = 'tab-group-pin';
+    pinEl.title = 'Pinned group';
+    pinEl.innerHTML =
+      '<svg viewBox="0 0 24 24" width="10" height="10" aria-hidden="true">' +
+      '<path d="M14 3l7 7-3 1-1 4-4 4-2-6-6-2 4-4 4-1 1-3z" fill="none" ' +
+      'stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>';
+    el.appendChild(pinEl);
+  }
 
   const nameEl = document.createElement('span');
   nameEl.className = 'tab-group-name';
@@ -1066,6 +1101,16 @@ function makeGroupHeader(group, count) {
   });
 
   el.addEventListener('contextmenu', (e) => showGroupCtxMenu(e, group.id));
+
+  // drag & drop — reorders groups relative to each other only (tabs keep
+  // their own drag lane, see getDragAfterElement/.dragging above).
+  el.addEventListener('dragstart', (e) => {
+    e.stopPropagation(); // don't let the tab-list's own dragstart handling see this
+    el.classList.add('dragging-group');
+    e.dataTransfer.effectAllowed = 'move';
+    try { e.dataTransfer.setData('text/plain', 'group:' + group.id); } catch {}
+  });
+  el.addEventListener('dragend', onGroupDragEnd);
 
   return el;
 }
@@ -1214,6 +1259,44 @@ tabListEl.addEventListener('dragover', (e) => {
     tabListEl.insertBefore(dragging, after);
   }
 });
+
+// Group reordering — a separate "lane" that only looks at other group
+// headers, independent of the individual-tab dragover above. Only the
+// header node itself is moved during the drag (its member tabs stay put);
+// renderTabs() rebuilds each group's header+members block correctly once
+// state.groups is reordered on drop, so the brief visual mismatch during
+// the drag itself is harmless.
+function getGroupDragAfterElement(y) {
+  const els = [...tabListEl.querySelectorAll('.tab-group-header:not(.dragging-group)')];
+  let closest = { offset: Number.NEGATIVE_INFINITY, element: null };
+  for (const child of els) {
+    const box = child.getBoundingClientRect();
+    const offset = y - box.top - box.height / 2;
+    if (offset < 0 && offset > closest.offset) {
+      closest = { offset, element: child };
+    }
+  }
+  return closest.element;
+}
+
+tabListEl.addEventListener('dragover', (e) => {
+  const draggingGroup = tabListEl.querySelector('.dragging-group');
+  if (!draggingGroup) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  const after = getGroupDragAfterElement(e.clientY);
+  if (after == null) tabListEl.appendChild(draggingGroup);
+  else tabListEl.insertBefore(draggingGroup, after);
+});
+
+function onGroupDragEnd() {
+  const dragging = tabListEl.querySelector('.dragging-group');
+  if (dragging) dragging.classList.remove('dragging-group');
+  const domOrder = [...tabListEl.querySelectorAll('.tab-group-header')].map((el) => el.dataset.groupId);
+  state.groups.sort((a, b) => domOrder.indexOf(a.id) - domOrder.indexOf(b.id));
+  renderTabs(); // re-applies pinned-groups-on-top + rebuilds header+members blocks
+  scheduleSave();
+}
 
 function onDragEnd() {
   const dragging = tabListEl.querySelector('.dragging');
@@ -1377,6 +1460,8 @@ function renderFsMessages() {
     if (m.image) {
       const img = document.createElement('img');
       img.className = 'fs-msg-img';
+      img.loading = 'lazy';
+      img.decoding = 'async';
       img.src = 'ppimg://' + m.image;
       img.draggable = false;
       img.addEventListener('click', (e) => { if (e.ctrlKey) { toggleMsgSelection(m.id); return; } openLightbox('ppimg://' + m.image); });
@@ -1685,6 +1770,8 @@ function openGallery() {
     cell.dataset.msgId = m.id;
     const img = document.createElement('img');
     img.className = 'gallery-img';
+    img.loading = 'lazy';
+    img.decoding = 'async';
     img.src = 'ppimg://' + m.image;
     img.draggable = false;
     cell.appendChild(img);
@@ -2445,8 +2532,15 @@ function takeSnapshot(t, force = false) {
 async function doSave() {
   syncEditorToState();
   takeSnapshot(activeTab());
+  // Persist only durable tab fields. undo/redo stacks (up to 100 full copies
+  // of a tab's content each) and checkpoint bookkeeping are session-only;
+  // serializing them into every autosave made saves grow with typing history
+  // and bloated the data file on disk.
+  const tabs = state.tabs.map(
+    ({ undoStack, redoStack, pendingCheckpoint, checkpointTimer, ...t }) => t
+  );
   try {
-    await window.api.saveNotes(state);
+    await window.api.saveNotes({ ...state, tabs });
   } catch (e) {
     console.error('save failed', e);
   }
@@ -2499,8 +2593,10 @@ function handleEditorChanged() {
     const prevContent = t.content;
     t.content = getEditorText();
     if (t.content !== prevContent) noteEditForUndo(t, prevContent);
-    // live update auto-name if not custom
-    if (!t.custom) renderTabs();
+    // live update auto-name if not custom — patch just the name span; a full
+    // renderTabs() here rebuilt the whole rail on every keystroke (visible
+    // flicker + wasted layout with many tabs)
+    if (!t.custom) updateActiveTabName(t);
   }
   updateCounts();
   updatePlaceholderPanel();
@@ -2662,6 +2758,8 @@ function makeImgThumb(file, width) {
 
   const img = document.createElement('img');
   img.className = 'pp-img';
+  img.loading = 'lazy';
+  img.decoding = 'async';
   img.src = 'ppimg://' + file;
   img.draggable = false;
   if (width) img.style.width = width + 'px';
@@ -3836,6 +3934,7 @@ toggleQuickCaptureEl.addEventListener('change', async () => {
 
 toggleImageResizeEl.addEventListener('change', () => {
   settings.imageResizable = toggleImageResizeEl.checked;
+  invalidateHighlights();
   if (!mdOn && !fsActive()) setEditorText(getEditorText()); // add/remove handles
   saveSettingsNow();
 });
@@ -3899,6 +3998,7 @@ importConfirmBtn.addEventListener('click', async () => {
 
 togglePlaceholdersEl.addEventListener('change', () => {
   settings.placeholdersEnabled = togglePlaceholdersEl.checked;
+  invalidateHighlights();
   if (settings.placeholdersEnabled) updateLineDirs();
   else setEditorText(getEditorText()); // strip any existing placeholder spans
   updatePlaceholderPanel();

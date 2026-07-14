@@ -6,14 +6,21 @@ let state = {
   templates: [], // { id, name, content }
   groups: [],    // { id, name, collapsed }
   phValues: {},  // { '[token]': ['recent', 'values'] } — MRU, max 8
-  fastSave: { messages: [] } // { id, ts, text } — chat-style quick notes
+  fastSave: { messages: [] }, // { id, ts, text } — chat-style quick notes
+  aiChat: { messages: [] } // { id, ts, role: 'user'|'assistant', text } — one continuous AI conversation
 };
 
 // Sentinel activeId for the Fast Save view (not a real tab).
 const FS_ID = '__fastsave__';
+// Sentinel activeId for the AI Chat view (not a real tab).
+const AI_ID = '__aichat__';
 
 function fsActive() {
   return state.activeId === FS_ID;
+}
+
+function aiChatActive() {
+  return state.activeId === AI_ID;
 }
 
 function fsMessages() {
@@ -21,6 +28,13 @@ function fsMessages() {
     state.fastSave = { messages: [] };
   }
   return state.fastSave.messages;
+}
+
+function aiMessages() {
+  if (!state.aiChat || !Array.isArray(state.aiChat.messages)) {
+    state.aiChat = { messages: [] };
+  }
+  return state.aiChat.messages;
 }
 
 const TAB_COLORS = [null, '#e05252', '#e07a52', '#e0c852', '#52b05a', '#5290e0', '#9052e0', '#e052b8'];
@@ -59,9 +73,14 @@ const DEFAULT_SETTINGS = {
   fastSaveName: 'Fast Save',
   // which status-bar buttons are shown (toggle in Settings → Toolbar)
   toolbar: {
-    todo: true, emoji: true, link: true, justify: true, clean: true,
-    md: true, paste: true, copy: true, img: true, files: true
-  }
+    todo: true, emoji: true, link: true, justify: true, clean: true, improve: true,
+    md: true, paste: true, copy: true, img: true, genimg: true, files: true
+  },
+  imageGen: { provider: 'pollinations', geminiApiKey: '', hfApiKey: '' },
+  seenFeatures: {}, // { improve: true, aiChat: true, ... } — clears each button's "New" badge once used
+  toolbarOrder: [], // full left-to-right key order — filled in from TOOLBAR_BUTTONS on first render
+  toolbarCollapsed: [], // subset of toolbarOrder currently tucked behind the overflow chevron
+  toolbarNudged: false // true once the one-time "some icons start collapsed" nudge has run
 };
 
 let settings = { ...DEFAULT_SETTINGS };
@@ -168,12 +187,19 @@ const placeholderCollapseEl = document.getElementById('placeholderCollapse');
 // todo & image buttons
 const todoBtn = document.getElementById('todoBtn');
 const imgBtn = document.getElementById('imgBtn');
+const genImgBtn = document.getElementById('genImgBtn');
 // fast save
 const fastSaveViewEl = document.getElementById('fastSaveView');
 const fsMessagesEl = document.getElementById('fsMessages');
 const fsInputEl = document.getElementById('fsInput');
 const fsSendBtn = document.getElementById('fsSend');
 const toggleFastSaveEl = document.getElementById('toggleFastSave');
+const aiChatViewEl = document.getElementById('aiChatView');
+const aiMessagesEl = document.getElementById('aiMessages');
+const aiErrorBarEl = document.getElementById('aiErrorBar');
+const aiInputEl = document.getElementById('aiInput');
+const aiSendBtn = document.getElementById('aiSend');
+const aiClearBtn = document.getElementById('aiClearBtn');
 // quick capture
 const toggleQuickCaptureEl = document.getElementById('toggleQuickCapture');
 // storage
@@ -201,6 +227,10 @@ const emojiPanel = document.getElementById('emojiPanel');
 const linkBtn = document.getElementById('linkBtn');
 const justifyBtn = document.getElementById('justifyBtn');
 const cleanBtn = document.getElementById('cleanBtn');
+const improveBtn = document.getElementById('improveBtn');
+const toolbarMainEl = document.getElementById('toolbarMain');
+const toolbarOverflowBtnEl = document.getElementById('toolbarOverflowBtn');
+const toolbarOverflowPanelEl = document.getElementById('toolbarOverflowPanel');
 const linkDialog = document.getElementById('linkDialog');
 const linkTextInput = document.getElementById('linkTextInput');
 const linkUrlInput = document.getElementById('linkUrlInput');
@@ -211,6 +241,12 @@ const imgContextMenu = document.getElementById('imgContextMenu');
 const textContextMenu = document.getElementById('textContextMenu');
 const toggleImageResizeEl = document.getElementById('toggleImageResize');
 const toggleImageDownloadEl = document.getElementById('toggleImageDownload');
+const geminiApiKeyInputEl = document.getElementById('geminiApiKeyInput');
+const hfApiKeyInputEl = document.getElementById('hfApiKeyInput');
+const imageGenProviderSeg = document.getElementById('imageGenProviderSeg');
+const geminiProviderFieldsEl = document.getElementById('geminiProviderFields');
+const hfProviderFieldsEl = document.getElementById('hfProviderFields');
+const providerHintPollinationsEl = document.getElementById('providerHintPollinations');
 // fast save extras
 const fsHeaderSearchBtn = document.getElementById('fsSearchBtn');
 const fsGalleryBtn = document.getElementById('fsGalleryBtn');
@@ -875,6 +911,37 @@ function makeFsTabEl() {
   return el;
 }
 
+// AI Chat rail entry — same non-".tab" treatment as Fast Save (see above).
+function makeAiChatTabEl() {
+  const el = document.createElement('div');
+  const seen = settings.seenFeatures || {};
+  el.className = 'fs-tab' + (aiChatActive() ? ' active' : '') + (seen.aiChat ? '' : ' has-new-badge');
+
+  const icon = document.createElement('span');
+  icon.className = 'fs-tab-icon';
+  icon.innerHTML =
+    '<svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true">' +
+    '<path d="M4 5h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H9l-5 4v-4H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z" fill="none" ' +
+    'stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>';
+  el.appendChild(icon);
+
+  const nameEl = document.createElement('span');
+  nameEl.className = 'tab-name';
+  nameEl.textContent = 'AI Chat';
+  el.appendChild(nameEl);
+
+  const count = aiMessages().length;
+  if (count) {
+    const badge = document.createElement('span');
+    badge.className = 'fs-tab-count';
+    badge.textContent = count;
+    el.appendChild(badge);
+  }
+
+  el.addEventListener('click', () => { markFeatureSeen('aiChat'); switchToAiChat(); });
+  return el;
+}
+
 function fsLabel() {
   return (settings.fastSaveName && settings.fastSaveName.trim()) || 'Fast Save';
 }
@@ -909,6 +976,7 @@ function renderTabs() {
   tabListEl.innerHTML = '';
 
   if (settings.fastSaveEnabled) tabListEl.appendChild(makeFsTabEl());
+  tabListEl.appendChild(makeAiChatTabEl());
 
   if (state.tabs.length === 0) {
     const hint = document.createElement('div');
@@ -1371,12 +1439,14 @@ function showEditorView() {
   appEl.classList.remove('fastsave-active');
   editorBodyEl.classList.remove('hidden');
   fastSaveViewEl.classList.add('hidden');
+  aiChatViewEl.classList.add('hidden');
 }
 
 function showFastSaveView() {
   selectedTabIds.clear();
   appEl.classList.add('fastsave-active');
   editorBodyEl.classList.add('hidden');
+  aiChatViewEl.classList.add('hidden');
   fastSaveViewEl.classList.remove('hidden');
   if (fsHeaderTitle) fsHeaderTitle.textContent = fsLabel();
   updateFsInputDir();
@@ -1385,10 +1455,33 @@ function showFastSaveView() {
   fsInputEl.focus();
 }
 
+function showAiChatView() {
+  selectedTabIds.clear();
+  appEl.classList.add('fastsave-active');
+  editorBodyEl.classList.add('hidden');
+  fastSaveViewEl.classList.add('hidden');
+  aiChatViewEl.classList.remove('hidden');
+  renderAiMessages();
+  aiInputEl.focus();
+}
+
 // Show whichever view matches state.activeId (used at startup).
 function applyActiveView() {
   if (fsActive()) showFastSaveView();
+  else if (aiChatActive()) showAiChatView();
   else showEditorView();
+}
+
+function switchToAiChat() {
+  if (aiChatActive()) { aiInputEl.focus(); return; }
+  _previewToken = null; _previewBase = null;
+  clearFindHL();
+  findBarEl.classList.add('hidden');
+  syncEditorToState();
+  state.activeId = AI_ID;
+  showAiChatView();
+  renderTabs();
+  scheduleSave();
 }
 
 function switchToFastSave() {
@@ -1805,9 +1898,132 @@ function gotoFsMessage(msgId) {
   });
 }
 
+// ---------- AI Chat ----------
+// Keep the stored conversation bounded — otherwise a long-running chat would
+// grow the rendered message list and the saved data file without limit.
+const AI_CHAT_MAX_MESSAGES = 200;
+
+function trimAiMessages() {
+  const msgs = aiMessages();
+  if (msgs.length > AI_CHAT_MAX_MESSAGES) {
+    state.aiChat.messages = msgs.slice(msgs.length - AI_CHAT_MAX_MESSAGES);
+  }
+}
+
+function clearAiChat() {
+  if (!aiMessages().length) return;
+  state.aiChat.messages = [];
+  hideAiError();
+  renderAiMessages();
+  renderTabs();
+  scheduleSave();
+}
+
+function aiAutoGrow() {
+  aiInputEl.style.height = 'auto';
+  aiInputEl.style.height = Math.min(120, aiInputEl.scrollHeight) + 'px';
+}
+
+function updateAiInputDir() {
+  const dir = detectDir(aiInputEl.value);
+  aiInputEl.setAttribute('dir', dir);
+  aiInputEl.style.textAlign = dir === 'rtl' ? 'right' : 'left';
+}
+
+function showAiError(msg) {
+  aiErrorBarEl.textContent = msg;
+  aiErrorBarEl.classList.remove('hidden');
+}
+
+function hideAiError() {
+  aiErrorBarEl.classList.add('hidden');
+}
+
+function renderAiMessages() {
+  aiMessagesEl.innerHTML = '';
+  const msgs = aiMessages();
+  if (!msgs.length) {
+    const empty = document.createElement('div');
+    empty.className = 'fs-empty';
+    empty.textContent = 'Say something — this uses a free AI (Pollinations) and stays only on this device.';
+    aiMessagesEl.appendChild(empty);
+    return;
+  }
+  msgs.forEach((m) => {
+    const row = document.createElement('div');
+    row.className = 'ai-msg ai-msg-' + (m.role === 'assistant' ? 'assistant' : 'user');
+    const body = document.createElement('div');
+    body.className = 'ai-msg-text';
+    body.textContent = m.text;
+    body.setAttribute('dir', detectDir(m.text));
+    row.appendChild(body);
+    const time = document.createElement('span');
+    time.className = 'ai-msg-time';
+    time.textContent = fmtMsgTime(m.ts);
+    row.appendChild(time);
+    aiMessagesEl.appendChild(row);
+  });
+  aiMessagesEl.scrollTop = aiMessagesEl.scrollHeight;
+}
+
+let aiSending = false;
+
+async function sendAiMessage() {
+  const text = aiInputEl.value.trim();
+  if (!text || aiSending) return;
+  hideAiError();
+  aiInputEl.value = '';
+  aiAutoGrow();
+  updateAiInputDir();
+
+  aiMessages().push({ id: uid(), ts: Date.now(), role: 'user', text });
+  trimAiMessages();
+  renderAiMessages();
+  renderTabs();
+  scheduleSave();
+
+  aiSending = true;
+  aiSendBtn.disabled = true;
+  const thinking = document.createElement('div');
+  thinking.className = 'ai-msg ai-msg-assistant ai-msg-thinking';
+  thinking.textContent = '…';
+  aiMessagesEl.appendChild(thinking);
+  aiMessagesEl.scrollTop = aiMessagesEl.scrollHeight;
+
+  try {
+    const history = aiMessages().map((m) => ({ role: m.role, content: m.text }));
+    const res = await window.api.chatMessage(history);
+    thinking.remove();
+    if (res && res.ok && res.text) {
+      aiMessages().push({ id: uid(), ts: Date.now(), role: 'assistant', text: res.text });
+      trimAiMessages();
+      renderAiMessages();
+      renderTabs();
+      scheduleSave();
+    } else {
+      showAiError((res && res.error) || 'Something went wrong.');
+    }
+  } finally {
+    aiSending = false;
+    aiSendBtn.disabled = false;
+    aiInputEl.focus();
+  }
+}
+
+aiSendBtn.addEventListener('click', sendAiMessage);
+aiClearBtn.addEventListener('click', clearAiChat);
+aiInputEl.addEventListener('input', () => { aiAutoGrow(); updateAiInputDir(); });
+aiInputEl.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+    e.preventDefault();
+    sendAiMessage();
+  }
+});
+
 // ---------- Actions ----------
 function switchTab(id) {
   if (id === FS_ID) { switchToFastSave(); return; }
+  if (id === AI_ID) { switchToAiChat(); return; }
   _previewToken = null; _previewBase = null;
   clearFindHL();
   // flush current editor into state first
@@ -2554,15 +2770,20 @@ async function loadState() {
       tabs: saved.tabs,
       activeId: saved.activeId === FS_ID && settings.fastSaveEnabled
         ? FS_ID
-        : (saved.activeId && saved.tabs.some((t) => t.id === saved.activeId)
-          ? saved.activeId
-          : saved.tabs[0].id),
+        : (saved.activeId === AI_ID
+          ? AI_ID
+          : (saved.activeId && saved.tabs.some((t) => t.id === saved.activeId)
+            ? saved.activeId
+            : saved.tabs[0].id)),
       seq: saved.seq || 1,
       templates: saved.templates || [],
       groups: saved.groups || [],
       phValues: saved.phValues || {},
       fastSave: (saved.fastSave && Array.isArray(saved.fastSave.messages))
         ? saved.fastSave
+        : { messages: [] },
+      aiChat: (saved.aiChat && Array.isArray(saved.aiChat.messages))
+        ? saved.aiChat
         : { messages: [] },
       lastVersion: saved.lastVersion || null
     };
@@ -2573,8 +2794,10 @@ async function loadState() {
     state.groups = [];
     state.phValues = {};
     state.fastSave = { messages: [] };
+    state.aiChat = { messages: [] };
     state.lastVersion = null;
   }
+  trimAiMessages();
   const t = activeTab();
   setEditorText(t ? t.content : '');
   renderTabs();
@@ -2719,9 +2942,26 @@ function applyTodoButton() {
 }
 
 // Preserve the editor selection when pressing the button (don't let the
-// button steal focus before the click handler reads the selection).
-todoBtn.addEventListener('mousedown', (e) => e.preventDefault());
-todoBtn.addEventListener('click', applyTodoButton);
+// button steal focus before the click handler reads the selection). This
+// used to be a plain mousedown preventDefault(), but that also suppresses
+// the native drag gesture — Chromium won't start dragging an element whose
+// mousedown was cancelled — which broke reordering this button in the
+// toolbar. Capture the selection instead and restore it just before acting,
+// so a genuine drag is left alone while a plain click still works.
+let todoBtnSavedRange = null;
+todoBtn.addEventListener('mousedown', () => {
+  const sel = window.getSelection();
+  todoBtnSavedRange = (sel && sel.rangeCount && editorEl.contains(sel.anchorNode))
+    ? sel.getRangeAt(0).cloneRange() : null;
+});
+todoBtn.addEventListener('click', () => {
+  if (todoBtnSavedRange) {
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    try { sel.addRange(todoBtnSavedRange); } catch {}
+  }
+  applyTodoButton();
+});
 
 // Click a todo mark to check/uncheck it; click a thumbnail to zoom.
 // mousedown + preventDefault keeps the caret where it was.
@@ -2945,6 +3185,13 @@ function showTextContextMenu(e, target, isEditable, hasSelection) {
   setRow('selectall', isEditable, true);
   textContextMenu.querySelectorAll('.ctx-sep').forEach((s) => { s.style.display = isEditable ? '' : 'none'; });
 
+  // "Improve Prompt" only makes sense in the main prompt editor itself. A
+  // real right-click's target is a descendant (a .ln line div or its text),
+  // not editorEl itself — must check ancestry, not identity.
+  const showImprove = editorEl.contains(target) && !mdOn;
+  document.getElementById('ctxImproveSep').classList.toggle('hidden', !showImprove);
+  document.getElementById('ctxImproveItem').classList.toggle('hidden', !showImprove);
+
   textContextMenu.style.left = e.clientX + 'px';
   textContextMenu.style.top = e.clientY + 'px';
   textContextMenu.classList.remove('hidden');
@@ -3001,6 +3248,8 @@ textContextMenu.addEventListener('click', async (e) => {
       const text = await navigator.clipboard.readText();
       if (text) document.execCommand('insertText', false, text);
     } catch (err) { console.error('paste failed', err); }
+  } else if (action === 'improve') {
+    improvePromptNote();
   }
 });
 
@@ -3077,6 +3326,90 @@ imgBtn.addEventListener('click', async () => {
   if (res && res.filename) insertImageToken(res.filename);
 });
 
+// Anchored, non-global check — IMG_TOKEN_RE carries /g and .test() on a
+// global regex advances lastIndex as a side effect, which would misfire
+// intermittently across back-to-back regenerate clicks.
+const IMG_TOKEN_LINE_RE = /^!\[img\]\(ppimg:\/\/[a-zA-Z0-9._-]+(?:\|\d+)?\)$/;
+
+// Insert/replace a generated preview image directly above `targetLine`
+// (0 = top of the whole tab; a code block's data-line = just above that
+// block). If a preview token already sits in that slot, replace it in
+// place so regenerating updates the image instead of stacking duplicates.
+function setPreviewImageToken(t, filename, targetLine) {
+  const prev = t.content;
+  const lines = t.content.split('\n');
+  const token = imgToken(filename);
+  const above = targetLine - 1;
+  if (above >= 0 && IMG_TOKEN_LINE_RE.test(lines[above])) lines[above] = token;
+  else if (targetLine === 0 && IMG_TOKEN_LINE_RE.test(lines[0])) lines[0] = token;
+  else lines.splice(targetLine, 0, token);
+  t.content = lines.join('\n');
+  noteEditForUndo(t, prev);
+}
+
+// Shared by the toolbar "Generate Image" button and each code block's
+// generate-image button (see the mdPreviewEl click delegate below).
+async function runImageGeneration(btnEl, prompt, targetLine) {
+  const provider = settings.imageGen.provider || 'pollinations';
+  if (provider === 'gemini' && !settings.imageGen.geminiApiKey) {
+    openSettings();
+    geminiApiKeyInputEl.focus();
+    return;
+  }
+  if (provider === 'huggingface' && !settings.imageGen.hfApiKey) {
+    openSettings();
+    hfApiKeyInputEl.focus();
+    return;
+  }
+  const t = activeTab();
+  if (!t) return;
+  const tabId = t.id;
+  prompt = prompt.trim();
+  if (!prompt) return;
+
+  const defaultTitle = btnEl.title;
+  btnEl.disabled = true;
+  btnEl.classList.add('generating');
+  btnEl.title = 'Generating…';
+  try {
+    const res = await window.api.generateImage(prompt, {
+      provider,
+      geminiApiKey: settings.imageGen.geminiApiKey,
+      hfApiKey: settings.imageGen.hfApiKey
+    });
+    if (res && res.ok && res.filename) {
+      setPreviewImageToken(t, res.filename, targetLine);
+      // Only touch the visible editor if the user is still on this tab —
+      // otherwise this would hijack whatever tab is now on screen, and the
+      // next autosave would write that stale DOM text into the wrong tab.
+      if (activeTab() && activeTab().id === tabId) {
+        setEditorText(t.content);
+        if (mdOn) renderMdPreview();
+      }
+      updateCounts();
+      updatePlaceholderPanel();
+      scheduleSave();
+    } else {
+      btnEl.classList.add('failed');
+      btnEl.title = (res && res.error) || 'Image generation failed.';
+      setTimeout(() => {
+        btnEl.classList.remove('failed');
+        btnEl.title = defaultTitle;
+      }, 4000);
+    }
+  } finally {
+    btnEl.disabled = false;
+    btnEl.classList.remove('generating');
+    if (!btnEl.classList.contains('failed')) btnEl.title = defaultTitle;
+  }
+}
+
+genImgBtn.addEventListener('click', () => {
+  if (mdOn || fsActive() || !activeTab()) return;
+  const prompt = activeTab().content.replace(IMG_TOKEN_RE, '');
+  runImageGeneration(genImgBtn, prompt, 0);
+});
+
 // Paste an image straight from the clipboard. Plain-text paste stays native.
 editorEl.addEventListener('paste', (e) => {
   const items = e.clipboardData && e.clipboardData.items;
@@ -3133,6 +3466,39 @@ mdPreviewEl.addEventListener('click', (e) => {
         copyCodeBtn.classList.add('copied');
         setTimeout(() => copyCodeBtn.classList.remove('copied'), 900);
       }).catch((err) => console.error('copy code failed', err));
+    }
+    return;
+  }
+  const genImgCodeBtn = t.closest('.md-code-genimg');
+  if (genImgCodeBtn) {
+    const block = genImgCodeBtn.closest('.md-codeblock');
+    const codeEl = block && block.querySelector('code');
+    const line = block ? Number(block.dataset.line) : NaN;
+    if (codeEl && Number.isFinite(line)) runImageGeneration(genImgCodeBtn, codeEl.textContent, line);
+    return;
+  }
+  const improveCodeBtn = t.closest('.md-code-improve');
+  if (improveCodeBtn) {
+    markFeatureSeen('improve');
+    const block = improveCodeBtn.closest('.md-codeblock');
+    const codeEl = block && block.querySelector('code');
+    const startLine = block ? Number(block.dataset.line) : NaN;
+    const endLine = block ? Number(block.dataset.endLine) : NaN;
+    const tab = activeTab();
+    if (codeEl && tab && Number.isFinite(startLine) && Number.isFinite(endLine)) {
+      const tabId = tab.id;
+      runImprove(improveCodeBtn, codeEl.textContent, (improved) => {
+        if (!activeTab() || activeTab().id !== tabId) return;
+        const prev = tab.content;
+        const lines = prev.split('\n');
+        if (endLine > lines.length) return; // content changed underneath us — skip
+        lines.splice(startLine + 1, endLine - (startLine + 1), ...improved.split('\n'));
+        tab.content = lines.join('\n');
+        noteEditForUndo(tab, prev);
+        renderMdPreview();
+        updateCounts();
+        scheduleSave();
+      });
     }
     return;
   }
@@ -3373,6 +3739,78 @@ function cleanUpNote() {
 
 cleanBtn.addEventListener('click', cleanUpNote);
 
+// Shared by every "Improve" trigger (toolbar button, right-click menu, each
+// code block's own button in Markdown preview) — handles the network call
+// and button generating/failed states; `applyFn(improvedText)` decides what
+// to do with the result (whole-tab replace, selection replace, code-block
+// replace, ...).
+async function runImprove(btnEl, sourceText, applyFn) {
+  if (!sourceText.trim()) return;
+  const defaultTitle = btnEl.title;
+  btnEl.disabled = true;
+  btnEl.classList.add('generating');
+  btnEl.title = 'Improving…';
+  try {
+    const res = await window.api.improvePrompt(sourceText);
+    if (res && res.ok && res.text) {
+      applyFn(res.text);
+    } else {
+      btnEl.classList.add('failed');
+      btnEl.title = (res && res.error) || 'Improve failed.';
+      setTimeout(() => {
+        btnEl.classList.remove('failed');
+        btnEl.title = defaultTitle;
+      }, 4000);
+    }
+  } finally {
+    btnEl.disabled = false;
+    btnEl.classList.remove('generating');
+    if (!btnEl.classList.contains('failed')) btnEl.title = defaultTitle;
+  }
+}
+
+// Improves the current single-line selection if there is one (mirrors the
+// same single-line constraint as surroundSelection/bold-italic — this editor
+// is line-based, so cross-line selections aren't addressable), otherwise the
+// whole tab.
+async function improvePromptNote() {
+  if (mdOn || fsActive() || !activeTab()) return;
+  markFeatureSeen('improve');
+  const t = activeTab();
+  syncEditorToState();
+  const tabId = t.id;
+  const sel = currentLineSelection();
+  const hasSelection = !!(sel && sel.end > sel.start);
+  const source = hasSelection ? sel.line.textContent.slice(sel.start, sel.end) : t.content;
+  if (!source.trim()) return;
+
+  await runImprove(improveBtn, source, (improved) => {
+    // Only apply if the user is still on this tab — an unconditional write
+    // here could otherwise land in whatever tab is now on screen (see the
+    // same guard in runImageGeneration for image generation).
+    if (!activeTab() || activeTab().id !== tabId) { if (!hasSelection) t.content = improved; return; }
+    if (hasSelection) {
+      const text = sel.line.textContent;
+      if (sel.end > text.length) return; // line changed underneath us — skip rather than corrupt it
+      setLineText(sel.line, text.slice(0, sel.start) + improved + text.slice(sel.end), sel.start + improved.length);
+      scheduleSave();
+    } else {
+      const prev = t.content;
+      noteEditForUndo(t, prev);
+      t.content = improved;
+      setEditorText(improved);
+      updateCounts();
+      updatePlaceholderPanel();
+      if (!t.custom) renderTabs();
+      scheduleSave();
+      editorEl.focus();
+      placeCaretEnd();
+    }
+  });
+}
+
+improveBtn.addEventListener('click', improvePromptNote);
+
 addBtn.addEventListener('click', () => addTab());
 
 copyBtn.addEventListener('click', async () => {
@@ -3598,6 +4036,7 @@ window.addEventListener('keyup', (e) => {
 
 function cycleTab(dir) {
   const ids = orderedTabs().map((t) => t.id);
+  ids.unshift(AI_ID);
   if (settings.fastSaveEnabled) ids.unshift(FS_ID);
   if (ids.length < 2) return;
   const idx = ids.indexOf(state.activeId);
@@ -3672,6 +4111,23 @@ function applySettings() {
   applyPlaceholderCollapsed();
   applyJustify();
   applyToolbarButtons();
+  renderToolbarLayout();
+  applyNewBadges();
+}
+
+// ---------- "New" badges on recently-added features ----------
+// Clears itself the first time the user actually uses that feature.
+function markFeatureSeen(key) {
+  if (settings.seenFeatures && settings.seenFeatures[key]) return;
+  settings.seenFeatures = { ...settings.seenFeatures, [key]: true };
+  saveSettingsNow();
+  applyNewBadges();
+  renderTabs();
+}
+
+function applyNewBadges() {
+  const seen = settings.seenFeatures || {};
+  improveBtn.classList.toggle('has-new-badge', !seen.improve);
 }
 
 // ---------- Toolbar buttons show/hide ----------
@@ -3681,10 +4137,14 @@ const TOOLBAR_BUTTONS = [
   { key: 'link', label: 'Link', el: () => linkBtn },
   { key: 'justify', label: 'Justify', el: () => justifyBtn },
   { key: 'clean', label: 'Clean', el: () => cleanBtn },
+  { key: 'improve', label: 'Improve Prompt', el: () => improveBtn },
   { key: 'md', label: 'Markdown', el: () => mdBtn },
   { key: 'paste', label: 'Paste', el: () => pasteBtn },
   { key: 'copy', label: 'Copy', el: () => copyBtn },
   { key: 'img', label: 'Image', el: () => imgBtn },
+  // genImgBtn intentionally omitted — image generation is hidden for now,
+  // see index.html; leaving it out of this list keeps it from being
+  // re-shown via the Settings → Toolbar buttons chips.
   { key: 'files', label: 'Attach File', el: () => filesBtn }
 ];
 
@@ -3699,6 +4159,133 @@ function applyToolbarButtons() {
   });
 }
 
+// ---------- Toolbar drag-to-reorder + overflow chevron (Windows-taskbar style) ----------
+// Buttons live in #toolbarMain (visible row) or #toolbarOverflowPanel (behind
+// the chevron); settings.toolbarOrder/toolbarCollapsed remember the split and
+// per-group order. Show/hide (toolbarPref, above) is a separate concern —
+// this only controls *position*, not visibility.
+function openToolbarOverflow() {
+  toolbarOverflowPanelEl.classList.remove('hidden');
+  toolbarOverflowBtnEl.classList.add('active');
+}
+function closeToolbarOverflow() {
+  toolbarOverflowPanelEl.classList.add('hidden');
+  toolbarOverflowBtnEl.classList.remove('active');
+}
+
+// Icons nudged into the overflow the very first time this ships, purely so
+// the chevron/flyout has something in it and gets noticed. Fires once ever
+// (settings.toolbarNudged), never re-applied once the user has touched it.
+const TOOLBAR_NUDGE_COLLAPSE = ['emoji', 'link', 'justify', 'clean'];
+
+function renderToolbarLayout() {
+  const allKeys = TOOLBAR_BUTTONS.map((b) => b.key);
+  // Migration-safe: keep any known order, drop stale keys, append new ones
+  // (e.g. a future update adding another toolbar button) at the end.
+  let order = (settings.toolbarOrder || []).filter((k) => allKeys.includes(k));
+  allKeys.forEach((k) => { if (!order.includes(k)) order.push(k); });
+  settings.toolbarOrder = order;
+
+  if (!settings.toolbarNudged) {
+    settings.toolbarNudged = true;
+    settings.toolbarCollapsed = TOOLBAR_NUDGE_COLLAPSE.filter((k) => order.includes(k));
+    saveSettingsNow();
+  }
+
+  const collapsedSet = new Set((settings.toolbarCollapsed || []).filter((k) => order.includes(k)));
+  const mainKeys = order.filter((k) => !collapsedSet.has(k));
+  const overflowKeys = order.filter((k) => collapsedSet.has(k));
+
+  mainKeys.forEach((k) => {
+    const el = TOOLBAR_BUTTONS.find((b) => b.key === k)?.el();
+    if (el) toolbarMainEl.appendChild(el);
+  });
+  overflowKeys.forEach((k) => {
+    const el = TOOLBAR_BUTTONS.find((b) => b.key === k)?.el();
+    if (el) toolbarOverflowPanelEl.appendChild(el);
+  });
+
+  // Always visible — otherwise there's no way to discover a drag-to-collapse
+  // feature whose only affordance only appears after you've already used it.
+  toolbarOverflowBtnEl.classList.remove('hidden');
+  toolbarOverflowPanelEl.classList.toggle('empty', overflowKeys.length === 0);
+}
+
+// Live-move the dragged button to wherever the cursor currently is within a
+// drop container, based on the horizontal midpoint of its siblings.
+function toolbarDragAfterElement(container, x) {
+  const els = [...container.querySelectorAll('.copy-btn:not(.dragging)')];
+  return els.reduce((closest, child) => {
+    const box = child.getBoundingClientRect();
+    const offset = x - box.left - box.width / 2;
+    if (offset < 0 && offset > closest.offset) return { offset, element: child };
+    return closest;
+  }, { offset: Number.NEGATIVE_INFINITY, element: null }).element;
+}
+
+function commitToolbarLayoutFromDom() {
+  const mainKeys = [...toolbarMainEl.children].map((el) => el.dataset.toolbarKey).filter(Boolean);
+  const overflowKeys = [...toolbarOverflowPanelEl.children].map((el) => el.dataset.toolbarKey).filter(Boolean);
+  settings.toolbarOrder = [...mainKeys, ...overflowKeys];
+  settings.toolbarCollapsed = overflowKeys;
+  saveSettingsNow();
+  renderToolbarLayout();
+}
+
+function initToolbarDragDrop() {
+  TOOLBAR_BUTTONS.forEach(({ key, el }) => {
+    const btn = el();
+    if (!btn) return;
+    btn.dataset.toolbarKey = key;
+    btn.draggable = true;
+    btn.addEventListener('dragstart', (e) => {
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', key);
+      btn.classList.add('dragging');
+    });
+    btn.addEventListener('dragend', () => {
+      btn.classList.remove('dragging');
+      commitToolbarLayoutFromDom();
+    });
+  });
+
+  [toolbarMainEl, toolbarOverflowPanelEl].forEach((container) => {
+    container.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      const dragging = document.querySelector('.copy-btn.dragging');
+      if (!dragging) return;
+      const after = toolbarDragAfterElement(container, e.clientX);
+      if (after == null) container.appendChild(dragging);
+      else container.insertBefore(dragging, after);
+    });
+    container.addEventListener('drop', (e) => e.preventDefault());
+  });
+
+  // Dropping directly on the (possibly closed) chevron collapses the button.
+  toolbarOverflowBtnEl.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  });
+  toolbarOverflowBtnEl.addEventListener('drop', (e) => {
+    e.preventDefault();
+    const dragging = document.querySelector('.copy-btn.dragging');
+    if (dragging) toolbarOverflowPanelEl.appendChild(dragging);
+    openToolbarOverflow();
+  });
+
+  toolbarOverflowBtnEl.addEventListener('click', () => {
+    if (toolbarOverflowPanelEl.classList.contains('hidden')) openToolbarOverflow();
+    else closeToolbarOverflow();
+  });
+  document.addEventListener('click', (e) => {
+    if (toolbarOverflowPanelEl.classList.contains('hidden')) return;
+    if (toolbarOverflowPanelEl.contains(e.target) || toolbarOverflowBtnEl.contains(e.target)) return;
+    closeToolbarOverflow();
+  });
+}
+initToolbarDragDrop(); // one-time listener setup — safe to call before settings load
+
 // Row of clickable chips (one per button) — click toggles that button on/off.
 function buildToolbarChips() {
   if (!toolbarRow) return;
@@ -3712,6 +4299,7 @@ function buildToolbarChips() {
       settings.toolbar[b.key] = !toolbarPref(b.key);
       chip.classList.toggle('active', toolbarPref(b.key));
       applyToolbarButtons();
+      renderToolbarLayout();
       saveSettingsNow();
     });
     toolbarRow.appendChild(chip);
@@ -3816,6 +4404,15 @@ function syncSettingsUI() {
   toggleQuickCaptureEl.checked = !!settings.quickCaptureEnabled;
   toggleImageResizeEl.checked = !!settings.imageResizable;
   toggleImageDownloadEl.checked = !!settings.imageDownloadEnabled;
+  geminiApiKeyInputEl.value = (settings.imageGen && settings.imageGen.geminiApiKey) || '';
+  hfApiKeyInputEl.value = (settings.imageGen && settings.imageGen.hfApiKey) || '';
+  const genProvider = (settings.imageGen && settings.imageGen.provider) || 'pollinations';
+  imageGenProviderSeg.querySelectorAll('.seg-btn').forEach((b) => {
+    b.classList.toggle('active', b.dataset.provider === genProvider);
+  });
+  geminiProviderFieldsEl.classList.toggle('hidden', genProvider !== 'gemini');
+  hfProviderFieldsEl.classList.toggle('hidden', genProvider !== 'huggingface');
+  providerHintPollinationsEl.classList.toggle('hidden', genProvider !== 'pollinations');
   togglePlaceholdersEl.checked = settings.placeholdersEnabled;
   resizeRow.classList.toggle('disabled', settings.tabPosition === 'top');
   placeholderPositionSeg.querySelectorAll('.seg-btn').forEach((b) => {
@@ -3944,6 +4541,24 @@ toggleImageDownloadEl.addEventListener('change', () => {
   saveSettingsNow();
 });
 
+geminiApiKeyInputEl.addEventListener('change', () => {
+  settings.imageGen = { ...settings.imageGen, geminiApiKey: geminiApiKeyInputEl.value.trim() };
+  saveSettingsNow();
+});
+
+hfApiKeyInputEl.addEventListener('change', () => {
+  settings.imageGen = { ...settings.imageGen, hfApiKey: hfApiKeyInputEl.value.trim() };
+  saveSettingsNow();
+});
+
+imageGenProviderSeg.addEventListener('click', (e) => {
+  const btn = e.target.closest('.seg-btn');
+  if (!btn) return;
+  settings.imageGen = { ...settings.imageGen, provider: btn.dataset.provider };
+  syncSettingsUI();
+  saveSettingsNow();
+});
+
 // ---------- Storage location ----------
 changeStorageBtn.addEventListener('click', async () => {
   const folder = await window.api.pickStorageFolder();
@@ -4025,6 +4640,7 @@ placeholderWrapSeg.addEventListener('click', (e) => {
 
 resetBtn.addEventListener('click', async () => {
   settings = { ...DEFAULT_SETTINGS };
+  settings.imageGen = { ...DEFAULT_SETTINGS.imageGen };
   await window.api.setStartup(false);
   try {
     settings.quickCaptureEnabled = !!(await window.api.setQuickCapture(true));
@@ -4494,16 +5110,15 @@ const CURRENT_VERSION = document.getElementById('aboutVersion').textContent.repl
 const WHATS_NEW =
   "What's new in v" + CURRENT_VERSION + " ✨\n" +
   '\n' +
-  '• Fix — right-click on an image now actually opens its menu (it silently\n' +
-  '   did nothing before); Copy image is also far more reliable now.\n' +
-  '• Image right-click menu — added Copy image and Show in folder.\n' +
-  '• Markdown code blocks — a copy button in the top-left corner, and the\n' +
-  '   scrollbar now matches the rest of the app instead of the OS default.\n' +
-  '• A generic Cut / Copy / Paste / Select All right-click menu now works\n' +
-  '   everywhere text can be edited — the editor, Fast Save, dialogs, even\n' +
-  '   the separate quick-capture popup.\n' +
-  '• Settings → Storage — see where attached images/files are kept and\n' +
-  '   move them to any folder you want; your notes stay put either way.\n' +
+  '• AI Chat — a free chat pinned in the sidebar next to Fast Save, no\n' +
+  '   signup or API key. Ask a quick question without leaving the app.\n' +
+  '• Improve Prompt — rewrites your draft into a clearer, more effective\n' +
+  '   prompt with one click. Works on a whole tab, a single selected line,\n' +
+  '   right-click → Improve, or an individual code block in Markdown\n' +
+  '   preview (next to its copy button).\n' +
+  '• Toolbar customization — drag any button to reorder it, or drag it\n' +
+  '   onto the overflow arrow to tuck it away (Windows-taskbar style).\n' +
+  '   Every button now shows its name, not just an icon.\n' +
   '\n' +
   'You can close this tab — it won\'t come back until the next update.';
 
@@ -4650,6 +5265,9 @@ window.addEventListener('drop', async (e) => {
   settings = { ...DEFAULT_SETTINGS, ...(savedSettings || {}) };
   // ensure every toolbar key exists even if an older save lacked some
   settings.toolbar = { ...DEFAULT_SETTINGS.toolbar, ...(settings.toolbar || {}) };
+  // fresh object, never the shared DEFAULT_SETTINGS.imageGen reference
+  settings.imageGen = { ...DEFAULT_SETTINGS.imageGen, ...(settings.imageGen || {}) };
+  settings.seenFeatures = { ...(settings.seenFeatures || {}) };
   // reflect real OS startup state
   try { settings.launchAtStartup = await window.api.getStartup(); } catch {}
   applySettings();

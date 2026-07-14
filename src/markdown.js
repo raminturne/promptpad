@@ -39,12 +39,14 @@
       // fenced code block
       if (/^```/.test(raw)) {
         closeList();
+        const startLine = i;
         const buf = [];
         i++;
         while (i < lines.length && !/^```/.test(lines[i])) { buf.push(esc(lines[i])); i++; }
+        const endLine = i; // index of the closing fence line
         i++; // skip closing fence
         out.push(
-          '<div class="md-codeblock">' +
+          '<div class="md-codeblock" data-line="' + startLine + '" data-end-line="' + endLine + '">' +
           '<button class="md-code-copy" type="button" title="Copy code" aria-label="Copy code">' +
           '<svg class="md-code-copy-icon" viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">' +
           '<rect x="9" y="9" width="11" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/>' +
@@ -52,6 +54,19 @@
           '</svg>' +
           '<svg class="md-code-copy-check" viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">' +
           '<path d="M5 12.5l4.5 4.5L19 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>' +
+          '</svg>' +
+          '</button>' +
+          '<button class="md-code-improve" type="button" title="Improve this prompt" aria-label="Improve this prompt">' +
+          '<svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">' +
+          '<path d="M4 20L14 10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>' +
+          '<path d="M17 3l.9 2.1L20 6l-2.1.9L17 9l-.9-2.1L14 6l2.1-.9L17 3z" fill="currentColor"/>' +
+          '<path d="M12.5 7.5l.5 1.2 1.2.5-1.2.5-.5 1.2-.5-1.2-1.2-.5 1.2-.5.5-1.2z" fill="currentColor"/>' +
+          '</svg>' +
+          '</button>' +
+          '<button class="md-code-genimg" type="button" title="Generate image from this block" aria-label="Generate image from this block">' +
+          '<svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">' +
+          '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3z" fill="currentColor"/>' +
+          '<path d="M19 14l.9 2.1L22 17l-2.1.9L19 20l-.9-2.1L16 17l2.1-.9L19 14z" fill="currentColor"/>' +
           '</svg>' +
           '</button>' +
           '<pre><code>' + buf.join('\n') + '</code></pre>' +

@@ -372,6 +372,380 @@ if (!app.requestSingleInstanceLock()) {
     }
   });
 
+  // Pull image bytes out of a Gemini "interactions" response regardless of
+  // exactly which shape it comes back in (steps[].content[], interaction.
+  // output_image, legacy inlineData, ...) — this API surface has changed
+  // shape more than once, so match structurally instead of one fixed path.
+  function findImagePart(node) {
+    if (!node || typeof node !== 'object') return null;
+    if (Array.isArray(node)) {
+      for (const item of node) {
+        const found = findImagePart(item);
+        if (found) return found;
+      }
+      return null;
+    }
+    const data = node.data || (node.inlineData && node.inlineData.data);
+    const mime = node.mime_type || node.mimeType ||
+      (node.inlineData && (node.inlineData.mime_type || node.inlineData.mimeType));
+    if (typeof data === 'string' && data.length > 100 && typeof mime === 'string' && mime.startsWith('image/')) {
+      return { data, mimeType: mime };
+    }
+    for (const key of Object.keys(node)) {
+      const found = findImagePart(node[key]);
+      if (found) return found;
+    }
+    return null;
+  }
+
+  function extFromMime(mime) {
+    if (mime === 'image/png') return 'png';
+    if (mime === 'image/webp') return 'webp';
+    if (mime === 'image/gif') return 'gif';
+    return 'jpg';
+  }
+
+  // Free, keyless image API — GET returns raw image bytes directly.
+  // private=true keeps generations out of Pollinations' public feed.
+  function fetchPollinationsImage(prompt) {
+    return new Promise((resolve) => {
+      let settled = false;
+      let timer;
+      const finish = (result) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve(result);
+      };
+
+      const url = 'https://image.pollinations.ai/prompt/' + encodeURIComponent(prompt) +
+        '?width=1024&height=1024&nologo=true&private=true';
+
+      let req;
+      try {
+        req = net.request({ method: 'GET', url });
+      } catch (err) {
+        return finish({ ok: false, error: 'Could not start the request.' });
+      }
+
+      timer = setTimeout(() => { try { req.abort(); } catch {} }, 30_000);
+
+      let bufs = [];
+      let total = 0;
+
+      req.on('response', (res) => {
+        const statusCode = res.statusCode;
+        const contentType = res.headers['content-type'] || res.headers['Content-Type'] || '';
+        res.on('data', (chunk) => {
+          total += chunk.length;
+          if (total > 10_000_000) {
+            finish({ ok: false, error: 'Response was too large.' });
+            try { req.abort(); } catch {}
+            return;
+          }
+          bufs.push(chunk);
+        });
+        res.on('end', () => {
+          if (settled) return;
+          if (statusCode === 429) {
+            return finish({ ok: false, error: 'Rate limited — wait a bit before generating another image.' });
+          }
+          if (statusCode >= 400) {
+            return finish({ ok: false, error: 'Image request failed (status ' + statusCode + ').' });
+          }
+          const mime = Array.isArray(contentType) ? contentType[0] : String(contentType);
+          finish({ ok: true, buffer: Buffer.concat(bufs), ext: extFromMime(mime.split(';')[0].trim()) });
+        });
+      });
+
+      req.on('abort', () => finish({ ok: false, error: 'Request timed out.' }));
+      req.on('error', (err) => finish({ ok: false, error: err.message || 'Network error.' }));
+      req.end();
+    });
+  }
+
+  // Free (rate-limited) serverless inference — good-quality FLUX.1-schnell,
+  // notably stronger than Pollinations' anonymous/fast tier. Needs a free
+  // Hugging Face token with "Inference Providers" permission.
+  function fetchHuggingFaceImage(prompt, apiKey) {
+    return new Promise((resolve) => {
+      let settled = false;
+      let timer;
+      const finish = (result) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve(result);
+      };
+
+      let req;
+      try {
+        req = net.request({
+          method: 'POST',
+          url: 'https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-schnell',
+          headers: { Authorization: 'Bearer ' + apiKey, 'Content-Type': 'application/json' }
+        });
+      } catch (err) {
+        return finish({ ok: false, error: 'Could not start the request.' });
+      }
+
+      // Cold starts on the free tier can take a while the first time a
+      // model spins up — give this one more room than the others.
+      timer = setTimeout(() => { try { req.abort(); } catch {} }, 60_000);
+
+      let bufs = [];
+      let total = 0;
+
+      req.on('response', (res) => {
+        const statusCode = res.statusCode;
+        const contentType = String(res.headers['content-type'] || res.headers['Content-Type'] || '');
+        res.on('data', (chunk) => {
+          total += chunk.length;
+          if (total > 10_000_000) {
+            finish({ ok: false, error: 'Response was too large.' });
+            try { req.abort(); } catch {}
+            return;
+          }
+          bufs.push(chunk);
+        });
+        res.on('end', () => {
+          if (settled) return;
+          if (statusCode >= 400) {
+            let apiMsg = null;
+            try { apiMsg = JSON.parse(Buffer.concat(bufs).toString('utf8')).error; } catch {}
+            if (statusCode === 401 || statusCode === 403) {
+              return finish({ ok: false, error: 'Hugging Face rejected the API token — check it in Settings.' });
+            }
+            if (statusCode === 503) {
+              return finish({ ok: false, error: (apiMsg || 'Model is still loading') + ' — try again in a few seconds.' });
+            }
+            if (statusCode === 429) {
+              return finish({ ok: false, error: 'Hugging Face rate limit hit — try again later.' });
+            }
+            return finish({ ok: false, error: apiMsg ? String(apiMsg).slice(0, 300) : 'Request failed (status ' + statusCode + ').' });
+          }
+          if (!contentType.startsWith('image/')) {
+            return finish({ ok: false, error: 'Hugging Face returned an unexpected response.' });
+          }
+          finish({ ok: true, buffer: Buffer.concat(bufs), ext: extFromMime(contentType.split(';')[0].trim()) });
+        });
+      });
+
+      req.on('abort', () => finish({ ok: false, error: 'Request timed out.' }));
+      req.on('error', (err) => finish({ ok: false, error: err.message || 'Network error.' }));
+
+      req.write(JSON.stringify({ inputs: prompt, parameters: { width: 1024, height: 1024 } }));
+      req.end();
+    });
+  }
+
+  function fetchGeminiImage(prompt, apiKey) {
+    return new Promise((resolve) => {
+      let settled = false;
+      let timer;
+      const finish = (result) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve(result);
+      };
+
+      let req;
+      try {
+        req = net.request({
+          method: 'POST',
+          url: 'https://generativelanguage.googleapis.com/v1beta/interactions',
+          headers: { 'x-goog-api-key': apiKey, 'Content-Type': 'application/json' }
+        });
+      } catch (err) {
+        return finish({ ok: false, error: 'Could not start the request.' });
+      }
+
+      timer = setTimeout(() => { try { req.abort(); } catch {} }, 30_000);
+
+      let bufs = [];
+      let total = 0;
+
+      req.on('response', (res) => {
+        const statusCode = res.statusCode;
+        res.on('data', (chunk) => {
+          total += chunk.length;
+          if (total > 10_000_000) {
+            finish({ ok: false, error: 'Gemini response was too large.' });
+            try { req.abort(); } catch {}
+            return;
+          }
+          bufs.push(chunk);
+        });
+        res.on('end', () => {
+          if (settled) return;
+          let json = null;
+          try { json = JSON.parse(Buffer.concat(bufs).toString('utf8')); } catch {}
+          if (statusCode >= 400) {
+            // Surface Gemini's own message where we have one (e.g. "quota
+            // exceeded ... check your plan and billing details") instead of
+            // a generic label — it's usually the only clue the user gets
+            // for why a key that "should" be free just failed.
+            const apiMsg = json && json.error && json.error.message;
+            if (statusCode === 401 || statusCode === 403) {
+              return finish({ ok: false, error: 'Gemini rejected the API key — check it in Settings.' });
+            }
+            if (apiMsg) {
+              return finish({ ok: false, error: String(apiMsg).split('\n')[0].slice(0, 300) });
+            }
+            return finish({ ok: false, error: 'Gemini request failed (status ' + statusCode + ').' });
+          }
+          if (!json) {
+            return finish({ ok: false, error: 'Gemini returned an unexpected response.' });
+          }
+          const part = findImagePart(json);
+          if (!part) {
+            return finish({ ok: false, error: "No image came back — the prompt may have been blocked by Gemini's safety filters." });
+          }
+          finish({ ok: true, buffer: Buffer.from(part.data, 'base64'), ext: extFromMime(part.mimeType) });
+        });
+      });
+
+      req.on('abort', () => finish({ ok: false, error: 'Request timed out.' }));
+      req.on('error', (err) => finish({ ok: false, error: err.message || 'Network error.' }));
+
+      req.write(JSON.stringify({
+        model: 'gemini-3.1-flash-image',
+        input: [{ type: 'text', text: prompt }],
+        response_format: { type: 'image', mime_type: 'image/jpeg', aspect_ratio: '1:1' }
+      }));
+      req.end();
+    });
+  }
+
+  ipcMain.handle('generate-image', async (_e, prompt, opts) => {
+    prompt = String(prompt || '').trim().slice(0, 4000);
+    if (!prompt) return { ok: false, error: 'Prompt is empty.' };
+    const provider = opts && opts.provider;
+    let res;
+    if (provider === 'gemini') {
+      const apiKey = String((opts && opts.geminiApiKey) || '').trim();
+      if (!apiKey) return { ok: false, error: 'Add your Gemini API key in Settings first.' };
+      res = await fetchGeminiImage(prompt, apiKey);
+    } else if (provider === 'huggingface') {
+      const apiKey = String((opts && opts.hfApiKey) || '').trim();
+      if (!apiKey) return { ok: false, error: 'Add your Hugging Face token in Settings first.' };
+      res = await fetchHuggingFaceImage(prompt, apiKey);
+    } else {
+      res = await fetchPollinationsImage(prompt);
+    }
+    if (!res.ok) return res;
+    try {
+      const name = newImageName(res.ext);
+      fs.writeFileSync(path.join(IMAGES_DIR, name), res.buffer);
+      return { ok: true, filename: name };
+    } catch (err) {
+      console.error('generate-image save failed', err);
+      return { ok: false, error: 'Could not save the generated image.' };
+    }
+  });
+
+  // Free, keyless chat completion — backs both the "Improve Prompt" button
+  // (one-shot system+user call) and the AI Chat view (full message history).
+  function fetchPollinationsChat(messages) {
+    return new Promise((resolve) => {
+      let settled = false;
+      let timer;
+      const finish = (result) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve(result);
+      };
+
+      let req;
+      try {
+        req = net.request({
+          method: 'POST',
+          url: 'https://text.pollinations.ai/openai',
+          headers: { 'Content-Type': 'application/json' }
+        });
+      } catch (err) {
+        return finish({ ok: false, error: 'Could not start the request.' });
+      }
+
+      timer = setTimeout(() => { try { req.abort(); } catch {} }, 30_000);
+
+      let bufs = [];
+      let total = 0;
+
+      req.on('response', (res) => {
+        const statusCode = res.statusCode;
+        res.on('data', (chunk) => {
+          total += chunk.length;
+          if (total > 2_000_000) {
+            finish({ ok: false, error: 'Response was too large.' });
+            try { req.abort(); } catch {}
+            return;
+          }
+          bufs.push(chunk);
+        });
+        res.on('end', () => {
+          if (settled) return;
+          const body = Buffer.concat(bufs).toString('utf8');
+          let json = null;
+          try { json = JSON.parse(body); } catch {}
+          if (statusCode >= 400) {
+            const apiMsg = json && (json.error && json.error.message || json.error);
+            if (statusCode === 429) return finish({ ok: false, error: 'Rate limited — wait a bit and try again.' });
+            return finish({ ok: false, error: apiMsg ? String(apiMsg).slice(0, 300) : 'Request failed (status ' + statusCode + ').' });
+          }
+          const content = json && json.choices && json.choices[0] && json.choices[0].message && json.choices[0].message.content;
+          if (typeof content !== 'string' || !content.trim()) {
+            return finish({ ok: false, error: 'No text came back.' });
+          }
+          finish({ ok: true, text: content.trim() });
+        });
+      });
+
+      req.on('abort', () => finish({ ok: false, error: 'Request timed out.' }));
+      req.on('error', (err) => finish({ ok: false, error: err.message || 'Network error.' }));
+
+      req.write(JSON.stringify({ model: 'openai', messages }));
+      req.end();
+    });
+  }
+
+  ipcMain.handle('improve-prompt', async (_e, promptText) => {
+    promptText = String(promptText || '').trim().slice(0, 8000);
+    if (!promptText) return { ok: false, error: 'Nothing to improve — the tab is empty.' };
+    return fetchPollinationsChat([
+      {
+        role: 'system',
+        content: 'You are an expert prompt engineer. The user will give you a draft prompt they intend ' +
+          'to use with an AI system (image generator, chatbot, coding assistant, etc). Rewrite it to be ' +
+          'clearer, more specific, and more effective, while preserving their original intent and language. ' +
+          'Output ONLY the improved prompt text — no explanations, no preamble, no markdown fences, no ' +
+          'quotation marks around it.'
+      },
+      { role: 'user', content: promptText }
+    ]);
+  });
+
+  ipcMain.handle('chat-message', async (_e, history) => {
+    if (!Array.isArray(history)) return { ok: false, error: 'Invalid message history.' };
+    // Cap both turn count and per-message size so a long-running conversation
+    // can't grow into an unbounded request.
+    const turns = history.slice(-20).map((m) => ({
+      role: m && m.role === 'assistant' ? 'assistant' : 'user',
+      content: String((m && m.content) || '').slice(0, 4000)
+    })).filter((m) => m.content);
+    if (!turns.length) return { ok: false, error: 'Message is empty.' };
+    return fetchPollinationsChat([
+      {
+        role: 'system',
+        content: 'You are a helpful, friendly assistant built into PromptPad, a notepad app for writing AI ' +
+          'prompts. Keep replies concise and to the point.'
+      },
+      ...turns
+    ]);
+  });
+
   // ---- Per-tab / Fast Save file attachments ----
   // Stored copies live in FILES_DIR under a random name; storedName is always
   // whitelisted before it touches the filesystem.

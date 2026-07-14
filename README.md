@@ -6,21 +6,19 @@ Minimal, fast, and right next to your work — with tabs, 14 themes, live placeh
 
 ## 📸 Screenshots
 
-| Editor — bold, todos, images, placeholders | Tabs — multi-select, colors, groups | Group right-click menu |
-|:---:|:---:|:---:|
-| ![Editor](screenshots/01-editor.png) | ![Tabs and groups](screenshots/02-tabs-groups.png) | ![Group menu](screenshots/03-group-menu.png) |
+Shown in the **Mono** theme — 14 themes total (7 dark + 7 light) are available in Settings.
 
-| Fast Save (Telegram-style) | Per-tab file attachments | Quick capture |
-|:---:|:---:|:---:|
-| ![Fast Save](screenshots/04-fast-save.png) | ![Files panel](screenshots/05-files-panel.png) | ![Quick capture](screenshots/06-quick-capture.png) |
+| Workspace — tabs, colored groups, placeholders, inline images | Fast Save — Telegram-style pinned quick notes |
+|:---:|:---:|
+| ![Workspace](screenshots/01-workspace.png) | ![Fast Save](screenshots/02-fast-save.png) |
 
-| Markdown preview | Media gallery | Templates |
-|:---:|:---:|:---:|
-| ![Markdown preview](screenshots/07-markdown.png) | ![Gallery](screenshots/08-gallery.png) | ![Templates](screenshots/09-templates.png) |
+| AI Chat — free built-in chat, no API key | Markdown preview — code blocks with Copy / Improve actions |
+|:---:|:---:|
+| ![AI Chat](screenshots/03-ai-chat.png) | ![Markdown](screenshots/04-markdown.png) |
 
-| Settings |
-|:---:|
-| ![Settings](screenshots/10-settings.png) |
+| Toolbar customization — drag to reorder or tuck away behind the overflow arrow | Settings — theme picker |
+|:---:|:---:|
+| ![Toolbar](screenshots/05-toolbar.png) | ![Settings](screenshots/06-settings.png) |
 
 ## ✨ Features
 
@@ -39,10 +37,12 @@ Minimal, fast, and right next to your work — with tabs, 14 themes, live placeh
   - Enter jumps to the next field
   - Bar can sit above the prompt or as a resizable side panel; one scrollable line or stacked rows
 - **Fast Save** — a chat-style "saved messages" note pinned above your tabs (like Telegram), renameable by `Shift+click`ing its label. Type and press Enter to save; each message keeps a timestamp with copy / **edit** / delete buttons and per-message RTL. Attach images or **files** (paste or button) with an optional caption, `Ctrl+click` to multi-select and delete messages, search your messages, and browse images in a **media gallery** (right-click an image → **Go to message**). Toggle it off in Settings.
+- **AI Chat** — a free, no-signup chat pinned in the sidebar next to Fast Save, for quick questions without leaving the app. One continuous conversation, cleared with a click; auto-trims after 200 messages so it never bloats.
+- **Improve Prompt** — rewrites your draft into a clearer, more effective prompt with one click (or right-click → Improve, or on just a selected line). Works on a whole tab, a single selected line, or an individual code block in Markdown preview.
 - **Quick capture** — press `Ctrl+Shift+Space` anywhere (even when the window is hidden) to pop a floating box; type or paste and hit Enter to drop it straight into Fast Save. Toggle in Settings.
 - **Images** — paste (`Ctrl+V`), the image button, or drag & drop a file into a note. Thumbnails render inline; **drag a corner to resize**, **right-click to save a copy**, click to zoom. Both resize and right-click-save are toggleable in Settings → Images.
 - **Todo checklists** — the checkbox button or type `- [ ] `; select several lines to turn them all into todos at once; click a checkbox to toggle done. Renders in the editor and the markdown preview.
-- **Formatting toolbar** — `Ctrl+B` bold (marks stay hidden, just the bold text shows), `Ctrl+K` (or the link button) to insert a hyperlink, an **emoji picker**, a **justify** toggle, a **clean-up** button that tidies extra spaces and blank lines, and a **paste** button. Every button can be shown or hidden from Settings → Toolbar buttons. Links open in your browser from the markdown preview.
+- **Formatting toolbar** — `Ctrl+B` bold (marks stay hidden, just the bold text shows), `Ctrl+K` (or the link button) to insert a hyperlink, an **emoji picker**, a **justify** toggle, a **clean-up** button that tidies extra spaces and blank lines, and a **paste** button. Every button can be shown or hidden from Settings → Toolbar buttons, **drag-and-drop to reorder**, or drag one onto the overflow arrow to tuck it away (Windows-taskbar style) — drag it back out any time. Links open in your browser from the markdown preview.
 - **Markdown preview** — `Ctrl+M` or the `md` button; supports headings, lists, code, quotes, images, todos, and clickable links.
 - **Find & Replace** — the title-bar search button or `Ctrl+F` to search with highlighted matches and match counter; `Ctrl+H` to replace one or all; an "all tabs" toggle also searches Fast Save
 - **Backup** — export/import all your data as a single JSON file in Settings → Backup (a safety backup is written before every import). Export any single note to `.md`/`.txt` from its right-click menu.

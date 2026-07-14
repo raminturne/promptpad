@@ -219,6 +219,32 @@
             </div>
           </div>
         </div>
+        <!-- AI Chat: free-form chat with a free AI backend (Pollinations text API) -->
+        <div id="aiChatView" class="fastsave-view hidden">
+          <div class="fs-header">
+            <span class="fs-header-title">AI Chat</span>
+            <div class="fs-header-actions">
+              <button id="aiClearBtn" class="fs-header-btn" title="Clear chat">
+                <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+                  <path d="M5 7h14M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m2 0v13a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V7h10z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+          <div id="aiMessages" class="fs-messages"></div>
+          <div id="aiErrorBar" class="ai-error-bar hidden"></div>
+          <div class="fs-inputwrap">
+            <div class="fs-inputbar">
+              <textarea id="aiInput" class="fs-input" rows="1" spellcheck="false"
+                placeholder="Message the AI… (Shift+Enter = new line)"></textarea>
+              <button id="aiSend" class="fs-send" title="Send (Enter)">
+                <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+                  <polyline points="6 14 12 8 18 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
         <footer class="statusbar">
           <div class="counts">
             <span id="charCount">0 chars</span>
@@ -226,12 +252,19 @@
             <span id="tokenCount">~0 tokens</span>
           </div>
           <div class="status-actions">
-            <div class="format-cluster">
+            <button id="toolbarOverflowBtn" class="copy-btn toolbar-overflow-btn hidden" title="More">
+              <svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true">
+                <polyline points="6 15 12 9 18 15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
+            <div id="toolbarOverflowPanel" class="toolbar-overflow-panel hidden"></div>
+            <div id="toolbarMain" class="toolbar-main">
             <button id="todoBtn" class="copy-btn" title="Toggle todo on this line">
               <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
                 <rect x="4" y="4" width="16" height="16" rx="4" fill="none" stroke="currentColor" stroke-width="1.6"/>
                 <path d="M8.5 12.5l2.5 2.5 4.5-5.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
               </svg>
+              <span class="btn-label">Todo</span>
             </button>
             <button id="emojiBtn" class="copy-btn" title="Emoji">
               <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
@@ -240,12 +273,14 @@
                 <circle cx="15" cy="10" r="1" fill="currentColor"/>
                 <path d="M8.5 14.5a4.5 4.5 0 0 0 7 0" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
               </svg>
+              <span class="btn-label">Emoji</span>
             </button>
             <button id="linkBtn" class="copy-btn" title="Insert link (Ctrl+K)">
               <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
                 <path d="M10 14a3.5 3.5 0 0 0 5 0l3-3a3.5 3.5 0 0 0-5-5l-1.5 1.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
                 <path d="M14 10a3.5 3.5 0 0 0-5 0l-3 3a3.5 3.5 0 0 0 5 5l1.5-1.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
               </svg>
+              <span class="btn-label">Link</span>
             </button>
             <button id="justifyBtn" class="copy-btn" title="Justify text">
               <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
@@ -253,6 +288,7 @@
                 <line x1="4" y1="12" x2="20" y2="12" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
                 <line x1="4" y1="17" x2="20" y2="17" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
               </svg>
+              <span class="btn-label">Justify</span>
             </button>
             <button id="cleanBtn" class="copy-btn" title="Clean up spacing">
               <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
@@ -260,19 +296,29 @@
                 <path d="M14 6l4 4-7.5 7.5a2 2 0 0 1-1.4.6H5v-4.1a2 2 0 0 1 .6-1.4L14 6z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
                 <path d="M9 11l4 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
               </svg>
+              <span class="btn-label">Clean</span>
             </button>
-            </div>
+            <button id="improveBtn" class="copy-btn" title="Improve this prompt">
+              <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
+                <path d="M4 20L14 10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+                <path d="M17 3l.9 2.1L20 6l-2.1.9L17 9l-.9-2.1L14 6l2.1-.9L17 3z" fill="currentColor"/>
+                <path d="M12.5 7.5l.5 1.2 1.2.5-1.2.5-.5 1.2-.5-1.2-1.2-.5 1.2-.5.5-1.2z" fill="currentColor"/>
+              </svg>
+              <span class="btn-label">Improve</span>
+            </button>
             <button id="mdBtn" class="copy-btn" title="Markdown preview (Ctrl+M)">
               <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
                 <rect x="2.5" y="5" width="19" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/>
                 <path d="M6 15v-6l2.5 3L11 9v6M15 9v6M15 15l-2-2.2M15 15l2-2.2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
               </svg>
+              <span class="btn-label">Markdown</span>
             </button>
             <button id="pasteBtn" class="copy-btn" title="Paste clipboard here">
               <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
                 <rect x="6" y="4" width="12" height="17" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/>
                 <rect x="9" y="2.5" width="6" height="3.2" rx="1" fill="none" stroke="currentColor" stroke-width="1.6"/>
               </svg>
+              <span class="btn-label">Paste</span>
             </button>
             <button id="copyBtn" class="copy-btn" title="Copy prompt (Ctrl+Shift+C)">
               <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
@@ -282,6 +328,7 @@
               <svg class="copy-check" viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
                 <path d="M5 12.5l4.5 4.5L19 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
               </svg>
+              <span class="btn-label">Copy</span>
             </button>
             <button id="imgBtn" class="copy-btn" title="Insert image">
               <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
@@ -289,13 +336,21 @@
                 <circle cx="9" cy="10" r="1.7" fill="currentColor"/>
                 <path d="M4 17.5l4.5-4.5 3.5 3.5 3-3 5 5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
               </svg>
+              <span class="btn-label">Image</span>
             </button>
             <button id="filesBtn" class="copy-btn copy-btn--wide" title="Files attached to this tab">
               <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
                 <path d="M4 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
               </svg>
-              <span>Attach File</span>
+              <span class="btn-label">Attach File</span>
               <span id="filesCount" class="files-count hidden"></span>
+            </button>
+            </div>
+            <button id="genImgBtn" class="copy-btn hidden" title="Generate preview image from this prompt">
+              <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
+                <path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3z" fill="currentColor"/>
+                <path d="M19 14l.9 2.1L22 17l-2.1.9L19 20l-.9-2.1L16 17l2.1-.9L19 14z" fill="currentColor"/>
+              </svg>
             </button>
           </div>
         </footer>
@@ -452,6 +507,45 @@
             <div id="toolbarRow" class="toolbar-row"></div>
           </section>
 
+          <!-- Image generation — feature hidden for now, code kept intact for later -->
+          <section class="set-group hidden">
+            <h3 class="set-label">Image generation</h3>
+            <p class="set-hint">"Generate Image" sends the current tab's text to an image generator and
+              inserts a square preview image above it — handy for prompts written for image generators.</p>
+            <!-- Hugging Face and Gemini are wired up but hidden for now — both
+                 turned out unreliable in practice (HF's free hf-inference
+                 backend was down for its only supported model; Gemini's
+                 image quota was 0 with no billing enabled). Free Pollinations
+                 is the only option surfaced until those get revisited. -->
+            <div class="seg hidden" id="imageGenProviderSeg">
+              <button class="seg-btn" data-provider="pollinations">Free</button>
+              <button class="seg-btn" data-provider="huggingface">Hugging Face</button>
+              <button class="seg-btn" data-provider="gemini">Google Gemini</button>
+            </div>
+            <p class="set-hint" id="providerHintPollinations">No signup, no API key. Prompts are sent to
+              <a href="#" class="about-link" data-url="https://pollinations.ai">pollinations.ai</a>, a free
+              third-party image service — generations aren't saved to their public feed, but the prompt text
+              still leaves your machine. Quality is decent but on the weaker/faster side.</p>
+            <div id="hfProviderFields" class="hidden">
+              <input type="password" id="hfApiKeyInput" class="text-input" placeholder="Hugging Face access token" autocomplete="off" spellcheck="false" />
+              <p class="backup-note">Free (rate-limited), noticeably better quality than the no-signup option —
+                uses the FLUX.1-schnell model. Get a token at
+                <a href="#" class="about-link" data-url="https://huggingface.co/settings/tokens/new?ownUserPermissions=inference.serverless.write&amp;tokenType=fineGrained">huggingface.co/settings/tokens</a>
+                (free account, no card required) with "Make calls to Inference Providers" permission. The token is
+                stored locally in PromptPad's own settings file, the same as your other preferences.</p>
+            </div>
+            <div id="geminiProviderFields" class="hidden">
+              <input type="password" id="geminiApiKeyInput" class="text-input" placeholder="Gemini API key" autocomplete="off" spellcheck="false" />
+              <p class="backup-note">Get a key at
+                <a href="#" class="about-link" data-url="https://aistudio.google.com/apikey">aistudio.google.com/apikey</a>
+                (sign in with your Google account, click "Create API key"). Image generation is billed per image —
+                see <a href="#" class="about-link" data-url="https://ai.google.dev/gemini-api/docs/pricing">Gemini's
+                pricing page</a> for current rates; free-tier availability for image models varies by region and
+                account and isn't guaranteed. The key is stored locally in PromptPad's own settings file, the same
+                as your other preferences.</p>
+            </div>
+          </section>
+
           <!-- System -->
           <section class="set-group">
             <div class="set-toggle-row">
@@ -544,7 +638,7 @@
             <div class="about-box">
               <div class="about-brand">
                 <span class="brand-dot"></span>
-                <span>PromptPad <em id="aboutVersion">v2.1.2</em></span>
+                <span>PromptPad <em id="aboutVersion">v2.2.0</em></span>
               </div>
               <p class="about-desc">A compact notepad for writing AI prompts.</p>
               <div class="about-links">
@@ -745,6 +839,8 @@
       <div class="ctx-item" data-text-action="paste">Paste</div>
       <div class="ctx-sep"></div>
       <div class="ctx-item" data-text-action="selectall">Select All</div>
+      <div class="ctx-sep hidden" id="ctxImproveSep"></div>
+      <div class="ctx-item hidden" id="ctxImproveItem" data-text-action="improve">Improve Prompt</div>
     </div>
 
     <!-- Image context menu -->

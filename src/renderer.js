@@ -4113,6 +4113,15 @@ function setHandyMode(on) {
 }
 function toggleHandy() { setHandyMode(!settings.handyMode); }
 
+// Which scroll container is on screen — so the scroll position survives the
+// collapse (hiding the body resets it to the top otherwise).
+let handySavedScroll = 0;
+function handyActiveScroller() {
+  if (fsActive()) return fsMessagesEl;
+  if (aiChatActive()) return aiMessagesEl;
+  if (mdOn) return mdPreviewEl;
+  return editorEl;
+}
 function handyExpand() {
   if (!settings.handyMode || handyOpen()) return;
   clearTimeout(handyCollapseTimer);
@@ -4120,9 +4129,19 @@ function handyExpand() {
   // 'click away' mode focuses the panel so it stays open until you click
   // somewhere else (a blur); 'leave' mode never steals focus.
   window.api.handyExpand(settings.handyPosition, settings.handyCloseMode === 'click');
+  // showing the body again resets the scroller to the top — put it back where
+  // it was (rAF + a post-animation pass, so it sticks past the grow animation).
+  const scroller = handyActiveScroller();
+  if (scroller) {
+    const apply = () => { scroller.scrollTop = handySavedScroll; };
+    requestAnimationFrame(apply);
+    setTimeout(apply, 260);
+  }
 }
 function handyCollapse() {
   if (!settings.handyMode || !handyOpen()) return;
+  const scroller = handyActiveScroller();
+  if (scroller) handySavedScroll = scroller.scrollTop;
   appEl.classList.remove('handy-open');
   window.api.handyCollapse(settings.handyPosition);
 }

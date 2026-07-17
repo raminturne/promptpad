@@ -211,11 +211,16 @@ if (!app.requestSingleInstanceLock()) {
     }
   });
 
-  // Microphone access for the speech-to-text button — Electron denies every
-  // permission request by default, so getUserMedia would silently fail
-  // without this. Nothing else in the app needs a media/camera prompt.
+  // Allow the microphone (speech-to-text) and the clipboard. Electron denies
+  // every permission by default once a handler is set — WITHOUT listing the
+  // clipboard here, navigator.clipboard read/write (every Copy button and the
+  // Paste button) silently fails with "permission denied".
+  const ALLOWED_PERMISSIONS = ['media', 'clipboard-read', 'clipboard-sanitized-write'];
   session.defaultSession.setPermissionRequestHandler((_wc, permission, callback) => {
-    callback(permission === 'media');
+    callback(ALLOWED_PERMISSIONS.includes(permission));
+  });
+  session.defaultSession.setPermissionCheckHandler((_wc, permission) => {
+    return ALLOWED_PERMISSIONS.includes(permission);
   });
 
   // ---- IPC ----

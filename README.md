@@ -2,13 +2,13 @@
 
 A compact, always-on-top desktop notepad for writing and organizing AI prompts. Built with Electron.
 
-Minimal, fast, and right next to your work — with tabs, 14 themes, live placeholder fill, templates, find & replace, a Telegram-style Fast Save, inline images, todo checklists, and a global quick-capture hotkey.
+Minimal, fast, and right next to your work — with tabs, 14 themes, live placeholder fill, templates, find & replace, a Telegram-style Fast Save, a free built-in AI chat, one-click AI actions, speech-to-text, a handy edge-dock, inline images, todo checklists, and a global quick-capture hotkey.
 
 ## 📸 Screenshots
 
 Shown in the **Mono** theme — 14 themes total (7 dark + 7 light) are available in Settings.
 
-| Workspace — tabs, colored groups, placeholders, inline images | Fast Save — Telegram-style pinned quick notes |
+| Workspace — tabs, colored groups, placeholders & live fill | Fast Save — Telegram-style pinned quick notes |
 |:---:|:---:|
 | ![Workspace](screenshots/01-workspace.png) | ![Fast Save](screenshots/02-fast-save.png) |
 
@@ -16,14 +16,14 @@ Shown in the **Mono** theme — 14 themes total (7 dark + 7 light) are available
 |:---:|:---:|
 | ![AI Chat](screenshots/03-ai-chat.png) | ![Markdown](screenshots/04-markdown.png) |
 
-| Toolbar customization — drag to reorder or tuck away behind the overflow arrow | Settings — theme picker |
+| AI actions — Improve, Translate, Summarize, Fix grammar, change tone | Settings — theme picker, tab size, handy dock & more |
 |:---:|:---:|
-| ![Toolbar](screenshots/05-toolbar.png) | ![Settings](screenshots/06-settings.png) |
+| ![AI actions](screenshots/05-ai-actions.png) | ![Settings](screenshots/06-settings.png) |
 
 ## ✨ Features
 
 - **Compact always-on-top widget** — frameless window that floats above other apps, with a pin toggle
-- **Tabs** — left sidebar or browser-style top layout
+- **Tabs** — a left sidebar rail (hide it any time with the title-bar arrow or `Ctrl+\`), with adjustable tab size (Small / Medium / Large)
   - Add with `+`, click to switch, drag & drop to reorder
   - **Pin** tabs so they stay on top of the list
   - Auto-named from first line; `Shift+click` or double-click to rename
@@ -38,7 +38,11 @@ Shown in the **Mono** theme — 14 themes total (7 dark + 7 light) are available
   - Bar can sit above the prompt or as a resizable side panel; one scrollable line or stacked rows
 - **Fast Save** — a chat-style "saved messages" note pinned above your tabs (like Telegram), renameable by `Shift+click`ing its label. Type and press Enter to save; each message keeps a timestamp with copy / **edit** / delete buttons and per-message RTL. Attach images or **files** (paste or button) with an optional caption, `Ctrl+click` to multi-select and delete messages, search your messages, and browse images in a **media gallery** (right-click an image → **Go to message**). Toggle it off in Settings.
 - **AI Chat** — a free, no-signup chat pinned in the sidebar next to Fast Save, for quick questions without leaving the app. One continuous conversation, cleared with a click; auto-trims after 200 messages so it never bloats.
-- **Improve Prompt** — rewrites your draft into a clearer, more effective prompt with one click (or right-click → Improve, or on just a selected line). Works on a whole tab, a single selected line, or an individual code block in Markdown preview.
+- **Improve Prompt & AI actions** — rewrites your draft into a clearer, more effective prompt with one click (or right-click → Improve, or on just a selected line). Right-click the Improve button — or the editor's **AI actions ▸** menu — for more: **Translate** (Persian ⇄ English), **Summarize**, **Fix grammar**, and tone presets (Professional / Casual / Concise). Works on a whole tab, a single selected line, or an individual code block in Markdown preview.
+- **Speech to text** — the mic button records your voice and inserts the transcribed text at the caret (there's a mic in the AI Chat composer too); Persian and English are both supported (auto-detected). Free (rate-limited), via Hugging Face's Whisper model — needs a free token in Settings.
+- **Handy dock** — collapse the whole window to a thin line at the bottom edge; hover it and the notepad slides open, then tucks away when you leave (or click away). Keeps your notes one glance away without getting in the way. Dock left / center / right in Settings, or toggle with `Ctrl+Shift+D`.
+- **Focus mode** — hide every bit of chrome for distraction-free writing (`Ctrl+Shift+F`, `Esc` to exit).
+- **Command palette** — `Ctrl+P` to fuzzy-jump between tabs, Fast Save, and AI Chat, or run common actions from the keyboard.
 - **Quick capture** — press `Ctrl+Shift+Space` anywhere (even when the window is hidden) to pop a floating box; type or paste and hit Enter to drop it straight into Fast Save. Toggle in Settings.
 - **Images** — paste (`Ctrl+V`), the image button, or drag & drop a file into a note. Thumbnails render inline; **drag a corner to resize**, **right-click to save a copy**, click to zoom. Both resize and right-click-save are toggleable in Settings → Images.
 - **Todo checklists** — the checkbox button or type `- [ ] `; select several lines to turn them all into todos at once; click a checkbox to toggle done. Renders in the editor and the markdown preview.
@@ -53,7 +57,7 @@ Shown in the **Mono** theme — 14 themes total (7 dark + 7 light) are available
 - **Auto-check for updates** — checks GitHub for new releases on startup; shows a dismissable banner if a newer version is available (toggle in Settings)
 - **Char & token counter** + one-click copy
 - **Autosave** — tabs, content, window position all persist
-- **Launch at startup** (Windows)
+- **Launch at startup** (Windows/mac)
 
 ## ⌨️ Shortcuts
 
@@ -69,6 +73,10 @@ Shown in the **Mono** theme — 14 themes total (7 dark + 7 light) are available
 | `Ctrl+B` | Bold selection |
 | `Ctrl+K` | Insert link |
 | `Ctrl+M` | Toggle markdown preview |
+| `Ctrl+P` | Command palette |
+| `Ctrl+\` | Hide / show the tab rail |
+| `Ctrl+Shift+F` | Focus mode |
+| `Ctrl+Shift+D` | Handy dock (peek) |
 | `Ctrl+Z` | Undo |
 | `Ctrl+Shift+Z` / `Ctrl+Y` | Redo |
 | `Ctrl+Shift+Space` | Quick capture → Fast Save (global) |
@@ -83,8 +91,10 @@ Shown in the **Mono** theme — 14 themes total (7 dark + 7 light) are available
 ```bash
 npm install      # install dependencies
 npm start        # run in dev mode
-npm run dist     # build Windows installer → release/PromptPad Setup <version>.exe
+npm run dist     # build an installer for the current OS → release/
 ```
+
+Windows, macOS, and Linux builds are produced automatically by CI on every `vX.Y.Z` tag and attached to that GitHub release. Cross-compiling for another OS locally isn't supported by electron-builder for this project (mac/Linux packaging tools have no Windows equivalent) — use the CI workflows (`.github/workflows/`) or a matching machine instead.
 
 ## 👤 Author
 

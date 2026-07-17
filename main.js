@@ -17,7 +17,24 @@ let tray = null;
 let quitting = false;
 let closeToTray = false;
 
-const QUICK_CAPTURE_ACCEL = 'Control+Shift+Space';
+// ---- Handy (peek) mode: window collapses to a thin line at the screen edge
+// and slides open on hover. See the handy-* IPC handlers below. ----
+let handyActive = false;
+let handyExpanded = false;      // true while the panel is slid open
+let handyNormalBounds = null;   // expanded/normal bounds (updated when the user resizes)
+let handyPrevAlwaysOnTop = null;
+let handyPrevOpacity = 1;       // window opacity to restore when the panel opens/exits
+let handyAnimTimer = null;
+const HANDY_HANDLE_W = 168;
+const HANDY_HANDLE_H = 8;       // requested; Windows clamps top-level windows to ~39px
+const HANDY_EDGE_MARGIN = 18;
+const HANDY_BOTTOM_GAP = 7;     // lift the line off the taskbar so it floats
+const HANDY_COLLAPSED_OPACITY = 0.4; // faint, mostly-transparent line when tucked away
+
+// CommandOrControl resolves to ⌘ on mac and Ctrl elsewhere — a literal
+// 'Control+Shift+Space' would register the physical Control key on mac
+// instead of the idiomatic ⌘+Shift+Space.
+const QUICK_CAPTURE_ACCEL = 'CommandOrControl+Shift+Space';
 
 // Dev/testing: run against an isolated data directory (also isolates the
 // single-instance lock), e.g. electron . --pp-data-dir=C:\tmp\pp-test
@@ -105,6 +122,7 @@ function createWindow(BrowserWindow) {
 
   let boundsTimer = null;
   const persistBounds = () => {
+    if (handyActive) return; // handy-mode drives the bounds; don't save the sliver
     clearTimeout(boundsTimer);
     boundsTimer = setTimeout(() => {
       const data = readData() || {};
@@ -123,6 +141,23 @@ function createWindow(BrowserWindow) {
 
   mainWindow.on('move', persistBounds);
   mainWindow.on('resize', persistBounds);
+
+  // While handy-mode is expanded, remember any size the user drags the panel to
+  // (our own animation frames set handyAnimTimer, so those are ignored) — so the
+  // panel keeps that size on the next hover and after a restart.
+  let handyResizeTimer = null;
+  mainWindow.on('resize', () => {
+    if (!handyActive || !handyExpanded || handyAnimTimer) return;
+    const b = mainWindow.getBounds();
+    if (handyNormalBounds) { handyNormalBounds.width = b.width; handyNormalBounds.height = b.height; }
+    clearTimeout(handyResizeTimer);
+    handyResizeTimer = setTimeout(() => {
+      const data = readData() || {};
+      data.window = { ...(data.window || {}), width: b.width, height: b.height };
+      writeData(data);
+    }, 400);
+  });
+
   mainWindow.on('closed', () => { mainWindow = null; });
 }
 
@@ -147,7 +182,7 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   app.whenReady().then(() => {
-  const { BrowserWindow, ipcMain, shell, Tray, Menu, dialog, net, globalShortcut } = require('electron');
+  const { BrowserWindow, ipcMain, shell, Tray, Menu, dialog, net, globalShortcut, session, screen } = require('electron');
 
   DATA_FILE = path.join(app.getPath('userData'), 'promptpad-data.json');
 
@@ -174,6 +209,13 @@ if (!app.requestSingleInstanceLock()) {
     } catch {
       return new Response('', { status: 404 });
     }
+  });
+
+  // Microphone access for the speech-to-text button — Electron denies every
+  // permission request by default, so getUserMedia would silently fail
+  // without this. Nothing else in the app needs a media/camera prompt.
+  session.defaultSession.setPermissionRequestHandler((_wc, permission, callback) => {
+    callback(permission === 'media');
   });
 
   // ---- IPC ----
@@ -290,6 +332,108 @@ if (!app.requestSingleInstanceLock()) {
     const n = Number(v);
     if (!Number.isFinite(n)) return;
     mainWindow.setOpacity(Math.min(1, Math.max(0.5, n)));
+  });
+
+  // ---- Handy (peek) mode ----
+  // Target bounds for the collapsed sliver or the expanded panel, anchored to
+  // the bottom of the work area (above the taskbar) at the chosen position.
+  function handyTargetBounds(collapsed, position) {
+    const disp = screen.getDisplayNearestPoint(mainWindow.getBounds());
+    const wa = disp.workArea;
+    const size = handyNormalBounds || mainWindow.getBounds();
+    const W = collapsed ? HANDY_HANDLE_W : (size.width || 500);
+    const H = collapsed ? HANDY_HANDLE_H : (size.height || 440);
+    let x;
+    if (position === 'left') x = wa.x + HANDY_EDGE_MARGIN;
+    else if (position === 'right') x = wa.x + wa.width - W - HANDY_EDGE_MARGIN;
+    else x = wa.x + Math.round((wa.width - W) / 2);
+    // collapsed line floats a little above the taskbar; the panel sits flush
+    const gap = collapsed ? HANDY_BOTTOM_GAP : 0;
+    const y = wa.y + wa.height - H - gap;
+    return { x, y, width: W, height: H };
+  }
+
+  // Manual bounds animation — Electron's setBounds({animate}) is macOS-only, so
+  // we step x/y/width/height (and opacity) ourselves with an easeOutCubic curve.
+  function animateHandyTo(to, duration, done, opacityTo) {
+    if (!mainWindow) return;
+    if (handyAnimTimer) { clearInterval(handyAnimTimer); handyAnimTimer = null; }
+    const from = mainWindow.getBounds();
+    const fromOp = mainWindow.getOpacity();
+    const start = Date.now();
+    const ease = (t) => 1 - Math.pow(1 - t, 3);
+    handyAnimTimer = setInterval(() => {
+      if (!mainWindow) { clearInterval(handyAnimTimer); handyAnimTimer = null; return; }
+      const t = Math.min(1, (Date.now() - start) / (duration || 220));
+      const e = ease(t);
+      mainWindow.setBounds({
+        x: Math.round(from.x + (to.x - from.x) * e),
+        y: Math.round(from.y + (to.y - from.y) * e),
+        width: Math.max(1, Math.round(from.width + (to.width - from.width) * e)),
+        height: Math.max(1, Math.round(from.height + (to.height - from.height) * e))
+      });
+      if (typeof opacityTo === 'number') mainWindow.setOpacity(fromOp + (opacityTo - fromOp) * e);
+      if (t >= 1) { clearInterval(handyAnimTimer); handyAnimTimer = null; if (done) done(); }
+    }, 16);
+  }
+
+  ipcMain.handle('handy-enter', (_e, position) => {
+    if (!mainWindow) return false;
+    if (!handyActive) {
+      handyNormalBounds = mainWindow.getBounds();
+      handyPrevAlwaysOnTop = mainWindow.isAlwaysOnTop();
+      handyPrevOpacity = mainWindow.getOpacity();
+      handyActive = true;
+      mainWindow.setMinimumSize(1, 1);
+      mainWindow.setAlwaysOnTop(true, 'floating');
+    }
+    handyExpanded = false;
+    animateHandyTo(handyTargetBounds(true, position), 220, null, HANDY_COLLAPSED_OPACITY);
+    return true;
+  });
+
+  ipcMain.handle('handy-exit', () => {
+    if (!mainWindow || !handyActive) return false;
+    const target = handyNormalBounds || mainWindow.getBounds();
+    const prevAOT = handyPrevAlwaysOnTop;
+    handyExpanded = false;
+    // keep handyActive true through the animation so persistBounds stays paused
+    animateHandyTo(target, 200, () => {
+      if (!mainWindow) return;
+      mainWindow.setMinimumSize(340, 300);
+      mainWindow.setAlwaysOnTop(!!prevAOT, 'floating');
+      mainWindow.setOpacity(handyPrevOpacity);
+      handyActive = false;
+      handyNormalBounds = null;
+      handyPrevAlwaysOnTop = null;
+    }, handyPrevOpacity);
+    return true;
+  });
+
+  ipcMain.handle('handy-expand', (_e, payload) => {
+    if (!mainWindow || !handyActive) return false;
+    const position = typeof payload === 'string' ? payload : (payload && payload.position);
+    const focus = payload && typeof payload === 'object' && payload.focus;
+    handyExpanded = true;
+    animateHandyTo(handyTargetBounds(false, position), 220, null, handyPrevOpacity);
+    // 'click away' mode focuses the panel so a later click elsewhere blurs it shut
+    if (focus) mainWindow.focus();
+    return true;
+  });
+
+  ipcMain.handle('handy-collapse', (_e, position) => {
+    if (!mainWindow || !handyActive) return false;
+    handyExpanded = false;
+    animateHandyTo(handyTargetBounds(true, position), 200, null, HANDY_COLLAPSED_OPACITY);
+    return true;
+  });
+
+  ipcMain.handle('handy-set-position', (_e, payload) => {
+    if (!mainWindow || !handyActive) return false;
+    const position = payload && payload.position;
+    const open = payload && payload.open;
+    animateHandyTo(handyTargetBounds(!open, position), 160);
+    return true;
   });
 
   ipcMain.on('set-close-to-tray', (_e, enabled) => {
@@ -711,21 +855,54 @@ if (!app.requestSingleInstanceLock()) {
     });
   }
 
-  ipcMain.handle('improve-prompt', async (_e, promptText) => {
-    promptText = String(promptText || '').trim().slice(0, 8000);
-    if (!promptText) return { ok: false, error: 'Nothing to improve — the tab is empty.' };
+  // System prompts for each AI text action. All share the same rule: return
+  // ONLY the transformed text, in the user's own language (except translate),
+  // with no preamble/markdown/quotes.
+  const AI_ACTION_PROMPTS = {
+    improve:
+      'You are an expert prompt engineer. The user will give you a draft prompt they intend to use with ' +
+      'an AI system (image generator, chatbot, coding assistant, etc). Rewrite it to be clearer, more ' +
+      'specific, and more effective, while preserving their original intent and language.',
+    translate:
+      'You are a translator. Detect the language of the text: if it is Persian (Farsi), translate it to ' +
+      'natural English; if it is English (or any non-Persian language), translate it to natural, fluent ' +
+      'Persian. Preserve meaning, tone, and any formatting/line breaks.',
+    summarize:
+      'You are an editor. Summarize the text concisely in the same language, keeping only the key points. ' +
+      'Use a short paragraph or bullet points as appropriate.',
+    grammar:
+      'You are a proofreader. Fix spelling, grammar, and punctuation in the text without changing its ' +
+      'meaning, tone, or language. Keep the wording as close to the original as possible.',
+    'tone-professional':
+      'Rewrite the text in a professional, polished tone, in the same language, keeping the same meaning.',
+    'tone-casual':
+      'Rewrite the text in a friendly, casual tone, in the same language, keeping the same meaning.',
+    'tone-concise':
+      'Rewrite the text to be as concise as possible, in the same language, without losing essential meaning.'
+  };
+  const AI_OUTPUT_RULE =
+    ' Output ONLY the resulting text — no explanations, no preamble, no markdown code fences, and no ' +
+    'surrounding quotation marks.';
+
+  function runAiAction(action, text) {
+    const sys = AI_ACTION_PROMPTS[action];
+    if (!sys) return Promise.resolve({ ok: false, error: 'Unknown action.' });
+    text = String(text || '').trim().slice(0, 8000);
+    if (!text) return Promise.resolve({ ok: false, error: 'Nothing to work on — the text is empty.' });
     return fetchPollinationsChat([
-      {
-        role: 'system',
-        content: 'You are an expert prompt engineer. The user will give you a draft prompt they intend ' +
-          'to use with an AI system (image generator, chatbot, coding assistant, etc). Rewrite it to be ' +
-          'clearer, more specific, and more effective, while preserving their original intent and language. ' +
-          'Output ONLY the improved prompt text — no explanations, no preamble, no markdown fences, no ' +
-          'quotation marks around it.'
-      },
-      { role: 'user', content: promptText }
+      { role: 'system', content: sys + AI_OUTPUT_RULE },
+      { role: 'user', content: text }
     ]);
+  }
+
+  ipcMain.handle('ai-transform', async (_e, payload) => {
+    const action = payload && payload.action;
+    const text = payload && payload.text;
+    return runAiAction(action, text);
   });
+
+  // Kept for back-compat with the existing improvePrompt bridge.
+  ipcMain.handle('improve-prompt', async (_e, promptText) => runAiAction('improve', promptText));
 
   ipcMain.handle('chat-message', async (_e, history) => {
     if (!Array.isArray(history)) return { ok: false, error: 'Invalid message history.' };
@@ -744,6 +921,91 @@ if (!app.requestSingleInstanceLock()) {
       },
       ...turns
     ]);
+  });
+
+  // Free (rate-limited) speech-to-text via Hugging Face's hosted Whisper —
+  // same trusted provider already used for image generation. Whisper
+  // auto-detects the spoken language, so no language param is sent.
+  function fetchHuggingFaceTranscription(buffer, mimeType, apiKey) {
+    return new Promise((resolve) => {
+      let settled = false;
+      let timer;
+      const finish = (result) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve(result);
+      };
+
+      let req;
+      try {
+        req = net.request({
+          method: 'POST',
+          url: 'https://router.huggingface.co/hf-inference/models/openai/whisper-large-v3',
+          headers: { Authorization: 'Bearer ' + apiKey, 'Content-Type': mimeType }
+        });
+      } catch (err) {
+        return finish({ ok: false, error: 'Could not start the request.' });
+      }
+
+      // Transcription can take longer than a typical text/image call.
+      timer = setTimeout(() => { try { req.abort(); } catch {} }, 60_000);
+
+      let bufs = [];
+      let total = 0;
+
+      req.on('response', (res) => {
+        const statusCode = res.statusCode;
+        res.on('data', (chunk) => {
+          total += chunk.length;
+          if (total > 5_000_000) {
+            finish({ ok: false, error: 'Response was too large.' });
+            try { req.abort(); } catch {}
+            return;
+          }
+          bufs.push(chunk);
+        });
+        res.on('end', () => {
+          if (settled) return;
+          let json = null;
+          try { json = JSON.parse(Buffer.concat(bufs).toString('utf8')); } catch {}
+          if (statusCode >= 400) {
+            if (statusCode === 401 || statusCode === 403) {
+              return finish({ ok: false, error: 'Hugging Face rejected the API token — check it in Settings.' });
+            }
+            if (statusCode === 503) {
+              return finish({ ok: false, error: 'Model is still loading — try again in a few seconds.' });
+            }
+            const apiMsg = json && json.error;
+            return finish({ ok: false, error: apiMsg ? String(apiMsg).slice(0, 300) : 'Request failed (status ' + statusCode + ').' });
+          }
+          const text = json && typeof json.text === 'string' ? json.text.trim() : '';
+          if (!text) return finish({ ok: false, error: "No speech detected — the prompt may have been blocked, or nothing was heard." });
+          finish({ ok: true, text });
+        });
+      });
+
+      req.on('abort', () => finish({ ok: false, error: 'Request timed out.' }));
+      req.on('error', (err) => finish({ ok: false, error: err.message || 'Network error.' }));
+
+      req.write(buffer);
+      req.end();
+    });
+  }
+
+  ipcMain.handle('transcribe-audio', async (_e, base64, mimeType, opts) => {
+    if (typeof base64 !== 'string' || !base64 || base64.length > 40_000_000) {
+      return { ok: false, error: 'Invalid or oversized audio.' };
+    }
+    let buffer;
+    try {
+      buffer = Buffer.from(base64, 'base64');
+    } catch {
+      return { ok: false, error: 'Could not decode audio.' };
+    }
+    const apiKey = String((opts && opts.hfApiKey) || '').trim();
+    if (!apiKey) return { ok: false, error: 'Add your Hugging Face token in Settings first.' };
+    return fetchHuggingFaceTranscription(buffer, mimeType || 'audio/webm', apiKey);
   });
 
   // ---- Per-tab / Fast Save file attachments ----

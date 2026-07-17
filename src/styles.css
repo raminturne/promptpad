@@ -116,6 +116,12 @@ body {
 .win-btn.active { color: var(--accent); }
 .win-btn.active svg path { fill: var(--accent-soft); }
 
+/* Always-on-top pin has two clearly distinct states: a tilted outline when
+   off, and an upright, solidly-filled accent pin when pinned. */
+#pinBtn svg { transition: transform 0.2s ease; transform: rotate(40deg); }
+#pinBtn.active svg { transform: rotate(0deg); }
+#pinBtn.active svg .pin-shape { fill: var(--accent); }
+
 /* ---------- Body ---------- */
 .body { display: flex; flex: 1; min-height: 0; }
 
@@ -164,16 +170,22 @@ body {
   padding: 0 4px;
 }
 
+/* Tab size (Settings → Tabs). Medium = the original defaults. Drives the
+   height/label of tabs, group headers, and the Fast Save / AI Chat entries. */
+.app { --tab-pad-y: 11px; --tab-font: 12px; --group-pad-y: 5px; --group-font: 10px; }
+.app.tabsize-small { --tab-pad-y: 6px;  --tab-font: 11px;   --group-pad-y: 3px; --group-font: 9.5px; }
+.app.tabsize-large { --tab-pad-y: 15px; --tab-font: 13.5px; --group-pad-y: 8px; --group-font: 11px; }
+
 .tab {
   position: relative;
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 11px 8px 11px 11px;
+  padding: var(--tab-pad-y) 8px var(--tab-pad-y) 11px;
   border-radius: var(--radius);
   cursor: pointer;
   color: var(--muted-2);
-  font-size: 12px;
+  font-size: var(--tab-font);
   line-height: 1.3;
   transition: background 0.14s, color 0.14s;
   animation: tabIn 0.22s ease;
@@ -210,12 +222,12 @@ body {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 5px 8px 4px;
+  padding: var(--group-pad-y) 8px calc(var(--group-pad-y) - 1px);
   margin-top: 3px;
   border-radius: 5px;
   cursor: pointer;
   color: var(--muted);
-  font-size: 10px;
+  font-size: var(--group-font);
   text-transform: uppercase;
   letter-spacing: 0.06em;
   user-select: none;
@@ -361,6 +373,66 @@ body {
 .rail-resizer:hover,
 .rail-resizer.active { background: var(--accent-glow); }
 .app.resize-off .rail-resizer { display: none; }
+
+/* ---------- Hide tab rail ---------- */
+.app.rail-hidden .rail,
+.app.rail-hidden .rail-resizer { display: none; }
+.app.rail-hidden #railToggleBtn svg { transform: scaleX(-1); }
+
+/* ---------- Focus / Zen mode ---------- */
+.app.zen-mode .rail,
+.app.zen-mode .rail-resizer,
+.app.zen-mode .statusbar,
+.app.zen-mode .win-controls > *:not(#zenBtn) { display: none; }
+.app.zen-mode #zenBtn { color: var(--accent); }
+
+.zen-exit-hint {
+  position: fixed;
+  bottom: 16px; left: 50%; transform: translateX(-50%);
+  z-index: 60;
+  padding: 5px 13px;
+  border-radius: 999px;
+  background: var(--elevated);
+  border: 1px solid var(--border-strong);
+  color: var(--muted-2);
+  font-family: var(--font); font-size: 11px; letter-spacing: 0.4px;
+  pointer-events: none;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.28);
+  transition: opacity 0.6s ease;
+}
+.zen-exit-hint.hidden { display: none; }
+.zen-exit-hint.fading { opacity: 0; }
+
+/* ---------- Handy (peek) dock ---------- */
+.handy-handle { display: none; }
+.app.handy-mode:not(.handy-open) .titlebar,
+.app.handy-mode:not(.handy-open) .body,
+.app.handy-mode:not(.handy-open) .statusbar,
+.app.handy-mode:not(.handy-open) #zenExitHint { display: none; }
+.app.handy-mode:not(.handy-open) .handy-handle {
+  display: flex;
+  position: fixed;
+  inset: 0;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 4px;
+  background: var(--bg);
+  -webkit-app-region: no-drag;
+  cursor: pointer;
+}
+.handy-handle::before {
+  content: "";
+  width: 30px; height: 3px;
+  border-radius: 3px;
+  background: var(--accent);
+  opacity: 0.9;
+  transition: opacity 0.2s, width 0.2s;
+}
+.app.handy-mode:not(.handy-open) .handy-handle:hover::before { opacity: 1; width: 48px; }
+/* stay docked while open — no title-bar drag to knock it off its anchor */
+.app.handy-mode .titlebar { -webkit-app-region: no-drag; }
+/* active dock button: accent + soft fill so it's clearly "on" and clickable to exit */
+#handyBtn.active { color: var(--accent); background: var(--accent-soft); }
 
 /* ---------- Editor ---------- */
 .editor { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
@@ -598,7 +670,9 @@ body {
 .copy-btn.generating { border-color: var(--accent); color: var(--accent); cursor: default; }
 .copy-btn.generating svg { animation: pp-spin 0.9s linear infinite; }
 .copy-btn.failed { border-color: var(--danger); color: var(--danger); }
+.copy-btn.recording { border-color: var(--danger); color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, transparent); animation: pp-rec-pulse 1.2s ease-in-out infinite; }
 @keyframes pp-spin { to { transform: rotate(360deg); } }
+@keyframes pp-rec-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
 
 .status-actions {
   display: flex;
@@ -803,71 +877,6 @@ body {
   text-align: center;
   padding: 14px 6px;
   line-height: 1.6;
-}
-
-/* =========================================================
-   TOP LAYOUT (browser-style tabs on top)
-   ========================================================= */
-.app.layout-top .body { flex-direction: column; }
-.app.layout-top .rail-resizer { display: none; }
-
-.app.layout-top .rail {
-  width: 100% !important;
-  flex-direction: row;
-  align-items: center;
-  border-right: none;
-  border-bottom: 1px solid var(--border);
-  padding: 7px 8px;
-  gap: 7px;
-  height: auto;
-  overflow: hidden;
-}
-
-.app.layout-top .add-btn {
-  order: 2;
-  width: 34px;
-  padding: 0;
-  height: 30px;
-}
-.app.layout-top .add-btn span { display: none; }
-
-.app.layout-top .tab-list {
-  order: 1;
-  flex: 1;
-  min-width: 0;
-  flex-direction: row;
-  overflow: hidden;
-  margin: 0;
-  padding: 2px;
-  gap: 5px;
-}
-
-/* Browser-style: tabs share the full width and shrink evenly as more are
-   added — never scroll. */
-.app.layout-top .tab {
-  flex: 1 1 0;
-  min-width: 0;
-  padding: 7px 8px 7px 10px;
-  animation: tabInTop 0.2s ease;
-}
-
-@keyframes tabInTop {
-  from { opacity: 0; transform: translateY(-5px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-.app.layout-top .tab::before {
-  left: 8px; right: 8px; top: 0;
-  width: auto; height: 3px;
-  transform: scaleX(0);
-  border-radius: 0 0 3px 3px;
-}
-.app.layout-top .tab.active::before { transform: scaleX(1); }
-
-.app.layout-top .tab.pin-divider { margin-bottom: 0; margin-right: 8px; }
-.app.layout-top .tab.pin-divider::after {
-  left: auto; right: -4px; bottom: 18%;
-  top: 18%; width: 1px; height: auto;
 }
 
 /* =========================================================
@@ -1175,6 +1184,79 @@ body {
   margin: 3px 4px;
 }
 
+.ctx-label {
+  padding: 5px 10px 4px;
+  font-size: 10px;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--muted);
+  cursor: default;
+  user-select: none;
+}
+
+/* ---------- Command palette (Ctrl+P) ---------- */
+.cmd-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  background: rgba(0, 0, 0, 0.32);
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 12vh;
+}
+.cmd-overlay.hidden { display: none; }
+.cmd-box {
+  width: min(520px, 88vw);
+  background: var(--elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+  animation: pop 0.14s cubic-bezier(0.2, 0.8, 0.3, 1);
+}
+.cmd-input {
+  width: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 14px;
+  padding: 13px 15px;
+  border-bottom: 1px solid var(--border);
+}
+.cmd-input::placeholder { color: var(--muted); }
+.cmd-results {
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 5px;
+}
+.cmd-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 11px;
+  border-radius: 7px;
+  cursor: pointer;
+}
+.cmd-row.active { background: var(--accent-soft); }
+.cmd-row-label {
+  font-size: 12.5px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cmd-row-hint {
+  font-size: 10px;
+  color: var(--muted);
+  letter-spacing: 0.4px;
+  flex-shrink: 0;
+}
+.cmd-empty { padding: 14px; text-align: center; color: var(--muted); font-size: 12px; }
+
 .ctx-colors {
   padding: 5px 10px 7px;
   display: flex;
@@ -1237,15 +1319,6 @@ body {
 }
 .templates-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
 .templates-btn:active { transform: scale(0.97); }
-
-.app.layout-top .templates-btn {
-  order: 3;
-  width: 34px;
-  height: 30px;
-  padding: 0;
-  flex-shrink: 0;
-}
-.app.layout-top .templates-btn span { display: none; }
 
 /* =========================================================
    TEMPLATES OVERLAY / PANEL
@@ -1743,11 +1816,11 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 8px 10px 11px;
+  padding: var(--tab-pad-y) 8px var(--tab-pad-y) 11px;
   border-radius: var(--radius);
   cursor: pointer;
   color: var(--muted-2);
-  font-size: 12px;
+  font-size: var(--tab-font);
   line-height: 1.3;
   transition: background 0.14s, color 0.14s;
   flex-shrink: 0;
@@ -1763,6 +1836,29 @@ body {
 .fs-tab:hover { background: var(--elevated); color: var(--text); }
 .fs-tab.active { background: var(--accent-soft); color: var(--accent); }
 .fs-tab-icon { display: flex; color: var(--accent); flex-shrink: 0; }
+
+/* AI Chat rail tab — a blue "AI" gradient on hover, and the same gradient
+   gently flowing while the assistant is thinking. */
+.ai-chat-tab { background-size: 220% 100%; }
+.ai-chat-tab:hover,
+.ai-chat-tab.ai-thinking {
+  color: var(--text);
+  background-image: linear-gradient(105deg,
+    color-mix(in srgb, #5b9bff 32%, transparent),
+    color-mix(in srgb, #9b6cff 27%, transparent),
+    color-mix(in srgb, #45c7e0 27%, transparent),
+    color-mix(in srgb, #5b9bff 32%, transparent));
+}
+.ai-chat-tab.ai-thinking .fs-tab-icon,
+.ai-chat-tab:hover .fs-tab-icon { color: #6ea8ff; }
+@media (prefers-reduced-motion: no-preference) {
+  .ai-chat-tab:hover { animation: aiTabFlow 3.2s linear infinite; }
+  .ai-chat-tab.ai-thinking { animation: aiTabFlow 2.2s linear infinite; }
+  @keyframes aiTabFlow {
+    0% { background-position: 0% 50%; }
+    100% { background-position: 220% 50%; }
+  }
+}
 .fs-tab-count {
   font-size: 9px;
   background: var(--elevated-hi);
@@ -1770,18 +1866,6 @@ body {
   border-radius: 999px;
   padding: 1px 6px;
   flex-shrink: 0;
-}
-
-.app.layout-top .fs-tab {
-  flex: 0 1 auto;
-  min-width: 0;
-  margin-bottom: 0;
-  margin-right: 8px;
-  padding: 7px 10px;
-}
-.app.layout-top .fs-tab::after {
-  left: auto; right: -4px; bottom: 18%;
-  top: 18%; width: 1px; height: auto;
 }
 
 .app.fastsave-active .statusbar { display: none; }
@@ -1906,6 +1990,19 @@ body {
 }
 .fs-send:hover { background: var(--accent); color: var(--bg); }
 .fs-send:active { transform: scale(0.94); }
+
+/* Mic button inside the AI Chat composer — subtler than the send button,
+   with the same recording/transcribing states as the toolbar mic. */
+.fs-voice { background: transparent; border-color: var(--border-strong); color: var(--muted-2); }
+.fs-voice:hover { background: var(--elevated); color: var(--text); }
+.fs-voice.recording {
+  border-color: var(--danger); color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  animation: pp-rec-pulse 1.2s ease-in-out infinite;
+}
+.fs-voice.generating { border-color: var(--accent); color: var(--accent); cursor: default; }
+.fs-voice.generating svg { animation: pp-spin 0.9s linear infinite; }
+.fs-voice.failed { border-color: var(--danger); color: var(--danger); }
 
 /* =========================================================
    BACKUP / DIALOG TEXT / DROP HINT (v1.6)
@@ -2166,7 +2263,6 @@ body {
   max-width: 82%;
   border-radius: 12px;
   padding: 8px 10px 5px;
-  animation: fsMsgIn 0.18s ease;
 }
 .ai-msg-user {
   align-self: flex-end;
@@ -2190,9 +2286,42 @@ body {
 }
 .ai-msg-text[dir="rtl"] { text-align: right; }
 .ai-msg-time { font-size: 9.5px; color: var(--muted); align-self: flex-end; }
-.ai-msg-thinking .ai-msg-text, .ai-msg-thinking { padding-bottom: 8px; }
-.ai-msg-thinking { animation: aiThinking 1.1s ease-in-out infinite; }
-@keyframes aiThinking { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }
+
+/* Typing indicator: three bouncing dots */
+.ai-msg-thinking {
+  flex-direction: row;
+  align-items: center;
+  gap: 4px;
+  padding: 11px 12px;
+}
+.ai-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--muted-2);
+  display: inline-block;
+}
+
+/* Lively AI chat — gated on reduced-motion. Only genuinely new bubbles
+   animate in (via .ai-msg-new), so switching to the tab doesn't re-animate
+   the whole history. */
+@media (prefers-reduced-motion: no-preference) {
+  .ai-msg-new { animation: aiMsgIn 0.26s cubic-bezier(0.22, 1, 0.36, 1); }
+  @keyframes aiMsgIn {
+    from { opacity: 0; transform: translateY(9px) scale(0.98); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  .ai-view-enter { animation: aiViewEnter 0.3s ease; }
+  @keyframes aiViewEnter {
+    from { opacity: 0.3; transform: translateY(4px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .ai-msg-thinking .ai-dot { animation: aiDotBounce 1.05s infinite ease-in-out; }
+  .ai-msg-thinking .ai-dot:nth-child(2) { animation-delay: 0.16s; }
+  .ai-msg-thinking .ai-dot:nth-child(3) { animation-delay: 0.32s; }
+  @keyframes aiDotBounce {
+    0%, 65%, 100% { transform: translateY(0); opacity: 0.45; }
+    32% { transform: translateY(-5px); opacity: 1; }
+  }
+}
 
 .ai-error-bar {
   margin: 0 14px 8px;
@@ -2348,17 +2477,12 @@ body {
   background: var(--accent);
   box-shadow: 0 0 0 2px var(--bg);
 }
-.app.layout-top .tab.selected::after { top: 4px; right: 5px; }
 
 /* --- normal tab color = the left accent bar (replaces the old dot) --- */
 .tab.has-color::before {
   transform: translateY(-50%) scaleY(1);
   background: var(--tab-color);
   box-shadow: none;
-}
-.app.layout-top .tab.has-color::before {
-  transform: scaleX(1);
-  background: var(--tab-color);
 }
 
 /* --- group color = the whole group header tinted (members untouched) --- */

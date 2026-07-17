@@ -1,6 +1,6 @@
 {
   "name": "promptpad",
-  "version": "2.2.0",
+  "version": "2.4.0",
   "description": "A compact, always-on-top notepad widget for writing AI prompts",
   "main": "main.js",
   "author": "PromptPad",
@@ -69,6 +69,19 @@
       "icon": "build/icon.png",
       "category": "Utility",
       "maintainer": "PromptPad"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "icon": "build/icon-1024.png",
+      "category": "public.app-category.productivity"
     }
   }
 }

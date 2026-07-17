@@ -9,6 +9,8 @@
 </head>
 <body>
   <div class="app">
+    <div id="zenExitHint" class="zen-exit-hint hidden">Focus mode · press Esc to exit</div>
+    <div id="handyHandle" class="handy-handle" title="Hover to open"></div>
     <!-- Title bar (draggable) -->
     <header class="titlebar">
       <div class="brand">
@@ -16,6 +18,25 @@
         <span class="brand-name">promptpad</span>
       </div>
       <div class="win-controls">
+        <button id="railToggleBtn" class="win-btn" title="Hide tabs (Ctrl+\)">
+          <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+            <rect x="3" y="5" width="18" height="14" rx="2.2" fill="none" stroke="currentColor" stroke-width="1.7"/>
+            <line x1="9" y1="5" x2="9" y2="19" stroke="currentColor" stroke-width="1.7"/>
+            <polyline points="13.4 9.4 15.9 12 13.4 14.6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+        <button id="zenBtn" class="win-btn" title="Focus mode (Ctrl+Shift+F)">
+          <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+            <path d="M4 9V5.5A1.5 1.5 0 0 1 5.5 4H9M20 9V5.5A1.5 1.5 0 0 0 18.5 4H15M4 15v3.5A1.5 1.5 0 0 0 5.5 20H9M20 15v3.5A1.5 1.5 0 0 1 18.5 20H15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+          </svg>
+        </button>
+        <button id="handyBtn" class="win-btn" title="Handy mode — dock to edge (Ctrl+Shift+D)">
+          <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+            <line x1="4" y1="20" x2="20" y2="20" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <path d="M12 4v9" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+            <path d="M8 9.5l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
         <button id="searchBtn" class="win-btn" title="Search (Ctrl+F)">
           <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
             <circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" stroke-width="1.7"/>
@@ -23,14 +44,15 @@
           </svg>
         </button>
         <button id="settingsBtn" class="win-btn" title="Settings">
-          <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
-            <circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.7"/>
-            <path d="M12 2.5v2.2M12 19.3v2.2M21.5 12h-2.2M4.7 12H2.5M18.7 5.3l-1.6 1.6M6.9 17.1l-1.6 1.6M18.7 18.7l-1.6-1.6M6.9 6.9 5.3 5.3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+          <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true">
+            <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+            <circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.5"/>
           </svg>
         </button>
         <button id="pinBtn" class="win-btn" title="Always on top">
           <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
-            <path d="M14 3l7 7-3 1-1 4-4 4-2-6-6-2 4-4 4-1 1-3z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
+            <path class="pin-shape" d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+            <line x1="12" y1="17" x2="12" y2="22" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
           </svg>
         </button>
         <button id="minBtn" class="win-btn" title="Minimize">
@@ -237,6 +259,14 @@
             <div class="fs-inputbar">
               <textarea id="aiInput" class="fs-input" rows="1" spellcheck="false"
                 placeholder="Message the AI… (Shift+Enter = new line)"></textarea>
+              <button id="aiVoiceBtn" class="fs-send fs-voice" title="Speech to text">
+                <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+                  <rect x="9" y="3" width="6" height="11" rx="3" fill="none" stroke="currentColor" stroke-width="1.6"/>
+                  <path d="M5 11a7 7 0 0 0 14 0" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+                  <line x1="12" y1="18" x2="12" y2="21" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+                  <line x1="8" y1="21" x2="16" y2="21" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+                </svg>
+              </button>
               <button id="aiSend" class="fs-send" title="Send (Enter)">
                 <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
                   <polyline points="6 14 12 8 18 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -305,6 +335,15 @@
                 <path d="M12.5 7.5l.5 1.2 1.2.5-1.2.5-.5 1.2-.5-1.2-1.2-.5 1.2-.5.5-1.2z" fill="currentColor"/>
               </svg>
               <span class="btn-label">Improve</span>
+            </button>
+            <button id="voiceBtn" class="copy-btn" title="Speech to text">
+              <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
+                <rect x="9" y="3" width="6" height="11" rx="3" fill="none" stroke="currentColor" stroke-width="1.6"/>
+                <path d="M5 11a7 7 0 0 0 14 0" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+                <line x1="12" y1="18" x2="12" y2="21" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+                <line x1="8" y1="21" x2="16" y2="21" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+              </svg>
+              <span class="btn-label">Voice</span>
             </button>
             <button id="mdBtn" class="copy-btn" title="Markdown preview (Ctrl+M)">
               <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
@@ -391,11 +430,31 @@
           </section>
 
           <section class="set-group">
-            <h3 class="set-label">Tab position</h3>
-            <div class="seg" id="layoutSeg">
-              <button class="seg-btn" data-layout="left">Left</button>
-              <button class="seg-btn" data-layout="top">Top</button>
+            <h3 class="set-label">Tab size</h3>
+            <div class="seg" id="tabSizeSeg">
+              <button class="seg-btn" data-tabsize="small">Small</button>
+              <button class="seg-btn" data-tabsize="medium">Medium</button>
+              <button class="seg-btn" data-tabsize="large">Large</button>
             </div>
+          </section>
+
+          <section class="set-group">
+            <h3 class="set-label">Handy mode — dock position</h3>
+            <div class="seg" id="handyPosSeg">
+              <button class="seg-btn" data-handypos="left">Left</button>
+              <button class="seg-btn" data-handypos="center">Center</button>
+              <button class="seg-btn" data-handypos="right">Right</button>
+            </div>
+            <small class="set-hint">Collapses the window to a thin line at the bottom edge; hover it to slide the notepad open. Toggle with the dock button in the title bar or <b>Ctrl+Shift+D</b>.</small>
+          </section>
+
+          <section class="set-group">
+            <h3 class="set-label">Handy mode — hide the panel</h3>
+            <div class="seg" id="handyCloseSeg">
+              <button class="seg-btn" data-handyclose="click">When you click away</button>
+              <button class="seg-btn" data-handyclose="leave">When the mouse leaves</button>
+            </div>
+            <small class="set-hint">"Click away" keeps it open while you're typing; "Mouse leaves" tucks it back the moment your cursor leaves the panel.</small>
           </section>
 
           <!-- Tabs -->
@@ -546,12 +605,25 @@
             </div>
           </section>
 
+          <!-- Speech to text -->
+          <section class="set-group">
+            <h3 class="set-label">Speech to text</h3>
+            <p class="set-hint">The mic button records from your microphone and inserts the transcribed
+              text at the caret. Persian and English are both supported (auto-detected).</p>
+            <input type="password" id="voiceHfApiKeyInput" class="text-input" placeholder="Hugging Face access token" autocomplete="off" spellcheck="false" />
+            <p class="backup-note">Free (rate-limited) — uses the Whisper large-v3 model, which
+              auto-detects the spoken language. Get a token at
+              <a href="#" class="about-link" data-url="https://huggingface.co/settings/tokens/new?ownUserPermissions=inference.serverless.write&amp;tokenType=fineGrained">huggingface.co/settings/tokens</a>
+              (free account, no card required) with "Make calls to Inference Providers" permission. Stored
+              locally, same as your other preferences.</p>
+          </section>
+
           <!-- System -->
           <section class="set-group">
             <div class="set-toggle-row">
               <div class="set-toggle-text">
                 <span>Launch at startup</span>
-                <small>Open PromptPad when Windows starts</small>
+                <small id="startupHint">Open PromptPad when Windows starts</small>
               </div>
               <label class="switch">
                 <input type="checkbox" id="toggleStartup" />
@@ -588,7 +660,7 @@
             <div class="set-toggle-row">
               <div class="set-toggle-text">
                 <span>Global quick capture</span>
-                <small>Ctrl+Shift+Space opens Fast Save from anywhere</small>
+                <small id="quickCaptureHint">Ctrl+Shift+Space opens Fast Save from anywhere</small>
               </div>
               <label class="switch">
                 <input type="checkbox" id="toggleQuickCapture" />
@@ -638,7 +710,7 @@
             <div class="about-box">
               <div class="about-brand">
                 <span class="brand-dot"></span>
-                <span>PromptPad <em id="aboutVersion">v2.2.0</em></span>
+                <span>PromptPad <em id="aboutVersion">v2.4.0</em></span>
               </div>
               <p class="about-desc">A compact notepad for writing AI prompts.</p>
               <div class="about-links">
@@ -841,6 +913,30 @@
       <div class="ctx-item" data-text-action="selectall">Select All</div>
       <div class="ctx-sep hidden" id="ctxImproveSep"></div>
       <div class="ctx-item hidden" id="ctxImproveItem" data-text-action="improve">Improve Prompt</div>
+      <div class="ctx-item hidden" id="ctxAiMoreItem" data-text-action="ai-more">AI actions&nbsp;&nbsp;›</div>
+    </div>
+
+    <!-- AI actions menu (opens from the editor right-click menu or by
+         right-clicking the Improve button) -->
+    <div id="aiActionsMenu" class="ctx-menu hidden">
+      <div class="ctx-label">AI · on selection or whole tab</div>
+      <div class="ctx-item" data-ai-action="improve">Improve prompt</div>
+      <div class="ctx-item" data-ai-action="translate">Translate (FA ⇄ EN)</div>
+      <div class="ctx-item" data-ai-action="summarize">Summarize</div>
+      <div class="ctx-item" data-ai-action="grammar">Fix grammar &amp; spelling</div>
+      <div class="ctx-sep"></div>
+      <div class="ctx-item" data-ai-action="tone-professional">Make professional</div>
+      <div class="ctx-item" data-ai-action="tone-casual">Make casual</div>
+      <div class="ctx-item" data-ai-action="tone-concise">Make concise</div>
+    </div>
+
+    <!-- Command palette (Ctrl+P) -->
+    <div id="cmdPalette" class="cmd-overlay hidden">
+      <div class="cmd-box">
+        <input id="cmdInput" class="cmd-input" type="text" spellcheck="false"
+          autocomplete="off" placeholder="Jump to a tab or run a command…" />
+        <div id="cmdResults" class="cmd-results"></div>
+      </div>
     </div>
 
     <!-- Image context menu -->

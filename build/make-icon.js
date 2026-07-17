@@ -1,9 +1,14 @@
-// Generates build/icon.ico (256x256 PNG-in-ICO) — no external deps.
+// Generates build/icon.ico (256x256 PNG-in-ICO) and a high-res PNG for mac
+// (electron-builder converts a >=512x512 source PNG into a proper
+// multi-resolution .icns on the mac build runner) — no external deps.
 const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
 
 const SIZE = 256;
+// mac icons want a much larger source than Windows' .ico; everything below
+// is drawn in 256x256 pixel coordinates, then scaled by this factor.
+const HI_SIZE = 1024;
 const bg = [0x1b, 0x21, 0x1a];
 const text = [0xd3, 0xda, 0xd9];
 const accent = [0x7f, 0xbf, 0x8b];
@@ -102,30 +107,33 @@ function crc32(buf) {
   return (c ^ 0xffffffff) >>> 0;
 }
 
-// IHDR
-const ihdr = Buffer.alloc(13);
-ihdr.writeUInt32BE(SIZE, 0);
-ihdr.writeUInt32BE(SIZE, 4);
-ihdr[8] = 8; // bit depth
-ihdr[9] = 6; // color type RGBA
-ihdr[10] = 0;
-ihdr[11] = 0;
-ihdr[12] = 0;
+function encodePNG(pixels, size) {
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(size, 0);
+  ihdr.writeUInt32BE(size, 4);
+  ihdr[8] = 8; // bit depth
+  ihdr[9] = 6; // color type RGBA
+  ihdr[10] = 0;
+  ihdr[11] = 0;
+  ihdr[12] = 0;
 
-// filtered scanlines (filter byte 0 per row)
-const raw = Buffer.alloc(SIZE * (SIZE * 4 + 1));
-for (let y = 0; y < SIZE; y++) {
-  raw[y * (SIZE * 4 + 1)] = 0;
-  px.copy(raw, y * (SIZE * 4 + 1) + 1, y * SIZE * 4, (y + 1) * SIZE * 4);
+  // filtered scanlines (filter byte 0 per row)
+  const raw = Buffer.alloc(size * (size * 4 + 1));
+  for (let y = 0; y < size; y++) {
+    raw[y * (size * 4 + 1)] = 0;
+    pixels.copy(raw, y * (size * 4 + 1) + 1, y * size * 4, (y + 1) * size * 4);
+  }
+  const idatData = zlib.deflateSync(raw, { level: 9 });
+
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk('IHDR', ihdr),
+    chunk('IDAT', idatData),
+    chunk('IEND', Buffer.alloc(0))
+  ]);
 }
-const idatData = zlib.deflateSync(raw, { level: 9 });
 
-const png = Buffer.concat([
-  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
-  chunk('IHDR', ihdr),
-  chunk('IDAT', idatData),
-  chunk('IEND', Buffer.alloc(0))
-]);
+const png = encodePNG(px, SIZE);
 
 // ---------- ICO wrap ----------
 const icondir = Buffer.alloc(6);
@@ -151,3 +159,20 @@ console.log('Wrote build/icon.ico (' + ico.length + ' bytes)');
 // (electron-builder's linux target wants a PNG, not an ICO).
 fs.writeFileSync(path.join(__dirname, 'icon.png'), png);
 console.log('Wrote build/icon.png (' + png.length + ' bytes)');
+
+// High-res PNG for mac: nearest-neighbor upscale of the same artwork (it's
+// all flat fills/circles, so this stays crisp) — electron-builder needs a
+// large source (ideally >=512px) to generate a proper multi-resolution
+// .icns; the plain 256x256 icon.png above would come out blurry/pixelated.
+const factor = HI_SIZE / SIZE;
+const pxHi = Buffer.alloc(HI_SIZE * HI_SIZE * 4);
+for (let y = 0; y < HI_SIZE; y++) {
+  const sy = Math.floor(y / factor);
+  for (let x = 0; x < HI_SIZE; x++) {
+    const sx = Math.floor(x / factor);
+    px.copy(pxHi, (y * HI_SIZE + x) * 4, (sy * SIZE + sx) * 4, (sy * SIZE + sx) * 4 + 4);
+  }
+}
+const pngHi = encodePNG(pxHi, HI_SIZE);
+fs.writeFileSync(path.join(__dirname, 'icon-1024.png'), pngHi);
+console.log('Wrote build/icon-1024.png (' + pngHi.length + ' bytes)');

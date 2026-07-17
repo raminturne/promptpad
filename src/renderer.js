@@ -73,14 +73,21 @@ const DEFAULT_SETTINGS = {
   fastSaveName: 'Fast Save',
   // which status-bar buttons are shown (toggle in Settings → Toolbar)
   toolbar: {
-    todo: true, emoji: true, link: true, justify: true, clean: true, improve: true,
+    todo: true, emoji: true, link: true, justify: true, clean: true, improve: true, voice: true,
     md: true, paste: true, copy: true, img: true, genimg: true, files: true
   },
   imageGen: { provider: 'pollinations', geminiApiKey: '', hfApiKey: '' },
   seenFeatures: {}, // { improve: true, aiChat: true, ... } — clears each button's "New" badge once used
+  voice: { hfApiKey: '' },
   toolbarOrder: [], // full left-to-right key order — filled in from TOOLBAR_BUTTONS on first render
   toolbarCollapsed: [], // subset of toolbarOrder currently tucked behind the overflow chevron
-  toolbarNudged: false // true once the one-time "some icons start collapsed" nudge has run
+  toolbarNudged: false, // true once the one-time "some icons start collapsed" nudge has run
+  railHidden: false, // tab rail collapsed to leave only the editor (persists)
+  zenMode: false, // distraction-free mode — always reset to false on load (never boot chromeless)
+  tabSize: 'medium', // 'small' | 'medium' | 'large' — height of tabs & group headers
+  handyMode: false, // "handy" peek dock — collapses to a line at the screen edge (persists)
+  handyPosition: 'center', // 'left' | 'center' | 'right' — where the line docks
+  handyCloseMode: 'leave' // 'leave' = hide when the mouse leaves; 'click' = stay open until you click away
 };
 
 let settings = { ...DEFAULT_SETTINGS };
@@ -100,6 +107,11 @@ const addBtn = document.getElementById('addBtn');
 const pinBtn = document.getElementById('pinBtn');
 const minBtn = document.getElementById('minBtn');
 const closeBtn = document.getElementById('closeBtn');
+const railToggleBtn = document.getElementById('railToggleBtn');
+const zenBtn = document.getElementById('zenBtn');
+const zenExitHint = document.getElementById('zenExitHint');
+const handyBtn = document.getElementById('handyBtn');
+const handyHandle = document.getElementById('handyHandle');
 const appEl = document.querySelector('.app');
 const railEl = document.getElementById('rail');
 const railResizer = document.getElementById('railResizer');
@@ -108,7 +120,9 @@ const settingsBtn = document.getElementById('settingsBtn');
 const settingsOverlay = document.getElementById('settingsOverlay');
 const settingsClose = document.getElementById('settingsClose');
 const themeRow = document.getElementById('themeRow');
-const layoutSeg = document.getElementById('layoutSeg');
+const tabSizeSeg = document.getElementById('tabSizeSeg');
+const handyPosSeg = document.getElementById('handyPosSeg');
+const handyCloseSeg = document.getElementById('handyCloseSeg');
 const togglePinEl = document.getElementById('togglePin');
 const toggleCloseEl = document.getElementById('toggleClose');
 const toggleResizeEl = document.getElementById('toggleResize');
@@ -199,6 +213,7 @@ const aiMessagesEl = document.getElementById('aiMessages');
 const aiErrorBarEl = document.getElementById('aiErrorBar');
 const aiInputEl = document.getElementById('aiInput');
 const aiSendBtn = document.getElementById('aiSend');
+const aiVoiceBtn = document.getElementById('aiVoiceBtn');
 const aiClearBtn = document.getElementById('aiClearBtn');
 // quick capture
 const toggleQuickCaptureEl = document.getElementById('toggleQuickCapture');
@@ -228,6 +243,8 @@ const linkBtn = document.getElementById('linkBtn');
 const justifyBtn = document.getElementById('justifyBtn');
 const cleanBtn = document.getElementById('cleanBtn');
 const improveBtn = document.getElementById('improveBtn');
+const voiceBtn = document.getElementById('voiceBtn');
+const voiceHfApiKeyInputEl = document.getElementById('voiceHfApiKeyInput');
 const toolbarMainEl = document.getElementById('toolbarMain');
 const toolbarOverflowBtnEl = document.getElementById('toolbarOverflowBtn');
 const toolbarOverflowPanelEl = document.getElementById('toolbarOverflowPanel');
@@ -239,6 +256,7 @@ const linkSave = document.getElementById('linkSave');
 // image context menu
 const imgContextMenu = document.getElementById('imgContextMenu');
 const textContextMenu = document.getElementById('textContextMenu');
+const aiActionsMenu = document.getElementById('aiActionsMenu');
 const toggleImageResizeEl = document.getElementById('toggleImageResize');
 const toggleImageDownloadEl = document.getElementById('toggleImageDownload');
 const geminiApiKeyInputEl = document.getElementById('geminiApiKeyInput');
@@ -915,7 +933,8 @@ function makeFsTabEl() {
 function makeAiChatTabEl() {
   const el = document.createElement('div');
   const seen = settings.seenFeatures || {};
-  el.className = 'fs-tab' + (aiChatActive() ? ' active' : '') + (seen.aiChat ? '' : ' has-new-badge');
+  el.className = 'fs-tab ai-chat-tab' + (aiChatActive() ? ' active' : '') +
+    (aiSending ? ' ai-thinking' : '') + (seen.aiChat ? '' : ' has-new-badge');
 
   const icon = document.createElement('span');
   icon.className = 'fs-tab-icon';
@@ -1035,6 +1054,7 @@ function renderTabs() {
       if (e.ctrlKey) { toggleTabSelection(tab.id); return; }
       if (e.shiftKey) { startRename(tab, el, nameEl, i); return; }
       if (selectedTabIds.size) { selectedTabIds.clear(); }
+      lastClickedTabId = tab.id; // a plain click becomes the range anchor
       switchTab(tab.id);
     });
 
@@ -1081,9 +1101,8 @@ function renderTabs() {
 
   // Groups only apply in the left layout; top layout stays a flat strip.
   const groups = state.groups || [];
-  const grouping = settings.tabPosition !== 'top' && groups.length > 0;
 
-  if (!grouping) {
+  if (!isGrouping()) {
     ordered.forEach((tab) => tabListEl.appendChild(makeTabEl(tab)));
     return;
   }
@@ -1290,6 +1309,42 @@ function orderedTabs() {
   return [...pinned, ...rest];
 }
 
+// Groups apply in both layouts now — in the top layout the strip wraps onto
+// multiple rows with each group name acting as a full-width row separator.
+function isGrouping() {
+  return (state.groups || []).length > 0;
+}
+
+// True top-to-bottom order of the tabs actually shown in the rail — mirrors
+// the grouping in renderTabs() (pinned block → each group's members, pinned
+// groups first → ungrouped), and omits collapsed groups' members since they
+// aren't on screen. Range-select uses this so a Ctrl+Shift span matches what
+// the user sees, instead of the flat orderedTabs() array.
+function visibleTabOrder() {
+  const ordered = orderedTabs();
+  const groups = state.groups || [];
+  if (!isGrouping()) return ordered.slice();
+
+  const inKnownGroup = (t) => t.groupId && groups.some((g) => g.id === t.groupId);
+  const out = [];
+  ordered.filter((t) => t.pinned).forEach((t) => out.push(t));
+  [...groups].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0)).forEach((g) => {
+    if (g.collapsed) return;
+    ordered.filter((t) => !t.pinned && t.groupId === g.id).forEach((t) => out.push(t));
+  });
+  ordered.filter((t) => !t.pinned && !inKnownGroup(t)).forEach((t) => out.push(t));
+  return out;
+}
+
+// The visual "section" a tab lives in — range-select never spans across two
+// different sections (pinned / a specific group / ungrouped).
+function tabBucketKey(t) {
+  if (t.pinned) return 'pinned';
+  const groups = state.groups || [];
+  if (isGrouping() && t.groupId && groups.some((g) => g.id === t.groupId)) return 'group:' + t.groupId;
+  return 'ungrouped';
+}
+
 function togglePin(id) {
   const t = state.tabs.find((x) => x.id === id);
   if (!t) return;
@@ -1300,7 +1355,7 @@ function togglePin(id) {
 
 // ---------- Drag & drop reorder ----------
 function getDragAfterElement(x, y) {
-  const horizontal = settings.tabPosition === 'top';
+  const horizontal = false; // the tab rail is always the vertical left layout
   const els = [...tabListEl.querySelectorAll('.tab:not(.dragging)')];
   let closest = { offset: Number.NEGATIVE_INFINITY, element: null };
   for (const child of els) {
@@ -1372,8 +1427,7 @@ function onDragEnd() {
 
   // when group sections are shown, the drop position also decides the group
   const draggedTab = dragging && state.tabs.find((t) => t.id === dragging.dataset.id);
-  if (dragging && draggedTab && !draggedTab.pinned &&
-      settings.tabPosition !== 'top' && (state.groups || []).length) {
+  if (dragging && draggedTab && !draggedTab.pinned && isGrouping()) {
     let el = dragging.previousElementSibling;
     let newGroup, decided = false;
     if (!el) { newGroup = null; decided = true; } // dropped at the very top
@@ -1462,6 +1516,10 @@ function showAiChatView() {
   fastSaveViewEl.classList.add('hidden');
   aiChatViewEl.classList.remove('hidden');
   renderAiMessages();
+  // one-shot appear each time the chat opens (reflow to restart the animation)
+  aiChatViewEl.classList.remove('ai-view-enter');
+  void aiChatViewEl.offsetWidth;
+  aiChatViewEl.classList.add('ai-view-enter');
   aiInputEl.focus();
 }
 
@@ -1939,10 +1997,15 @@ function hideAiError() {
   aiErrorBarEl.classList.add('hidden');
 }
 
+// Ids already painted at least once — so only genuinely new bubbles get the
+// entrance animation, instead of the whole list re-animating on every render.
+const aiShownMsgIds = new Set();
+
 function renderAiMessages() {
   aiMessagesEl.innerHTML = '';
   const msgs = aiMessages();
   if (!msgs.length) {
+    aiShownMsgIds.clear();
     const empty = document.createElement('div');
     empty.className = 'fs-empty';
     empty.textContent = 'Say something — this uses a free AI (Pollinations) and stays only on this device.';
@@ -1952,6 +2015,7 @@ function renderAiMessages() {
   msgs.forEach((m) => {
     const row = document.createElement('div');
     row.className = 'ai-msg ai-msg-' + (m.role === 'assistant' ? 'assistant' : 'user');
+    if (!aiShownMsgIds.has(m.id)) { row.classList.add('ai-msg-new'); aiShownMsgIds.add(m.id); }
     const body = document.createElement('div');
     body.className = 'ai-msg-text';
     body.textContent = m.text;
@@ -1984,9 +2048,10 @@ async function sendAiMessage() {
 
   aiSending = true;
   aiSendBtn.disabled = true;
+  renderTabs(); // light up the AI Chat rail tab while it's thinking
   const thinking = document.createElement('div');
   thinking.className = 'ai-msg ai-msg-assistant ai-msg-thinking';
-  thinking.textContent = '…';
+  thinking.innerHTML = '<span class="ai-dot"></span><span class="ai-dot"></span><span class="ai-dot"></span>';
   aiMessagesEl.appendChild(thinking);
   aiMessagesEl.scrollTop = aiMessagesEl.scrollHeight;
 
@@ -2006,6 +2071,7 @@ async function sendAiMessage() {
   } finally {
     aiSending = false;
     aiSendBtn.disabled = false;
+    renderTabs(); // stop the thinking glow on the rail tab
     aiInputEl.focus();
   }
 }
@@ -2272,15 +2338,25 @@ function toggleTabSelection(id) {
   renderTabs();
 }
 
-// Add every tab between the last-clicked one and this one (in rail order).
+// Select every tab between the anchor (last-clicked) and this one, in the
+// order they're actually shown on screen — but never crossing out of the
+// anchor's section, so a Ctrl+Shift+click into another group doesn't sweep up
+// everything in between. Clicking into a different section (or with no anchor)
+// starts a fresh single selection there instead.
 function rangeSelectTo(id) {
-  const order = orderedTabs().map((t) => t.id);
-  const a = order.indexOf(lastClickedTabId);
-  const b = order.indexOf(id);
-  if (b === -1) return;
-  if (a === -1) { selectedTabIds.add(id); lastClickedTabId = id; renderTabs(); return; }
-  const [lo, hi] = a <= b ? [a, b] : [b, a];
-  for (let k = lo; k <= hi; k++) selectedTabIds.add(order[k]);
+  const order = visibleTabOrder();
+  const bi = order.findIndex((t) => t.id === id);
+  if (bi === -1) return;
+  const target = order[bi];
+  const ai = order.findIndex((t) => t.id === lastClickedTabId);
+  if (ai === -1 || tabBucketKey(order[ai]) !== tabBucketKey(target)) {
+    selectedTabIds.add(id);
+    lastClickedTabId = id;
+    renderTabs();
+    return;
+  }
+  const [lo, hi] = ai <= bi ? [ai, bi] : [bi, ai];
+  for (let k = lo; k <= hi; k++) selectedTabIds.add(order[k].id);
   lastClickedTabId = id;
   renderTabs();
 }
@@ -3191,6 +3267,7 @@ function showTextContextMenu(e, target, isEditable, hasSelection) {
   const showImprove = editorEl.contains(target) && !mdOn;
   document.getElementById('ctxImproveSep').classList.toggle('hidden', !showImprove);
   document.getElementById('ctxImproveItem').classList.toggle('hidden', !showImprove);
+  document.getElementById('ctxAiMoreItem').classList.toggle('hidden', !showImprove);
 
   textContextMenu.style.left = e.clientX + 'px';
   textContextMenu.style.top = e.clientY + 'px';
@@ -3235,6 +3312,15 @@ textContextMenu.addEventListener('click', async (e) => {
   if (!item || item.classList.contains('disabled') || !textCtxTarget) return;
   const action = item.dataset.textAction;
   const target = textCtxTarget;
+  if (action === 'ai-more') {
+    // stop this click from bubbling to the document handler that would
+    // otherwise immediately close the actions menu we're about to open
+    e.stopPropagation();
+    const r = item.getBoundingClientRect();
+    hideTextContextMenu();
+    showAiActionsMenu(r.right + 2, r.top);
+    return;
+  }
   hideTextContextMenu();
   target.focus();
   if (action === 'cut') document.execCommand('cut');
@@ -3739,24 +3825,34 @@ function cleanUpNote() {
 
 cleanBtn.addEventListener('click', cleanUpNote);
 
-// Shared by every "Improve" trigger (toolbar button, right-click menu, each
-// code block's own button in Markdown preview) — handles the network call
-// and button generating/failed states; `applyFn(improvedText)` decides what
-// to do with the result (whole-tab replace, selection replace, code-block
-// replace, ...).
-async function runImprove(btnEl, sourceText, applyFn) {
+// Transient button title while each AI action runs.
+const AI_ACTION_TITLES = {
+  improve: 'Improving…',
+  translate: 'Translating…',
+  summarize: 'Summarizing…',
+  grammar: 'Fixing grammar…',
+  'tone-professional': 'Rewriting…',
+  'tone-casual': 'Rewriting…',
+  'tone-concise': 'Rewriting…'
+};
+
+// Shared by every AI text action (Improve, Translate, Summarize, …) — handles
+// the network call and the button's generating/failed states; `applyFn(text)`
+// decides what to do with the result (whole-tab replace, selection replace,
+// code-block replace, …).
+async function runAiTransform(btnEl, sourceText, action, applyFn) {
   if (!sourceText.trim()) return;
   const defaultTitle = btnEl.title;
   btnEl.disabled = true;
   btnEl.classList.add('generating');
-  btnEl.title = 'Improving…';
+  btnEl.title = AI_ACTION_TITLES[action] || 'Working…';
   try {
-    const res = await window.api.improvePrompt(sourceText);
+    const res = await window.api.aiTransform(action, sourceText);
     if (res && res.ok && res.text) {
       applyFn(res.text);
     } else {
       btnEl.classList.add('failed');
-      btnEl.title = (res && res.error) || 'Improve failed.';
+      btnEl.title = (res && res.error) || 'AI action failed.';
       setTimeout(() => {
         btnEl.classList.remove('failed');
         btnEl.title = defaultTitle;
@@ -3769,11 +3865,42 @@ async function runImprove(btnEl, sourceText, applyFn) {
   }
 }
 
-// Improves the current single-line selection if there is one (mirrors the
-// same single-line constraint as surroundSelection/bold-italic — this editor
+// Back-compat wrapper — the code-block Improve button (markdown preview) still
+// calls runImprove(...).
+function runImprove(btnEl, sourceText, applyFn) {
+  return runAiTransform(btnEl, sourceText, 'improve', applyFn);
+}
+
+// Write an AI result back into the tab: replaces the selected line-slice if
+// there was a selection, otherwise the whole tab. Only touches the DOM when
+// the user is still on the originating tab (guards against a mid-flight tab
+// switch — same pattern as runImageGeneration).
+function applyTransformResult(t, tabId, sel, hasSelection, out) {
+  if (!activeTab() || activeTab().id !== tabId) { if (!hasSelection) t.content = out; return; }
+  if (hasSelection) {
+    const text = sel.line.textContent;
+    if (sel.end > text.length) return; // line changed underneath us — skip rather than corrupt it
+    setLineText(sel.line, text.slice(0, sel.start) + out + text.slice(sel.end), sel.start + out.length);
+    scheduleSave();
+  } else {
+    const prev = t.content;
+    noteEditForUndo(t, prev);
+    t.content = out;
+    setEditorText(out);
+    updateCounts();
+    updatePlaceholderPanel();
+    if (!t.custom) renderTabs();
+    scheduleSave();
+    editorEl.focus();
+    placeCaretEnd();
+  }
+}
+
+// Runs an AI action on the current single-line selection if there is one
+// (mirrors the single-line constraint of surroundSelection/bold — this editor
 // is line-based, so cross-line selections aren't addressable), otherwise the
 // whole tab.
-async function improvePromptNote() {
+async function runTabAiAction(action) {
   if (mdOn || fsActive() || !activeTab()) return;
   markFeatureSeen('improve');
   const t = activeTab();
@@ -3783,31 +3910,378 @@ async function improvePromptNote() {
   const hasSelection = !!(sel && sel.end > sel.start);
   const source = hasSelection ? sel.line.textContent.slice(sel.start, sel.end) : t.content;
   if (!source.trim()) return;
+  await runAiTransform(improveBtn, source, action, (out) => applyTransformResult(t, tabId, sel, hasSelection, out));
+}
 
-  await runImprove(improveBtn, source, (improved) => {
-    // Only apply if the user is still on this tab — an unconditional write
-    // here could otherwise land in whatever tab is now on screen (see the
-    // same guard in runImageGeneration for image generation).
-    if (!activeTab() || activeTab().id !== tabId) { if (!hasSelection) t.content = improved; return; }
-    if (hasSelection) {
-      const text = sel.line.textContent;
-      if (sel.end > text.length) return; // line changed underneath us — skip rather than corrupt it
-      setLineText(sel.line, text.slice(0, sel.start) + improved + text.slice(sel.end), sel.start + improved.length);
-      scheduleSave();
-    } else {
-      const prev = t.content;
-      noteEditForUndo(t, prev);
-      t.content = improved;
-      setEditorText(improved);
-      updateCounts();
-      updatePlaceholderPanel();
-      if (!t.custom) renderTabs();
-      scheduleSave();
-      editorEl.focus();
-      placeCaretEnd();
-    }
+function improvePromptNote() { return runTabAiAction('improve'); }
+
+// ---------- AI actions menu ----------
+function showAiActionsMenu(x, y) {
+  if (mdOn || fsActive() || !activeTab()) return;
+  hideTextContextMenu();
+  aiActionsMenu.style.left = x + 'px';
+  aiActionsMenu.style.top = y + 'px';
+  aiActionsMenu.classList.remove('hidden');
+  requestAnimationFrame(() => {
+    const rect = aiActionsMenu.getBoundingClientRect();
+    const vw = document.documentElement.clientWidth;
+    const vh = document.documentElement.clientHeight;
+    if (rect.right > vw - 4) aiActionsMenu.style.left = Math.max(4, vw - rect.width - 4) + 'px';
+    if (rect.bottom > vh - 4) aiActionsMenu.style.top = Math.max(4, vh - rect.height - 4) + 'px';
   });
 }
+function hideAiActionsMenu() { aiActionsMenu.classList.add('hidden'); }
+
+// keep selection/focus in the editor when clicking a menu item
+aiActionsMenu.addEventListener('mousedown', (e) => e.preventDefault());
+aiActionsMenu.addEventListener('click', (e) => {
+  const item = e.target.closest('[data-ai-action]');
+  if (!item) return;
+  const action = item.dataset.aiAction;
+  hideAiActionsMenu();
+  runTabAiAction(action);
+});
+
+// Right-clicking the Improve toolbar button opens the actions menu at it.
+improveBtn.addEventListener('contextmenu', (e) => {
+  e.preventDefault();
+  const r = improveBtn.getBoundingClientRect();
+  showAiActionsMenu(r.left, r.top - 8);
+});
+
+document.addEventListener('click', (e) => {
+  if (!aiActionsMenu.classList.contains('hidden') && !aiActionsMenu.contains(e.target)) {
+    hideAiActionsMenu();
+  }
+});
+
+// ---------- Command palette (Ctrl+P) ----------
+const cmdPalette = document.getElementById('cmdPalette');
+const cmdInput = document.getElementById('cmdInput');
+const cmdResults = document.getElementById('cmdResults');
+let cmdItems = [];       // current filtered command objects
+let cmdActiveIdx = 0;
+
+function buildCommands() {
+  const cmds = [
+    { id: 'new-tab', label: 'New tab', hint: 'Ctrl+T', run: () => addTab() },
+    { id: 'toggle-tabs', label: settings.railHidden ? 'Show tabs' : 'Hide tabs', hint: 'Ctrl+\\', run: toggleRail },
+    { id: 'focus-mode', label: 'Focus mode', hint: 'Ctrl+Shift+F', run: () => toggleZen(true) },
+    { id: 'handy-mode', label: settings.handyMode ? 'Exit handy dock' : 'Handy mode (dock to edge)', hint: 'Ctrl+Shift+D', run: toggleHandy },
+    { id: 'toggle-md', label: 'Toggle markdown preview', hint: 'Ctrl+M', run: () => { if (!fsActive()) setMdPreview(!mdOn); } },
+    { id: 'improve', label: 'Improve prompt', hint: 'AI', run: () => improvePromptNote() },
+    { id: 'find', label: 'Find', hint: 'Ctrl+F', run: () => { if (!fsActive()) openFind(false); } },
+    { id: 'replace', label: 'Find & replace', hint: 'Ctrl+H', run: () => { if (!fsActive()) openFind(true); } },
+    { id: 'settings', label: 'Settings', hint: '', run: openSettings },
+    { id: 'templates', label: 'Templates', hint: '', run: openTemplates },
+    { id: 'ai-chat', label: 'Go to AI Chat', hint: '', run: switchToAiChat },
+    { id: 'clear-ai', label: 'Clear AI chat', hint: '', run: clearAiChat }
+  ];
+  if (settings.fastSaveEnabled) {
+    cmds.push({ id: 'fast-save', label: 'Go to ' + fsLabel(), hint: '', run: switchToFastSave });
+  }
+  orderedTabs().forEach((t) => {
+    cmds.push({ id: 'tab:' + t.id, label: autoName(t, state.tabs.indexOf(t)), hint: 'tab', run: () => switchTab(t.id) });
+  });
+  return cmds;
+}
+
+// Subsequence fuzzy score — lower is better, -1 means no match.
+function cmdFuzzyScore(query, text) {
+  if (!query) return 0;
+  const q = query.toLowerCase();
+  const s = text.toLowerCase();
+  let qi = 0, score = 0, lastIdx = -1;
+  for (let i = 0; i < s.length && qi < q.length; i++) {
+    if (s[i] === q[qi]) {
+      if (lastIdx >= 0) score += (i - lastIdx); // reward adjacent matches
+      lastIdx = i;
+      qi++;
+    }
+  }
+  if (qi < q.length) return -1;
+  return score + lastIdx * 0.01; // slight preference for earlier full matches
+}
+
+function renderCmdResults() {
+  const query = cmdInput.value.trim();
+  const all = buildCommands();
+  const scored = query
+    ? all.map((c) => ({ c, s: cmdFuzzyScore(query, c.label) })).filter((x) => x.s >= 0).sort((a, b) => a.s - b.s)
+    : all.map((c) => ({ c, s: 0 }));
+  cmdItems = scored.map((x) => x.c);
+  cmdActiveIdx = 0;
+  cmdResults.innerHTML = '';
+  if (!cmdItems.length) {
+    const empty = document.createElement('div');
+    empty.className = 'cmd-empty';
+    empty.textContent = 'No matches';
+    cmdResults.appendChild(empty);
+    return;
+  }
+  cmdItems.forEach((c, i) => {
+    const row = document.createElement('div');
+    row.className = 'cmd-row' + (i === cmdActiveIdx ? ' active' : '');
+    row.dataset.idx = i;
+    const label = document.createElement('span');
+    label.className = 'cmd-row-label';
+    label.textContent = c.label;
+    label.setAttribute('dir', detectDir(c.label));
+    row.appendChild(label);
+    if (c.hint) {
+      const hint = document.createElement('span');
+      hint.className = 'cmd-row-hint';
+      hint.textContent = c.hint;
+      row.appendChild(hint);
+    }
+    cmdResults.appendChild(row);
+  });
+}
+
+function setCmdActive(idx) {
+  const rows = [...cmdResults.querySelectorAll('.cmd-row')];
+  if (!rows.length) return;
+  cmdActiveIdx = (idx + rows.length) % rows.length;
+  rows.forEach((r, i) => r.classList.toggle('active', i === cmdActiveIdx));
+  rows[cmdActiveIdx].scrollIntoView({ block: 'nearest' });
+}
+
+function runCmdActive() {
+  const c = cmdItems[cmdActiveIdx];
+  closeCommandPalette();
+  if (c) { try { c.run(); } catch (err) { console.error('command failed', err); } }
+}
+
+function openCommandPalette() {
+  if (!cmdPalette.classList.contains('hidden')) return;
+  cmdInput.value = '';
+  cmdPalette.classList.remove('hidden');
+  renderCmdResults();
+  cmdInput.focus();
+}
+function closeCommandPalette() {
+  cmdPalette.classList.add('hidden');
+}
+
+cmdInput.addEventListener('input', renderCmdResults);
+cmdInput.addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowDown') { e.preventDefault(); setCmdActive(cmdActiveIdx + 1); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); setCmdActive(cmdActiveIdx - 1); }
+  else if (e.key === 'Enter') { e.preventDefault(); runCmdActive(); }
+});
+cmdResults.addEventListener('mousemove', (e) => {
+  const row = e.target.closest('.cmd-row');
+  if (row) setCmdActive(+row.dataset.idx);
+});
+cmdResults.addEventListener('click', (e) => {
+  const row = e.target.closest('.cmd-row');
+  if (!row) return;
+  setCmdActive(+row.dataset.idx);
+  runCmdActive();
+});
+cmdPalette.addEventListener('mousedown', (e) => {
+  if (e.target === cmdPalette) closeCommandPalette();
+});
+
+// ---------- Handy (peek) mode ----------
+// The window collapses to a thin line at the bottom edge; hovering it slides
+// the notepad open, and it tucks back when you move away (unless you've clicked
+// in and are actively using it).
+let handyCollapseTimer = null;
+let handyHovered = false;
+
+function handyOpen() { return appEl.classList.contains('handy-open'); }
+
+function setHandyMode(on) {
+  on = !!on;
+  settings.handyMode = on;
+  clearTimeout(handyCollapseTimer);
+  handyBtn.classList.toggle('active', on);
+  handyBtn.title = on
+    ? 'Exit handy mode (Ctrl+Shift+D)'
+    : 'Handy mode — dock to edge (Ctrl+Shift+D)';
+  if (on) {
+    if (settings.zenMode) toggleZen(false);
+    appEl.classList.add('handy-mode');
+    appEl.classList.remove('handy-open');
+    window.api.handyEnter(settings.handyPosition);
+  } else {
+    appEl.classList.remove('handy-mode', 'handy-open');
+    window.api.handyExit();
+  }
+  saveSettingsNow();
+}
+function toggleHandy() { setHandyMode(!settings.handyMode); }
+
+function handyExpand() {
+  if (!settings.handyMode || handyOpen()) return;
+  clearTimeout(handyCollapseTimer);
+  appEl.classList.add('handy-open');
+  // 'click away' mode focuses the panel so it stays open until you click
+  // somewhere else (a blur); 'leave' mode never steals focus.
+  window.api.handyExpand(settings.handyPosition, settings.handyCloseMode === 'click');
+}
+function handyCollapse() {
+  if (!settings.handyMode || !handyOpen()) return;
+  appEl.classList.remove('handy-open');
+  window.api.handyCollapse(settings.handyPosition);
+}
+function scheduleHandyCollapse() {
+  clearTimeout(handyCollapseTimer);
+  handyCollapseTimer = setTimeout(() => {
+    if (settings.handyMode && !handyHovered) handyCollapse();
+  }, 300);
+}
+
+// Hover the whole (tiny) window to open.
+document.documentElement.addEventListener('mouseenter', () => {
+  handyHovered = true;
+  clearTimeout(handyCollapseTimer);
+  if (settings.handyMode) handyExpand();
+});
+document.documentElement.addEventListener('mouseleave', () => {
+  handyHovered = false;
+  // 'leave' mode tucks away as soon as the mouse leaves; 'click away' mode keeps
+  // it open (the blur handler closes it once you click elsewhere).
+  if (settings.handyMode && settings.handyCloseMode === 'leave') scheduleHandyCollapse();
+});
+window.addEventListener('blur', () => {
+  if (!settings.handyMode) return;
+  // clicking outside the app pulls focus away → tuck the panel back
+  if (settings.handyCloseMode === 'click') handyCollapse();
+  else if (!handyHovered) handyCollapse();
+});
+window.addEventListener('focus', () => { clearTimeout(handyCollapseTimer); });
+// clicking the collapsed line also opens it, in case a hover was missed
+handyHandle.addEventListener('click', () => { if (settings.handyMode) handyExpand(); });
+
+handyBtn.addEventListener('click', () => toggleHandy());
+
+// ---------- Speech to text ----------
+let voiceRecording = null; // { recorder, autoStopTimer, sink } while recording
+// Captured once, before any handler ever overwrites the title with a
+// transient "Recording…"/"Transcribing…" state.
+const VOICE_BTN_DEFAULT_TITLE = voiceBtn.title;
+const AI_VOICE_BTN_DEFAULT_TITLE = aiVoiceBtn.title;
+
+// Insert transcribed text into the AI Chat composer at the caret.
+function insertIntoAiInput(text) {
+  const el = aiInputEl;
+  const start = el.selectionStart != null ? el.selectionStart : el.value.length;
+  const end = el.selectionEnd != null ? el.selectionEnd : el.value.length;
+  const before = el.value.slice(0, start);
+  const after = el.value.slice(end);
+  const sep = before && !/\s$/.test(before) ? ' ' : '';
+  el.value = before + sep + text + after;
+  const caret = (before + sep + text).length;
+  el.focus();
+  el.setSelectionRange(caret, caret);
+  aiAutoGrow();
+  updateAiInputDir();
+}
+
+// A "sink" describes where a transcription goes: the button that shows the
+// recording/transcribing state, whether recording may start, a token captured
+// before the async upload, and how to insert the result.
+const editorVoiceSink = {
+  btn: voiceBtn,
+  defaultTitle: () => VOICE_BTN_DEFAULT_TITLE,
+  canStart: () => !(mdOn || fsActive() || !activeTab()),
+  begin: () => (activeTab() ? activeTab().id : null),
+  insert: (text, tabId) => { if (activeTab() && activeTab().id === tabId) insertAtCaret(text); }
+};
+const aiVoiceSink = {
+  btn: aiVoiceBtn,
+  defaultTitle: () => AI_VOICE_BTN_DEFAULT_TITLE,
+  canStart: () => aiChatActive(),
+  begin: () => 'ai',
+  insert: (text) => { if (aiChatActive()) insertIntoAiInput(text); }
+};
+
+async function startVoiceRecording(sink) {
+  if (!sink.canStart()) return;
+  if (!settings.voice.hfApiKey) {
+    openSettings();
+    voiceHfApiKeyInputEl.focus();
+    return;
+  }
+  const btn = sink.btn;
+
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (err) {
+    btn.classList.add('failed');
+    btn.title = 'Microphone access denied.';
+    setTimeout(() => { btn.classList.remove('failed'); btn.title = sink.defaultTitle(); }, 4000);
+    return;
+  }
+
+  // Hugging Face's Whisper endpoint accepts audio/webm (tested live); fall
+  // back to whatever else the browser supports if that's ever unavailable.
+  const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm'
+    : (MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : '');
+  const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+  const chunks = [];
+  recorder.addEventListener('dataavailable', (e) => { if (e.data.size) chunks.push(e.data); });
+  recorder.addEventListener('stop', () => {
+    stream.getTracks().forEach((tr) => tr.stop());
+    finishVoiceRecording(new Blob(chunks, { type: mimeType }), mimeType, sink);
+  });
+  recorder.start();
+  // Safety net so a forgotten recording can't run (and upload) forever.
+  const autoStopTimer = setTimeout(() => stopVoiceRecording(), 120_000);
+  voiceRecording = { recorder, autoStopTimer, sink };
+  btn.classList.add('recording');
+  btn.title = 'Recording… click to stop';
+}
+
+function stopVoiceRecording() {
+  if (!voiceRecording) return;
+  clearTimeout(voiceRecording.autoStopTimer);
+  voiceRecording.recorder.stop();
+  voiceRecording = null;
+}
+
+async function finishVoiceRecording(blob, mimeType, sink) {
+  const btn = sink.btn;
+  btn.classList.remove('recording');
+  const token = sink.begin();
+  if (token == null) return; // sink no longer valid (e.g. tab closed)
+
+  btn.disabled = true;
+  btn.classList.add('generating');
+  btn.title = 'Transcribing…';
+  try {
+    const base64 = await blobToBase64(blob);
+    const res = await window.api.transcribeAudio(base64, mimeType, {
+      hfApiKey: settings.voice.hfApiKey
+    });
+    if (res && res.ok && res.text) {
+      sink.insert(res.text, token);
+    } else {
+      btn.classList.add('failed');
+      btn.title = (res && res.error) || 'Transcription failed.';
+      setTimeout(() => {
+        btn.classList.remove('failed');
+        btn.title = sink.defaultTitle();
+      }, 5000);
+    }
+  } finally {
+    btn.disabled = false;
+    btn.classList.remove('generating');
+    if (!btn.classList.contains('failed')) btn.title = sink.defaultTitle();
+  }
+}
+
+voiceBtn.addEventListener('click', () => {
+  if (voiceRecording) stopVoiceRecording();
+  else startVoiceRecording(editorVoiceSink);
+});
+aiVoiceBtn.addEventListener('click', () => {
+  if (voiceRecording) stopVoiceRecording();
+  else startVoiceRecording(aiVoiceSink);
+});
 
 improveBtn.addEventListener('click', improvePromptNote);
 
@@ -3939,6 +4413,31 @@ pinBtn.addEventListener('click', async () => {
   pinBtn.classList.toggle('active', on);
 });
 
+// ---------- Hide / show the tab rail ----------
+function toggleRail() {
+  settings.railHidden = !settings.railHidden;
+  applySettings();
+  saveSettingsNow();
+}
+railToggleBtn.addEventListener('click', toggleRail);
+
+// ---------- Focus / Zen mode ----------
+let zenHintTimer = null;
+function toggleZen(force) {
+  const on = typeof force === 'boolean' ? force : !settings.zenMode;
+  settings.zenMode = on;
+  applySettings();
+  clearTimeout(zenHintTimer);
+  if (on) {
+    zenExitHint.classList.remove('hidden', 'fading');
+    // let the show transition run, then fade the hint away
+    zenHintTimer = setTimeout(() => zenExitHint.classList.add('fading'), 1800);
+  } else {
+    zenExitHint.classList.add('hidden');
+  }
+}
+zenBtn.addEventListener('click', () => toggleZen());
+
 minBtn.addEventListener('click', () => window.api.minimize());
 closeBtn.addEventListener('click', () => window.api.close());
 
@@ -3946,6 +4445,11 @@ closeBtn.addEventListener('click', () => window.api.close());
 // keyboard layout, including Persian.
 document.addEventListener('keydown', (e) => {
   if (!e.ctrlKey) return;
+  // Global (work in any view): hide-tabs, focus mode, command palette.
+  if (!e.shiftKey && e.code === 'Backslash') { e.preventDefault(); toggleRail(); return; }
+  if (e.shiftKey && e.code === 'KeyF') { e.preventDefault(); toggleZen(); return; }
+  if (e.shiftKey && e.code === 'KeyD') { e.preventDefault(); toggleHandy(); return; }
+  if (!e.shiftKey && e.code === 'KeyP') { e.preventDefault(); openCommandPalette(); return; }
   // editor-only shortcuts are meaningless while the Fast Save chat is shown
   if (fsActive() && (e.code === 'KeyF' || e.code === 'KeyH' || e.code === 'KeyM')) return;
   if (!e.shiftKey && e.code === 'KeyT') {
@@ -4094,11 +4598,14 @@ function applySettings() {
   applyFont(settings.font);
   applyFontSize();
   window.api.setOpacity((settings.windowOpacity || 100) / 100);
-  appEl.classList.toggle('layout-top', settings.tabPosition === 'top');
+  appEl.classList.toggle('rail-hidden', !!settings.railHidden);
+  appEl.classList.toggle('zen-mode', !!settings.zenMode);
+  appEl.classList.toggle('tabsize-small', settings.tabSize === 'small');
+  appEl.classList.toggle('tabsize-large', settings.tabSize === 'large');
+  railToggleBtn.title = settings.railHidden ? 'Show tabs (Ctrl+\\)' : 'Hide tabs (Ctrl+\\)';
   appEl.classList.toggle('pins-off', !settings.pinningEnabled);
   appEl.classList.toggle('close-off', !settings.closeButtonEnabled);
-  appEl.classList.toggle('resize-off',
-    !settings.railResizable || settings.tabPosition === 'top');
+  appEl.classList.toggle('resize-off', !settings.railResizable);
   document.documentElement.style.setProperty(
     '--rail-width', (settings.railWidth || 166) + 'px');
 
@@ -4138,6 +4645,7 @@ const TOOLBAR_BUTTONS = [
   { key: 'justify', label: 'Justify', el: () => justifyBtn },
   { key: 'clean', label: 'Clean', el: () => cleanBtn },
   { key: 'improve', label: 'Improve Prompt', el: () => improveBtn },
+  { key: 'voice', label: 'Voice to Text', el: () => voiceBtn },
   { key: 'md', label: 'Markdown', el: () => mdBtn },
   { key: 'paste', label: 'Paste', el: () => pasteBtn },
   { key: 'copy', label: 'Copy', el: () => copyBtn },
@@ -4389,8 +4897,14 @@ function syncSettingsUI() {
   buildFontPicker();
   buildToolbarChips();
   updateFontSizeLabel();
-  layoutSeg.querySelectorAll('.seg-btn').forEach((b) => {
-    b.classList.toggle('active', b.dataset.layout === settings.tabPosition);
+  tabSizeSeg.querySelectorAll('.seg-btn').forEach((b) => {
+    b.classList.toggle('active', b.dataset.tabsize === (settings.tabSize || 'medium'));
+  });
+  handyPosSeg.querySelectorAll('.seg-btn').forEach((b) => {
+    b.classList.toggle('active', b.dataset.handypos === (settings.handyPosition || 'center'));
+  });
+  handyCloseSeg.querySelectorAll('.seg-btn').forEach((b) => {
+    b.classList.toggle('active', b.dataset.handyclose === (settings.handyCloseMode || 'click'));
   });
   togglePinEl.checked = settings.pinningEnabled;
   toggleCloseEl.checked = settings.closeButtonEnabled;
@@ -4413,8 +4927,10 @@ function syncSettingsUI() {
   geminiProviderFieldsEl.classList.toggle('hidden', genProvider !== 'gemini');
   hfProviderFieldsEl.classList.toggle('hidden', genProvider !== 'huggingface');
   providerHintPollinationsEl.classList.toggle('hidden', genProvider !== 'pollinations');
+
+  voiceHfApiKeyInputEl.value = (settings.voice && settings.voice.hfApiKey) || '';
   togglePlaceholdersEl.checked = settings.placeholdersEnabled;
-  resizeRow.classList.toggle('disabled', settings.tabPosition === 'top');
+  resizeRow.classList.remove('disabled');
   placeholderPositionSeg.querySelectorAll('.seg-btn').forEach((b) => {
     b.classList.toggle('active', b.dataset.pos === settings.placeholderBarPosition);
   });
@@ -4449,13 +4965,29 @@ settingsOverlay.addEventListener('click', (e) => {
   if (e.target === settingsOverlay) closeSettings();
 });
 
-layoutSeg.addEventListener('click', (e) => {
+tabSizeSeg.addEventListener('click', (e) => {
   const btn = e.target.closest('.seg-btn');
   if (!btn) return;
-  settings.tabPosition = btn.dataset.layout;
+  settings.tabSize = btn.dataset.tabsize;
   applySettings();
   syncSettingsUI();
-  renderTabs();
+  saveSettingsNow();
+});
+
+handyPosSeg.addEventListener('click', (e) => {
+  const btn = e.target.closest('.seg-btn');
+  if (!btn) return;
+  settings.handyPosition = btn.dataset.handypos;
+  syncSettingsUI();
+  saveSettingsNow();
+  if (settings.handyMode) window.api.handySetPosition(settings.handyPosition, handyOpen());
+});
+
+handyCloseSeg.addEventListener('click', (e) => {
+  const btn = e.target.closest('.seg-btn');
+  if (!btn) return;
+  settings.handyCloseMode = btn.dataset.handyclose;
+  syncSettingsUI();
   saveSettingsNow();
 });
 
@@ -4556,6 +5088,11 @@ imageGenProviderSeg.addEventListener('click', (e) => {
   if (!btn) return;
   settings.imageGen = { ...settings.imageGen, provider: btn.dataset.provider };
   syncSettingsUI();
+  saveSettingsNow();
+});
+
+voiceHfApiKeyInputEl.addEventListener('change', () => {
+  settings.voice = { ...settings.voice, hfApiKey: voiceHfApiKeyInputEl.value.trim() };
   saveSettingsNow();
 });
 
@@ -4666,7 +5203,7 @@ document.querySelectorAll('.about-link').forEach((a) => {
 // ---------- Rail resizer ----------
 let resizing = false;
 railResizer.addEventListener('mousedown', (e) => {
-  if (!settings.railResizable || settings.tabPosition === 'top') return;
+  if (!settings.railResizable) return;
   resizing = true;
   railResizer.classList.add('active');
   document.body.style.cursor = 'col-resize';
@@ -5110,15 +5647,19 @@ const CURRENT_VERSION = document.getElementById('aboutVersion').textContent.repl
 const WHATS_NEW =
   "What's new in v" + CURRENT_VERSION + " ✨\n" +
   '\n' +
-  '• AI Chat — a free chat pinned in the sidebar next to Fast Save, no\n' +
-  '   signup or API key. Ask a quick question without leaving the app.\n' +
-  '• Improve Prompt — rewrites your draft into a clearer, more effective\n' +
-  '   prompt with one click. Works on a whole tab, a single selected line,\n' +
-  '   right-click → Improve, or an individual code block in Markdown\n' +
-  '   preview (next to its copy button).\n' +
-  '• Toolbar customization — drag any button to reorder it, or drag it\n' +
-  '   onto the overflow arrow to tuck it away (Windows-taskbar style).\n' +
-  '   Every button now shows its name, not just an icon.\n' +
+  '• Handy dock — collapse the window to a thin line at the screen edge;\n' +
+  '   hover it and the notepad slides open, then tucks away when you leave.\n' +
+  '   Toggle with the dock button in the title bar or Ctrl+Shift+D.\n' +
+  '• AI actions — right-click the Improve button (or use the editor menu)\n' +
+  '   for Translate (Persian ⇄ English), Summarize, Fix grammar, and\n' +
+  '   tone presets. All free, no API key.\n' +
+  '• Speech to text — the mic button (in the editor and the AI Chat box)\n' +
+  '   records your voice and inserts the text; Persian and English are both\n' +
+  '   supported. Free via Hugging Face\'s Whisper — needs a free token.\n' +
+  '• Command palette — press Ctrl+P to jump between tabs or run actions.\n' +
+  '• Focus mode — hide everything for distraction-free writing (Ctrl+Shift+F).\n' +
+  '• Hide the tab rail (Ctrl+\\) and pick a tab size (Small / Medium / Large).\n' +
+  '• A livelier AI Chat, refreshed title-bar icons, and a macOS build.\n' +
   '\n' +
   'You can close this tab — it won\'t come back until the next update.';
 
@@ -5261,6 +5802,15 @@ window.addEventListener('drop', async (e) => {
 
 // ---------- Init ----------
 (async function init() {
+  // Platform-specific copy — the setting/shortcut itself already works
+  // cross-platform, only the wording was hardcoded to Windows.
+  if (window.api.platform === 'darwin') {
+    const startupHintEl = document.getElementById('startupHint');
+    if (startupHintEl) startupHintEl.textContent = 'Open PromptPad when your Mac starts';
+    const qcHintEl = document.getElementById('quickCaptureHint');
+    if (qcHintEl) qcHintEl.textContent = '⌘+Shift+Space opens Fast Save from anywhere';
+  }
+
   const savedSettings = await window.api.loadSettings();
   settings = { ...DEFAULT_SETTINGS, ...(savedSettings || {}) };
   // ensure every toolbar key exists even if an older save lacked some
@@ -5268,6 +5818,9 @@ window.addEventListener('drop', async (e) => {
   // fresh object, never the shared DEFAULT_SETTINGS.imageGen reference
   settings.imageGen = { ...DEFAULT_SETTINGS.imageGen, ...(settings.imageGen || {}) };
   settings.seenFeatures = { ...(settings.seenFeatures || {}) };
+  settings.voice = { ...DEFAULT_SETTINGS.voice, ...(settings.voice || {}) };
+  settings.zenMode = false; // focus mode is per-session; never boot into a chromeless window
+  settings.tabPosition = 'left'; // the top layout was removed — always the left rail
   // reflect real OS startup state
   try { settings.launchAtStartup = await window.api.getStartup(); } catch {}
   applySettings();
@@ -5275,6 +5828,15 @@ window.addEventListener('drop', async (e) => {
   const hadSaved = await loadState();
   maybeShowWhatsNew(hadSaved);
   applyActiveView();
+
+  // Re-enter handy (peek) dock if it was on last time — start collapsed.
+  if (settings.handyMode) {
+    appEl.classList.add('handy-mode');
+    appEl.classList.remove('handy-open');
+    handyBtn.classList.add('active');
+    handyBtn.title = 'Exit handy mode (Ctrl+Shift+D)';
+    window.api.handyEnter(settings.handyPosition);
+  }
 
   const onTop = await window.api.getAlwaysOnTop();
   pinBtn.classList.toggle('active', onTop);
@@ -5303,6 +5865,9 @@ window.addEventListener('drop', async (e) => {
   // close overlays with Escape (priority: lightbox > ctx menu > find bar > dialogs > overlays)
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
+    if (!cmdPalette.classList.contains('hidden')) { closeCommandPalette(); return; }
+    if (!aiActionsMenu.classList.contains('hidden')) { hideAiActionsMenu(); return; }
+    if (settings.zenMode) { toggleZen(false); return; }
     if (!emojiPanel.classList.contains('hidden')) { hideEmojiPanel(); return; }
     if (!imgContextMenu.classList.contains('hidden')) { hideImgContextMenu(); return; }
     if (!textContextMenu.classList.contains('hidden')) { hideTextContextMenu(); return; }

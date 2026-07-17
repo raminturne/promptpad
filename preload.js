@@ -1,6 +1,7 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('api', {
+  platform: process.platform,
   loadNotes: () => ipcRenderer.invoke('load-notes'),
   saveNotes: (notes) => ipcRenderer.invoke('save-notes', notes),
   minimize: () => ipcRenderer.send('window-minimize'),
@@ -16,11 +17,18 @@ contextBridge.exposeInMainWorld('api', {
   checkUpdate: () => ipcRenderer.invoke('check-update'),
   setOpacity: (v) => ipcRenderer.send('set-opacity', v),
   setCloseToTray: (enabled) => ipcRenderer.send('set-close-to-tray', enabled),
+  handyEnter: (position) => ipcRenderer.invoke('handy-enter', position),
+  handyExit: () => ipcRenderer.invoke('handy-exit'),
+  handyExpand: (position, focus) => ipcRenderer.invoke('handy-expand', { position, focus }),
+  handyCollapse: (position) => ipcRenderer.invoke('handy-collapse', position),
+  handySetPosition: (position, open) => ipcRenderer.invoke('handy-set-position', { position, open }),
   pickImage: () => ipcRenderer.invoke('pick-image'),
   saveImage: (base64, ext) => ipcRenderer.invoke('save-image', base64, ext),
   generateImage: (prompt, opts) => ipcRenderer.invoke('generate-image', prompt, opts),
   improvePrompt: (text) => ipcRenderer.invoke('improve-prompt', text),
+  aiTransform: (action, text) => ipcRenderer.invoke('ai-transform', { action, text }),
   chatMessage: (history) => ipcRenderer.invoke('chat-message', history),
+  transcribeAudio: (base64, mimeType, opts) => ipcRenderer.invoke('transcribe-audio', base64, mimeType, opts),
   downloadImage: (filename) => ipcRenderer.invoke('download-image', filename),
   revealImage: (filename) => ipcRenderer.invoke('reveal-image', filename),
   copyImageToClipboard: (filename) => ipcRenderer.invoke('copy-image-clipboard', filename),

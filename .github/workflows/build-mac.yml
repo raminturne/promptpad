@@ -1,0 +1,62 @@
+name: Build macOS
+
+# Builds the macOS .dmg on GitHub's own macOS runner (native Windows can't
+# produce a mac app bundle/dmg — electron-builder needs real mac tooling).
+#
+# - Push a tag matching v* (the same convention used for existing releases,
+#   e.g. v2.2.0): builds and attaches the .dmg to that GitHub release
+#   (creating it if it doesn't exist yet).
+# - Manual "Run workflow" (workflow_dispatch): builds and uploads the same
+#   file as a downloadable Actions artifact, for testing without a tag/release.
+#
+# Unsigned build: there's no Apple Developer signing/notarization set up for
+# this project, so first-time openers will need to right-click -> Open (or
+# System Settings -> Privacy & Security -> Open Anyway) once to get past
+# Gatekeeper's "unidentified developer" warning.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+# The default GITHUB_TOKEN is read-only unless a workflow explicitly asks
+# for more — without this, attaching files to a release gets a 403.
+permissions:
+  contents: write
+
+jobs:
+  build-mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - run: npm ci
+
+      # --publish never: build only. electron-builder auto-detects the tag
+      # and otherwise tries to publish the release itself (needs its own
+      # GH_TOKEN) — we handle attaching assets ourselves in the next step.
+      - run: npm run dist -- --mac --publish never
+
+      - name: Attach to GitHub release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release/*.dmg
+            release/*.dmg.blockmap
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload as workflow artifact
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: promptpad-mac
+          path: |
+            release/*.dmg
+            release/*.dmg.blockmap

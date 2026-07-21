@@ -605,17 +605,47 @@
             </div>
           </section>
 
+          <!-- AI Chat & actions -->
+          <section class="set-group">
+            <div class="set-label-row">
+              <h3 class="set-label">AI Chat &amp; actions</h3>
+              <button type="button" class="lang-toggle" title="فارسی / English"><span class="lt-to-fa">فارسی</span><span class="lt-to-en">English</span></button>
+            </div>
+            <p class="set-hint help-en">Powers AI Chat, Improve, and the AI actions (translate, summarize, fix grammar…).
+              Each person uses their own free key, so everyone gets their own limits.</p>
+            <p class="set-hint help-fa" dir="rtl">پشتِ چت هوش مصنوعی، Improve و اکشن‌های AI (ترجمه، خلاصه‌سازی، اصلاح گرامر…) همینه.
+              هر کاربر با کلیدِ رایگانِ خودش کار می‌کنه، پس لیمیتِ هرکس برای خودشه.</p>
+            <input type="password" id="aiApiKeyInput" class="text-input" placeholder="OpenRouter API key (sk-or-v1-…)" autocomplete="off" spellcheck="false" />
+            <p class="backup-note help-en">Free — create a key at
+              <a href="#" class="about-link" data-url="https://openrouter.ai/keys">openrouter.ai/keys</a>
+              (free account, no card required), then paste it here. Uses OpenRouter's free models. Stored
+              locally, same as your other preferences.</p>
+            <p class="backup-note help-fa" dir="rtl">رایگان — یه کلید بساز از
+              <a href="#" class="about-link" data-url="https://openrouter.ai/keys">openrouter.ai/keys</a>
+              (حسابِ رایگان، بدون کارت بانکی)، بعد همین‌جا بذارش. از مدل‌های رایگانِ OpenRouter استفاده می‌کنه.
+              فقط روی همین دستگاه ذخیره می‌شه.</p>
+          </section>
+
           <!-- Speech to text -->
           <section class="set-group">
-            <h3 class="set-label">Speech to text</h3>
-            <p class="set-hint">The mic button records from your microphone and inserts the transcribed
+            <div class="set-label-row">
+              <h3 class="set-label">Speech to text</h3>
+              <button type="button" class="lang-toggle" title="فارسی / English"><span class="lt-to-fa">فارسی</span><span class="lt-to-en">English</span></button>
+            </div>
+            <p class="set-hint help-en">The mic button records from your microphone and inserts the transcribed
               text at the caret. Persian and English are both supported (auto-detected).</p>
+            <p class="set-hint help-fa" dir="rtl">دکمه‌ی میکروفون صداتو ضبط می‌کنه و متنِ تبدیل‌شده رو سرِ جای
+              مکان‌نما می‌ذاره. فارسی و انگلیسی هر دو پشتیبانی می‌شن (خودکار تشخیص داده می‌شن).</p>
             <input type="password" id="voiceHfApiKeyInput" class="text-input" placeholder="Hugging Face access token" autocomplete="off" spellcheck="false" />
-            <p class="backup-note">Free (rate-limited) — uses the Whisper large-v3 model, which
+            <p class="backup-note help-en">Free (rate-limited) — uses the Whisper large-v3 model, which
               auto-detects the spoken language. Get a token at
               <a href="#" class="about-link" data-url="https://huggingface.co/settings/tokens/new?ownUserPermissions=inference.serverless.write&amp;tokenType=fineGrained">huggingface.co/settings/tokens</a>
               (free account, no card required) with "Make calls to Inference Providers" permission. Stored
               locally, same as your other preferences.</p>
+            <p class="backup-note help-fa" dir="rtl">رایگان (با محدودیتِ نرخ) — از مدلِ Whisper large-v3 استفاده می‌کنه
+              که خودش زبانِ گفتار رو تشخیص می‌ده. یه توکن بگیر از
+              <a href="#" class="about-link" data-url="https://huggingface.co/settings/tokens/new?ownUserPermissions=inference.serverless.write&amp;tokenType=fineGrained">huggingface.co/settings/tokens</a>
+              (حسابِ رایگان، بدون کارت) با دسترسیِ «Make calls to Inference Providers». روی همین دستگاه ذخیره می‌شه.</p>
           </section>
 
           <!-- System -->
@@ -710,7 +740,7 @@
             <div class="about-box">
               <div class="about-brand">
                 <span class="brand-dot"></span>
-                <span>PromptPad <em id="aboutVersion">v2.4.1</em></span>
+                <span>PromptPad <em id="aboutVersion">v2.4.2</em></span>
               </div>
               <p class="about-desc">A compact notepad for writing AI prompts.</p>
               <div class="about-links">

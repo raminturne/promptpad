@@ -794,9 +794,32 @@ if (!app.requestSingleInstanceLock()) {
     }
   });
 
-  // Free, keyless chat completion — backs both the "Improve Prompt" button
-  // (one-shot system+user call) and the AI Chat view (full message history).
-  function fetchPollinationsChat(messages) {
+  // Chat completion via the user's own free OpenRouter key (each user brings
+  // their own key — Settings → AI). OpenRouter is OpenAI-compatible and works
+  // from regions where Groq/OpenAI are geo-blocked, since the client only talks
+  // to OpenRouter's proxy. Backs Improve, the AI actions menu, and AI Chat.
+  // A short list of solid free instruct models (verified working from the
+  // user's region). We DON'T use `openrouter/free` — its auto-router sometimes
+  // picks non-chat models (e.g. a content-safety classifier). fetchAiChat tries
+  // them in order and falls through to the next only when one is rate-limited.
+  const OPENROUTER_MODELS = [
+    'google/gemma-4-26b-a4b-it:free',
+    'nvidia/nemotron-3-super-120b-a12b:free',
+    'nvidia/nemotron-3-ultra-550b-a55b:free'
+  ];
+  async function fetchAiChat(messages, apiKey) {
+    apiKey = String(apiKey || '').trim();
+    if (!apiKey) return { ok: false, needsKey: true, error: 'Add a free OpenRouter key in Settings → AI.' };
+    let last = { ok: false, error: 'The AI is busy right now — wait a moment and try again.' };
+    for (const model of OPENROUTER_MODELS) {
+      const res = await fetchAiChatOnce(messages, apiKey, model);
+      if (res.ok) return res;
+      last = res;
+      if (!res.rateLimited) return res; // a real error (bad key, network) — stop here
+    }
+    return last; // every model was rate-limited
+  }
+  function fetchAiChatOnce(messages, apiKey, model) {
     return new Promise((resolve) => {
       let settled = false;
       let timer;
@@ -811,14 +834,19 @@ if (!app.requestSingleInstanceLock()) {
       try {
         req = net.request({
           method: 'POST',
-          url: 'https://text.pollinations.ai/openai',
-          headers: { 'Content-Type': 'application/json' }
+          url: 'https://openrouter.ai/api/v1/chat/completions',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: 'Bearer ' + apiKey,
+            'HTTP-Referer': 'https://github.com/raminturne/promptpad',
+            'X-Title': 'PromptPad'
+          }
         });
       } catch (err) {
         return finish({ ok: false, error: 'Could not start the request.' });
       }
 
-      timer = setTimeout(() => { try { req.abort(); } catch {} }, 30_000);
+      timer = setTimeout(() => { try { req.abort(); } catch {} }, 40_000);
 
       let bufs = [];
       let total = 0;
@@ -840,8 +868,14 @@ if (!app.requestSingleInstanceLock()) {
           let json = null;
           try { json = JSON.parse(body); } catch {}
           if (statusCode >= 400) {
-            const apiMsg = json && (json.error && json.error.message || json.error);
-            if (statusCode === 429) return finish({ ok: false, error: 'Rate limited — wait a bit and try again.' });
+            const apiMsg = json && json.error &&
+              (json.error.message || (json.error.metadata && json.error.metadata.raw) || json.error);
+            if (statusCode === 401 || statusCode === 403) {
+              return finish({ ok: false, error: 'The AI key was rejected — check it in Settings → AI.' });
+            }
+            if (statusCode === 429) {
+              return finish({ ok: false, rateLimited: true, error: 'The AI is busy right now — wait a moment and try again.' });
+            }
             return finish({ ok: false, error: apiMsg ? String(apiMsg).slice(0, 300) : 'Request failed (status ' + statusCode + ').' });
           }
           const content = json && json.choices && json.choices[0] && json.choices[0].message && json.choices[0].message.content;
@@ -855,7 +889,7 @@ if (!app.requestSingleInstanceLock()) {
       req.on('abort', () => finish({ ok: false, error: 'Request timed out.' }));
       req.on('error', (err) => finish({ ok: false, error: err.message || 'Network error.' }));
 
-      req.write(JSON.stringify({ model: 'openai', messages }));
+      req.write(JSON.stringify({ model, messages, temperature: 0.7 }));
       req.end();
     });
   }
@@ -889,27 +923,35 @@ if (!app.requestSingleInstanceLock()) {
     ' Output ONLY the resulting text — no explanations, no preamble, no markdown code fences, and no ' +
     'surrounding quotation marks.';
 
-  function runAiAction(action, text) {
+  function runAiAction(action, text, apiKey) {
     const sys = AI_ACTION_PROMPTS[action];
     if (!sys) return Promise.resolve({ ok: false, error: 'Unknown action.' });
     text = String(text || '').trim().slice(0, 8000);
     if (!text) return Promise.resolve({ ok: false, error: 'Nothing to work on — the text is empty.' });
-    return fetchPollinationsChat([
+    return fetchAiChat([
       { role: 'system', content: sys + AI_OUTPUT_RULE },
       { role: 'user', content: text }
-    ]);
+    ], apiKey);
   }
 
   ipcMain.handle('ai-transform', async (_e, payload) => {
     const action = payload && payload.action;
     const text = payload && payload.text;
-    return runAiAction(action, text);
+    const apiKey = payload && payload.apiKey;
+    return runAiAction(action, text, apiKey);
   });
 
   // Kept for back-compat with the existing improvePrompt bridge.
-  ipcMain.handle('improve-prompt', async (_e, promptText) => runAiAction('improve', promptText));
+  ipcMain.handle('improve-prompt', async (_e, payload) => {
+    // payload is { text, apiKey } (new) — tolerate a bare string too.
+    const text = typeof payload === 'string' ? payload : (payload && payload.text);
+    const apiKey = payload && typeof payload === 'object' ? payload.apiKey : '';
+    return runAiAction('improve', text, apiKey);
+  });
 
-  ipcMain.handle('chat-message', async (_e, history) => {
+  ipcMain.handle('chat-message', async (_e, payload) => {
+    const history = payload && payload.history;
+    const apiKey = payload && payload.apiKey;
     if (!Array.isArray(history)) return { ok: false, error: 'Invalid message history.' };
     // Cap both turn count and per-message size so a long-running conversation
     // can't grow into an unbounded request.
@@ -918,14 +960,14 @@ if (!app.requestSingleInstanceLock()) {
       content: String((m && m.content) || '').slice(0, 4000)
     })).filter((m) => m.content);
     if (!turns.length) return { ok: false, error: 'Message is empty.' };
-    return fetchPollinationsChat([
+    return fetchAiChat([
       {
         role: 'system',
         content: 'You are a helpful, friendly assistant built into PromptPad, a notepad app for writing AI ' +
           'prompts. Keep replies concise and to the point.'
       },
       ...turns
-    ]);
+    ], apiKey);
   });
 
   // Free (rate-limited) speech-to-text via Hugging Face's hosted Whisper —

@@ -78,7 +78,8 @@ const DEFAULT_SETTINGS = {
   },
   imageGen: { provider: 'pollinations', geminiApiKey: '', hfApiKey: '' },
   seenFeatures: {}, // { improve: true, aiChat: true, ... } — clears each button's "New" badge once used
-  voice: { hfApiKey: '' },
+  voice: { hfApiKey: '' }, // Hugging Face token for speech-to-text (Whisper)
+  ai: { openrouterKey: '' }, // each user's own free OpenRouter key for Chat / Improve / AI actions
   toolbarOrder: [], // full left-to-right key order — filled in from TOOLBAR_BUTTONS on first render
   toolbarCollapsed: [], // subset of toolbarOrder currently tucked behind the overflow chevron
   toolbarNudged: false, // true once the one-time "some icons start collapsed" nudge has run
@@ -87,7 +88,8 @@ const DEFAULT_SETTINGS = {
   tabSize: 'medium', // 'small' | 'medium' | 'large' — height of tabs & group headers
   handyMode: false, // "handy" peek dock — collapses to a line at the screen edge (persists)
   handyPosition: 'center', // 'left' | 'center' | 'right' — where the line docks
-  handyCloseMode: 'leave' // 'leave' = hide when the mouse leaves; 'click' = stay open until you click away
+  handyCloseMode: 'leave', // 'leave' = hide when the mouse leaves; 'click' = stay open until you click away
+  helpLang: 'en' // 'en' | 'fa' — language of the Settings help text (AI / Speech sections)
 };
 
 let settings = { ...DEFAULT_SETTINGS };
@@ -245,6 +247,7 @@ const cleanBtn = document.getElementById('cleanBtn');
 const improveBtn = document.getElementById('improveBtn');
 const voiceBtn = document.getElementById('voiceBtn');
 const voiceHfApiKeyInputEl = document.getElementById('voiceHfApiKeyInput');
+const aiApiKeyInputEl = document.getElementById('aiApiKeyInput');
 const toolbarMainEl = document.getElementById('toolbarMain');
 const toolbarOverflowBtnEl = document.getElementById('toolbarOverflowBtn');
 const toolbarOverflowPanelEl = document.getElementById('toolbarOverflowPanel');
@@ -2001,14 +2004,54 @@ function hideAiError() {
 // entrance animation, instead of the whole list re-animating on every render.
 const aiShownMsgIds = new Set();
 
+// Each user's own free OpenRouter key (Settings → AI Chat & actions).
+function aiKey() { return (settings.ai && settings.ai.openrouterKey) || ''; }
+
+// Bilingual (English + Persian) onboarding card shown in AI Chat when there's
+// no key yet — explains how to grab a free OpenRouter key and where to paste it.
+function buildAiOnboardCard() {
+  const card = document.createElement('div');
+  card.className = 'ai-onboard';
+  card.innerHTML =
+    '<div class="ai-onboard-title">✨ Set up the free AI  ·  فعال‌سازی هوش مصنوعی رایگان</div>' +
+    '<div class="ai-onboard-body">' +
+      '<p>AI Chat, <b>Improve</b> and the AI actions run on <b>your own free OpenRouter key</b>, so you get your own limits. Takes ~1 minute:</p>' +
+      '<ol>' +
+        '<li>Tap <b>Get free key</b> → sign in (Google/GitHub) → create a key.</li>' +
+        '<li>Copy it (starts with <code>sk-or-v1-</code>).</li>' +
+        '<li>Tap <b>Open Settings</b> and paste it under “AI Chat &amp; actions”.</li>' +
+      '</ol>' +
+      '<hr class="ai-onboard-sep">' +
+      '<p dir="rtl">چت هوش مصنوعی، <b>Improve</b> و اکشن‌های AI با <b>کلیدِ رایگانِ خودت</b> کار می‌کنن تا لیمیتِ خودتو داشته باشی. حدود ۱ دقیقه:</p>' +
+      '<ol dir="rtl">' +
+        '<li>روی <b>دریافت کلید رایگان</b> بزن → وارد شو (گوگل/گیت‌هاب) → یه کلید بساز.</li>' +
+        '<li>کپیش کن (با <code>sk-or-v1-</code> شروع می‌شه).</li>' +
+        '<li>روی <b>باز کردن تنظیمات</b> بزن و زیر «AI Chat &amp; actions» بذارش.</li>' +
+      '</ol>' +
+    '</div>' +
+    '<div class="ai-onboard-actions">' +
+      '<button type="button" class="ai-onboard-btn primary js-get">Get free key · دریافت کلید</button>' +
+      '<button type="button" class="ai-onboard-btn js-settings">Open Settings · تنظیمات</button>' +
+    '</div>';
+  card.querySelector('.js-get').addEventListener('click', () => window.api.openExternal('https://openrouter.ai/keys'));
+  card.querySelector('.js-settings').addEventListener('click', () => { openSettings(); setTimeout(() => aiApiKeyInputEl.focus(), 60); });
+  return card;
+}
+
 function renderAiMessages() {
   aiMessagesEl.innerHTML = '';
   const msgs = aiMessages();
+  if (!aiKey()) {
+    // no key yet → focus the onboarding (chat history reappears once a key is set)
+    aiShownMsgIds.clear();
+    aiMessagesEl.appendChild(buildAiOnboardCard());
+    return;
+  }
   if (!msgs.length) {
     aiShownMsgIds.clear();
     const empty = document.createElement('div');
     empty.className = 'fs-empty';
-    empty.textContent = 'Say something — this uses a free AI (Pollinations) and stays only on this device.';
+    empty.textContent = 'Say something — this uses a free AI and stays only on this device.';
     aiMessagesEl.appendChild(empty);
     return;
   }
@@ -2035,6 +2078,7 @@ let aiSending = false;
 async function sendAiMessage() {
   const text = aiInputEl.value.trim();
   if (!text || aiSending) return;
+  if (!aiKey()) { renderAiMessages(); openSettings(); aiApiKeyInputEl.focus(); return; }
   hideAiError();
   aiInputEl.value = '';
   aiAutoGrow();
@@ -2057,7 +2101,7 @@ async function sendAiMessage() {
 
   try {
     const history = aiMessages().map((m) => ({ role: m.role, content: m.text }));
-    const res = await window.api.chatMessage(history);
+    const res = await window.api.chatMessage(history, aiKey());
     thinking.remove();
     if (res && res.ok && res.text) {
       aiMessages().push({ id: uid(), ts: Date.now(), role: 'assistant', text: res.text });
@@ -3842,12 +3886,14 @@ const AI_ACTION_TITLES = {
 // code-block replace, …).
 async function runAiTransform(btnEl, sourceText, action, applyFn) {
   if (!sourceText.trim()) return;
+  // no key yet → send the user to Settings to add their free OpenRouter key
+  if (!aiKey()) { openSettings(); aiApiKeyInputEl.focus(); return; }
   const defaultTitle = btnEl.title;
   btnEl.disabled = true;
   btnEl.classList.add('generating');
   btnEl.title = AI_ACTION_TITLES[action] || 'Working…';
   try {
-    const res = await window.api.aiTransform(action, sourceText);
+    const res = await window.api.aiTransform(action, sourceText, aiKey());
     if (res && res.ok && res.text) {
       applyFn(res.text);
     } else {
@@ -3902,6 +3948,7 @@ function applyTransformResult(t, tabId, sel, hasSelection, out) {
 // whole tab.
 async function runTabAiAction(action) {
   if (mdOn || fsActive() || !activeTab()) return;
+  if (!aiKey()) { openSettings(); aiApiKeyInputEl.focus(); return; }
   markFeatureSeen('improve');
   const t = activeTab();
   syncEditorToState();
@@ -3910,7 +3957,15 @@ async function runTabAiAction(action) {
   const hasSelection = !!(sel && sel.end > sel.start);
   const source = hasSelection ? sel.line.textContent.slice(sel.start, sel.end) : t.content;
   if (!source.trim()) return;
-  await runAiTransform(improveBtn, source, action, (out) => applyTransformResult(t, tabId, sel, hasSelection, out));
+  // shimmer the target text (the selected line, or the whole editor) so it's
+  // clear the AI is working on it
+  const workEl = hasSelection ? sel.line : editorEl;
+  if (workEl) workEl.classList.add('ai-working');
+  try {
+    await runAiTransform(improveBtn, source, action, (out) => applyTransformResult(t, tabId, sel, hasSelection, out));
+  } finally {
+    if (workEl) workEl.classList.remove('ai-working');
+  }
 }
 
 function improvePromptNote() { return runTabAiAction('improve'); }
@@ -4948,6 +5003,7 @@ function syncSettingsUI() {
   providerHintPollinationsEl.classList.toggle('hidden', genProvider !== 'pollinations');
 
   voiceHfApiKeyInputEl.value = (settings.voice && settings.voice.hfApiKey) || '';
+  aiApiKeyInputEl.value = (settings.ai && settings.ai.openrouterKey) || '';
   togglePlaceholdersEl.checked = settings.placeholdersEnabled;
   resizeRow.classList.remove('disabled');
   placeholderPositionSeg.querySelectorAll('.seg-btn').forEach((b) => {
@@ -4972,8 +5028,18 @@ async function refreshStoragePathDisplay() {
 function openSettings() {
   syncSettingsUI();
   refreshStoragePathDisplay();
+  settingsOverlay.classList.toggle('help-lang-fa', settings.helpLang === 'fa');
   settingsOverlay.classList.remove('hidden');
 }
+
+// Small "فارسی / English" chips that swap the AI / Speech help text language.
+document.querySelectorAll('.lang-toggle').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    settings.helpLang = settings.helpLang === 'fa' ? 'en' : 'fa';
+    settingsOverlay.classList.toggle('help-lang-fa', settings.helpLang === 'fa');
+    saveSettingsNow();
+  });
+});
 function closeSettings() {
   settingsOverlay.classList.add('hidden');
 }
@@ -5113,6 +5179,12 @@ imageGenProviderSeg.addEventListener('click', (e) => {
 voiceHfApiKeyInputEl.addEventListener('change', () => {
   settings.voice = { ...settings.voice, hfApiKey: voiceHfApiKeyInputEl.value.trim() };
   saveSettingsNow();
+});
+
+aiApiKeyInputEl.addEventListener('change', () => {
+  settings.ai = { ...settings.ai, openrouterKey: aiApiKeyInputEl.value.trim() };
+  saveSettingsNow();
+  if (aiChatActive()) renderAiMessages(); // reflect the new key in the onboarding/empty state
 });
 
 // ---------- Storage location ----------
@@ -5666,19 +5738,16 @@ const CURRENT_VERSION = document.getElementById('aboutVersion').textContent.repl
 const WHATS_NEW =
   "What's new in v" + CURRENT_VERSION + " ✨\n" +
   '\n' +
-  '• Handy dock — collapse the window to a thin line at the screen edge;\n' +
-  '   hover it and the notepad slides open, then tucks away when you leave.\n' +
-  '   Toggle with the dock button in the title bar or Ctrl+Shift+D.\n' +
-  '• AI actions — right-click the Improve button (or use the editor menu)\n' +
-  '   for Translate (Persian ⇄ English), Summarize, Fix grammar, and\n' +
-  '   tone presets. All free, no API key.\n' +
-  '• Speech to text — the mic button (in the editor and the AI Chat box)\n' +
-  '   records your voice and inserts the text; Persian and English are both\n' +
-  '   supported. Free via Hugging Face\'s Whisper — needs a free token.\n' +
-  '• Command palette — press Ctrl+P to jump between tabs or run actions.\n' +
-  '• Focus mode — hide everything for distraction-free writing (Ctrl+Shift+F).\n' +
-  '• Hide the tab rail (Ctrl+\\) and pick a tab size (Small / Medium / Large).\n' +
-  '• A livelier AI Chat, refreshed title-bar icons, and a macOS build.\n' +
+  '• The free AI now uses your own free key. The previous free AI service\n' +
+  '   ended its no-key access, so AI Chat, Improve and the AI actions now run\n' +
+  '   on a free OpenRouter key you add once in Settings → "AI Chat & actions".\n' +
+  '   Open AI Chat and a short guide walks you through it (about a minute, no\n' +
+  '   card needed). It works from anywhere — including Iran.\n' +
+  '• Each person uses their own key, so everyone gets their own limits.\n' +
+  '• AI actions now shimmer the text they\'re working on, so you can see it.\n' +
+  '• The AI & Speech help in Settings has a فارسی / English toggle.\n' +
+  '\n' +
+  'Tip: creating the key takes ~1 minute — tap "Get free key" in AI Chat.\n' +
   '\n' +
   'You can close this tab — it won\'t come back until the next update.';
 
@@ -5838,6 +5907,7 @@ window.addEventListener('drop', async (e) => {
   settings.imageGen = { ...DEFAULT_SETTINGS.imageGen, ...(settings.imageGen || {}) };
   settings.seenFeatures = { ...(settings.seenFeatures || {}) };
   settings.voice = { ...DEFAULT_SETTINGS.voice, ...(settings.voice || {}) };
+  settings.ai = { ...DEFAULT_SETTINGS.ai, ...(settings.ai || {}) };
   settings.zenMode = false; // focus mode is per-session; never boot into a chromeless window
   settings.tabPosition = 'left'; // the top layout was removed — always the left rail
   // reflect real OS startup state

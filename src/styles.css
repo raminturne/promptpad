@@ -955,6 +955,37 @@ body {
   margin-bottom: 11px;
 }
 
+/* label row with a small "فارسی / English" help-language toggle */
+.set-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.set-label-row .set-label { margin-bottom: 0; }
+.lang-toggle {
+  -webkit-app-region: no-drag;
+  font-family: var(--font);
+  font-size: 10px;
+  padding: 3px 11px;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  background: transparent;
+  color: var(--muted-2);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: color 0.14s, border-color 0.14s;
+}
+.lang-toggle:hover { color: var(--accent); border-color: var(--accent); }
+.help-fa { display: none; }
+.help-fa[dir="rtl"] a { unicode-bidi: isolate; }
+.lt-to-en { display: none; }
+#settingsOverlay.help-lang-fa .help-en { display: none; }
+#settingsOverlay.help-lang-fa .help-fa { display: block; }
+#settingsOverlay.help-lang-fa .lt-to-fa { display: none; }
+#settingsOverlay.help-lang-fa .lt-to-en { display: inline; }
+
 /* theme swatches */
 .theme-row { display: flex; flex-direction: column; gap: 8px; }
 .theme-group { display: flex; flex-direction: column; gap: 6px; }
@@ -2332,6 +2363,78 @@ body {
   color: var(--danger);
   font-size: 11.5px;
   line-height: 1.5;
+}
+
+/* AI Chat onboarding card (shown when no OpenRouter key is set) */
+.ai-onboard {
+  margin: 12px;
+  padding: 16px;
+  border: 1px solid var(--border-strong);
+  border-radius: 14px;
+  background: var(--elevated);
+}
+.ai-onboard-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 12px;
+  text-align: center;
+  line-height: 1.5;
+}
+.ai-onboard-body { font-size: 12.5px; line-height: 1.7; color: var(--muted-2); }
+.ai-onboard-body p { margin: 6px 0; }
+.ai-onboard-body b { color: var(--text); }
+.ai-onboard-body ol { margin: 4px 0 8px; padding-inline-start: 20px; }
+.ai-onboard-body li { margin: 3px 0; }
+.ai-onboard-body code {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 4px;
+  font-size: 11.5px;
+}
+.ai-onboard-sep { border: none; border-top: 1px solid var(--border); margin: 12px 0; }
+.ai-onboard-actions { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+.ai-onboard-btn {
+  flex: 1;
+  min-width: 130px;
+  padding: 11px 12px;
+  border-radius: 9px;
+  border: 1px solid var(--border-strong);
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 11.5px;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+  transition: background 0.14s;
+}
+.ai-onboard-btn:hover { background: var(--bg); }
+.ai-onboard-btn.primary { background: var(--accent-soft); border-color: var(--accent-glow); color: var(--accent); }
+.ai-onboard-btn.primary:hover { background: var(--accent-glow); }
+
+/* "AI is working on this" — a shimmer over the target text while Improve / an
+   AI action runs (the selected line, or the whole editor for a whole-tab run) */
+.editor-area .ln.ai-working,
+.editor-area.ai-working {
+  border-radius: 6px;
+  background-color: var(--accent-soft);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .editor-area .ln.ai-working,
+  .editor-area.ai-working {
+    background-image: linear-gradient(100deg,
+      color-mix(in srgb, var(--accent) 6%, transparent),
+      color-mix(in srgb, var(--accent) 30%, transparent),
+      color-mix(in srgb, var(--accent) 6%, transparent));
+    background-size: 220% 100%;
+    background-repeat: no-repeat;
+    animation: aiWorkingSweep 1.25s linear infinite;
+  }
+  @keyframes aiWorkingSweep {
+    from { background-position: 220% 0; }
+    to   { background-position: -220% 0; }
+  }
 }
 
 /* editing indicator above the composer */

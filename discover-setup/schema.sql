@@ -11,6 +11,8 @@ create table if not exists public.profiles (
   is_admin   boolean not null default false,
   created_at timestamptz not null default now()
 );
+-- Moderation flag: a blocked user can't post or like (enforced by triggers below).
+alter table public.profiles add column if not exists is_blocked boolean not null default false;
 
 create or replace function public.handle_new_user()
 returns trigger
@@ -122,36 +124,41 @@ as $$
   select coalesce((select is_admin from public.profiles where id = auth.uid()), false);
 $$;
 
--- Stop a normal user from making themselves admin via a profile UPDATE. A change
--- is reverted only when it comes from a signed-in NON-admin user. Trusted server
--- contexts (the SQL Editor / service role, where auth.uid() is null) and existing
--- admins are allowed through — that's how you bootstrap the first admin.
-create or replace function public.protect_is_admin()
+-- Protect privileged columns (is_admin, is_blocked) on profile UPDATEs. A change
+-- to either is reverted when it comes from a signed-in NON-admin user — so a user
+-- can't self-promote to admin, and a blocked user can't unblock themselves. Trusted
+-- server contexts (SQL Editor / service role, auth.uid() null) and existing admins
+-- pass through — that's how you bootstrap the first admin and how admins moderate.
+create or replace function public.protect_privileged_cols()
 returns trigger
 language plpgsql
 security definer set search_path = public
 as $$
 begin
-  if new.is_admin is distinct from old.is_admin
-     and auth.uid() is not null
-     and not public.is_admin() then
-    new.is_admin := old.is_admin;
+  if auth.uid() is not null and not public.is_admin() then
+    if new.is_admin   is distinct from old.is_admin   then new.is_admin   := old.is_admin;   end if;
+    if new.is_blocked is distinct from old.is_blocked then new.is_blocked := old.is_blocked; end if;
   end if;
   return new;
 end;
 $$;
 
 drop trigger if exists profiles_protect_admin on public.profiles;
-create trigger profiles_protect_admin
+drop trigger if exists profiles_protect_cols on public.profiles;
+create trigger profiles_protect_cols
   before update on public.profiles
-  for each row execute function public.protect_is_admin();
+  for each row execute function public.protect_privileged_cols();
 
--- profiles: anyone signed in can read (to show authors); you can edit only yourself.
+-- profiles: anyone signed in can read (to show authors); you edit only yourself,
+-- but an admin can update any profile (e.g. to block/unblock a user).
 drop policy if exists profiles_read on public.profiles;
 create policy profiles_read on public.profiles for select using (true);
 drop policy if exists profiles_update_self on public.profiles;
 create policy profiles_update_self on public.profiles
   for update using (id = auth.uid()) with check (id = auth.uid());
+drop policy if exists profiles_admin_update on public.profiles;
+create policy profiles_admin_update on public.profiles
+  for update using (public.is_admin()) with check (public.is_admin());
 
 -- categories: everyone reads; only admins write.
 drop policy if exists categories_read on public.categories;
@@ -183,6 +190,86 @@ drop policy if exists likes_insert_own on public.likes;
 create policy likes_insert_own on public.likes for insert with check (user_id = auth.uid());
 drop policy if exists likes_delete_own on public.likes;
 create policy likes_delete_own on public.likes for delete using (user_id = auth.uid());
+
+-- ────────────────────────────────────────────────────────────────────────────
+-- 4b) Anti-abuse — server-side rules that CANNOT be bypassed from the client
+--     (the anon key is public, so client-only checks aren't enough).
+-- ────────────────────────────────────────────────────────────────────────────
+
+-- Admin-editable list of blocked words (matched on a word boundary, so e.g. the
+-- Persian «عکس» is not tripped by «کس»). Seed mirrors the client filter.
+create table if not exists public.banned_words (word text primary key);
+alter table public.banned_words enable row level security;
+drop policy if exists banned_read on public.banned_words;
+create policy banned_read on public.banned_words for select using (true);
+drop policy if exists banned_admin_write on public.banned_words;
+create policy banned_admin_write on public.banned_words
+  for all using (public.is_admin()) with check (public.is_admin());
+
+insert into public.banned_words (word) values
+  ('fuck'),('fuk'),('shit'),('bitch'),('porn'),('pussy'),('masturbat'),('blowjob'),
+  ('handjob'),('whore'),('cunt'),('nigger'),('faggot'),('hentai'),('dildo'),('orgasm'),
+  ('pedophil'),('sex'),('ass'),('asshole'),('bastard'),('dick'),('anal'),('cum'),('nude'),
+  ('nudes'),('nsfw'),('xxx'),('boobs'),('slut'),('incest'),('rape'),
+  ('kir'),('kos'),('koss'),('koon'),('kon'),('koni'),('kony'),('kuni'),('jende'),('jakesh'),
+  ('koskesh'),('kire'),('kiram'),
+  ('کیر'),('کص'),('کس'),('کون'),('کونی'),('جنده'),('جاکش'),('کسکش'),('کسخل'),('گاییدن'),
+  ('گایید'),('گاییدم'),('سکس'),('پورن'),('برهنه'),('لخت'),('اورگاسم'),('کوس'),('کوص'),('ساکزدن')
+on conflict (word) do nothing;
+
+-- One trigger enforces: not blocked + daily upload cap + content filter. Only runs
+-- for real end users (auth.uid() not null); admin / SQL-editor inserts pass through.
+create or replace function public.enforce_post_rules()
+returns trigger
+language plpgsql
+security definer set search_path = public
+as $$
+declare cnt int; hit text;
+begin
+  if auth.uid() is not null and not public.is_admin() then
+    if coalesce((select is_blocked from public.profiles where id = auth.uid()), false) then
+      raise exception 'Your account is blocked from posting.';
+    end if;
+    select count(*) into cnt from public.posts
+      where user_id = auth.uid() and created_at > now() - interval '24 hours';
+    if cnt >= 15 then
+      raise exception 'Daily upload limit reached (15 per day). Please try again tomorrow.';
+    end if;
+    select word into hit from public.banned_words
+      where lower(coalesce(new.title,'') || ' ' || coalesce(new.prompt,'')) ~* ('\y' || word || '\y')
+      limit 1;
+    if hit is not null then
+      raise exception 'Post blocked by the content filter (no +18 / offensive words).';
+    end if;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists posts_enforce_rules on public.posts;
+create trigger posts_enforce_rules
+  before insert on public.posts
+  for each row execute function public.enforce_post_rules();
+
+-- Blocked users can't like either.
+create or replace function public.enforce_like_rules()
+returns trigger
+language plpgsql
+security definer set search_path = public
+as $$
+begin
+  if auth.uid() is not null
+     and coalesce((select is_blocked from public.profiles where id = auth.uid()), false) then
+    raise exception 'Your account is blocked.';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists likes_enforce_rules on public.likes;
+create trigger likes_enforce_rules
+  before insert on public.likes
+  for each row execute function public.enforce_like_rules();
 
 -- ────────────────────────────────────────────────────────────────────────────
 -- 5) Storage — a public bucket for uploaded images, with per-user upload/delete.

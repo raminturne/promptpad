@@ -2895,6 +2895,13 @@ body {
   color: var(--muted-2); font-family: var(--font); font-size: 11px;
 }
 .dc-chip.active { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
+.dc-sort { display: inline-flex; margin-left: auto; border: 1px solid var(--border-strong); border-radius: 20px; overflow: hidden; align-self: center; }
+.dc-sort-btn {
+  background: transparent; border: none; cursor: pointer; color: var(--muted-2);
+  font-family: var(--font); font-size: 11px; padding: 4px 12px;
+}
+.dc-sort-btn.active { background: var(--accent-soft); color: var(--accent); }
+.dc-mod-blocked { color: var(--danger); }
 
 /* feed grid */
 .dc-feed {

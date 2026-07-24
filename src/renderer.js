@@ -6024,19 +6024,11 @@ const CURRENT_VERSION = document.getElementById('aboutVersion').textContent.repl
 const WHATS_NEW =
   "What's new in v" + CURRENT_VERSION + " ✨\n" +
   '\n' +
-  '• Discover — a new shared prompt gallery. Sign in, browse prompts by\n' +
-  '   category (Website, Image, Music, Video, Software, Game…), and open the\n' +
-  '   "discover" button under Templates. Tap "Use" to drop any prompt into a\n' +
-  '   new tab, "Copy" it, or ❤ like it.\n' +
-  '• Publish your own — share a prompt with a title, category and an optional\n' +
-  '   image (drag & drop, auto-compressed). Music prompts can carry an audio\n' +
-  '   clip that plays right in the card. A content filter keeps it clean.\n' +
-  '• Right-click any selected text → "Share to Discover" to publish it fast.\n' +
-  '• Don\'t need it? Hide the Discover button in Settings → Tabs.\n' +
-  '• Handy dock is smoother — reliable on startup, floats off the taskbar,\n' +
-  '   no more flicker, and easier to resize.\n' +
-  '• The installer now closes a running PromptPad for you, and the quick-\n' +
-  '   capture + handy-dock shortcuts are now customizable in Settings.\n' +
+  '• Discover is now protected against spam & abuse — a daily upload limit,\n' +
+  '   a stronger content filter that runs on the server (so it can\'t be\n' +
+  '   bypassed), and admins can now block a user right from the Admin panel.\n' +
+  '• New sort in the Discover feed — switch between "New" and "Top" (most\n' +
+  '   liked) prompts.\n' +
   '\n' +
   'You can close this tab — it won\'t come back until the next update.';
 
@@ -6191,6 +6183,7 @@ let dcScreen = 'browse';          // 'browse' | 'upload' | 'admin'
 let dcCategories = [];
 let dcFilter = 'all';
 let dcSearch = '';
+let dcSort = 'new';               // 'new' (recent) | 'top' (most liked)
 let dcAuthMode = 'login';         // 'login' | 'register'
 let dcPrefillPrompt = '';         // text handed off from "Share to Discover" to prefill Upload
 let dcCurrentAudio = null;        // the one audio element allowed to play at a time
@@ -6458,6 +6451,18 @@ async function dcRenderBrowse() {
   };
   chips.appendChild(mkChip('all', 'All'));
   dcCategories.forEach((c) => chips.appendChild(mkChip(c.slug, c.label)));
+
+  // New / Top sort toggle, sits at the end of the chip row.
+  const sort = dcEl('div', 'dc-sort');
+  const mkSort = (key, label) => {
+    const b = dcEl('button', 'dc-sort-btn' + (dcSort === key ? ' active' : ''), label);
+    b.addEventListener('click', () => { if (dcSort !== key) { dcSort = key; dcRenderBrowse(); } });
+    return b;
+  };
+  sort.appendChild(mkSort('new', 'New'));
+  sort.appendChild(mkSort('top', 'Top'));
+  chips.appendChild(sort);
+
   controls.appendChild(chips);
   discoverBodyEl.appendChild(controls);
 
@@ -6474,8 +6479,9 @@ async function dcLoadAndRenderFeed(feed) {
       .from('posts')
       .select('id,title,prompt,category,image_url,image_key,audio_url,audio_key,like_count,created_at,user_id,profiles!posts_user_id_fkey(username)')
       .eq('status', 'approved')
-      .order('created_at', { ascending: false })
       .limit(60);
+    if (dcSort === 'top') q = q.order('like_count', { ascending: false }).order('created_at', { ascending: false });
+    else q = q.order('created_at', { ascending: false });
     if (dcFilter !== 'all') q = q.eq('category', dcFilter);
     if (dcSearch) q = q.or(`title.ilike.%${dcSearch}%,prompt.ilike.%${dcSearch}%`);
     const { data, error } = await q;
@@ -6928,7 +6934,7 @@ async function dcRenderAdmin() {
   try {
     const { data, error } = await dcClient
       .from('posts')
-      .select('id,title,status,category,image_key,audio_key,user_id,created_at,profiles!posts_user_id_fkey(username)')
+      .select('id,title,status,category,image_key,audio_key,user_id,created_at,profiles!posts_user_id_fkey(username,is_blocked)')
       .order('created_at', { ascending: false })
       .limit(100);
     if (error) throw error;
@@ -7022,8 +7028,11 @@ function dcModRow(post) {
   const row = dcEl('div', 'dc-mod-row');
   const info = dcEl('div', 'dc-mod-info');
   info.appendChild(dcEl('span', 'dc-mod-title', post.title || 'Untitled'));
-  info.appendChild(dcEl('span', 'dc-mod-meta',
-    `${(post.profiles && post.profiles.username) ? '@' + post.profiles.username : '—'} · ${post.status}`));
+  const blocked = !!(post.profiles && post.profiles.is_blocked);
+  const meta = dcEl('span', 'dc-mod-meta',
+    `${(post.profiles && post.profiles.username) ? '@' + post.profiles.username : '—'} · ${post.status}`);
+  if (blocked) meta.appendChild(dcEl('span', 'dc-mod-blocked', ' · blocked'));
+  info.appendChild(meta);
   row.appendChild(info);
   const acts = dcEl('div', 'dc-mod-acts');
   const setStatus = async (status) => {
@@ -7043,6 +7052,19 @@ function dcModRow(post) {
     const no = dcEl('button', 'dc-mini-btn', 'Reject');
     no.addEventListener('click', () => setStatus('rejected'));
     acts.appendChild(no);
+  }
+  // Block / unblock the post's author (stops them posting or liking).
+  if (post.user_id && (!dcProfile || post.user_id !== dcProfile.id)) {
+    const blk = dcEl('button', 'dc-mini-btn' + (blocked ? ' dc-mini-primary' : ' dc-mini-danger'),
+      blocked ? 'Unblock' : 'Block');
+    blk.addEventListener('click', async () => {
+      try {
+        const { error } = await dcClient.from('profiles').update({ is_blocked: !blocked }).eq('id', post.user_id);
+        if (error) throw error;
+        dcRenderAdmin();
+      } catch (err) { alert((err && err.message) || 'Failed to update user.'); }
+    });
+    acts.appendChild(blk);
   }
   const del = dcEl('button', 'dc-mini-btn dc-mini-danger', 'Delete');
   del.addEventListener('click', async () => { await dcDeletePost(post, null); dcRenderAdmin(); });

@@ -14,6 +14,8 @@ let state = {
 const FS_ID = '__fastsave__';
 // Sentinel activeId for the AI Chat view (not a real tab).
 const AI_ID = '__aichat__';
+// Sentinel activeId for the Discover (shared prompt gallery) view.
+const DISCOVER_ID = '__discover__';
 
 function fsActive() {
   return state.activeId === FS_ID;
@@ -21,6 +23,10 @@ function fsActive() {
 
 function aiChatActive() {
   return state.activeId === AI_ID;
+}
+
+function discoverActive() {
+  return state.activeId === DISCOVER_ID;
 }
 
 function fsMessages() {
@@ -66,9 +72,12 @@ const DEFAULT_SETTINGS = {
   placeholderBarWidth: 220,
   placeholderBarCollapsed: false,
   fastSaveEnabled: true,
+  discoverEnabled: true,        // show the Discover tab in the rail (only when configured)
+  discoverHintDismissed: false, // one-time "you can hide this in Settings" note
   quickCaptureEnabled: true,
   imageResizable: true,
   imageDownloadEnabled: true,
+  mdImageFullSize: false, // markdown preview: show images at full size (fit window) instead of the small thumbnail cap
   editorJustify: false,
   fastSaveName: 'Fast Save',
   // which status-bar buttons are shown (toggle in Settings → Toolbar)
@@ -89,6 +98,8 @@ const DEFAULT_SETTINGS = {
   handyMode: false, // "handy" peek dock — collapses to a line at the screen edge (persists)
   handyPosition: 'center', // 'left' | 'center' | 'right' — where the line docks
   handyCloseMode: 'leave', // 'leave' = hide when the mouse leaves; 'click' = stay open until you click away
+  handyShortcut: 'Ctrl+Shift+D', // global (system-wide) show/hide toggle for the handy dock
+  quickCaptureShortcut: 'Ctrl+Shift+Space', // global shortcut for quick capture (configurable in Settings)
   helpLang: 'en' // 'en' | 'fa' — language of the Settings help text (AI / Speech sections)
 };
 
@@ -117,6 +128,7 @@ const handyHandle = document.getElementById('handyHandle');
 const appEl = document.querySelector('.app');
 const railEl = document.getElementById('rail');
 const railResizer = document.getElementById('railResizer');
+const discoverBtn = document.getElementById('discoverBtn');
 // settings panel
 const settingsBtn = document.getElementById('settingsBtn');
 const settingsOverlay = document.getElementById('settingsOverlay');
@@ -125,6 +137,12 @@ const themeRow = document.getElementById('themeRow');
 const tabSizeSeg = document.getElementById('tabSizeSeg');
 const handyPosSeg = document.getElementById('handyPosSeg');
 const handyCloseSeg = document.getElementById('handyCloseSeg');
+const handyShortcutInput = document.getElementById('handyShortcutInput');
+const handyShortcutReset = document.getElementById('handyShortcutReset');
+const handyShortcutHint = document.getElementById('handyShortcutHint');
+const quickCaptureShortcutInput = document.getElementById('quickCaptureShortcutInput');
+const quickCaptureShortcutReset = document.getElementById('quickCaptureShortcutReset');
+const quickCaptureShortcutHint = document.getElementById('quickCaptureShortcutHint');
 const togglePinEl = document.getElementById('togglePin');
 const toggleCloseEl = document.getElementById('toggleClose');
 const toggleResizeEl = document.getElementById('toggleResize');
@@ -217,6 +235,14 @@ const aiInputEl = document.getElementById('aiInput');
 const aiSendBtn = document.getElementById('aiSend');
 const aiVoiceBtn = document.getElementById('aiVoiceBtn');
 const aiClearBtn = document.getElementById('aiClearBtn');
+// discover
+const discoverViewEl = document.getElementById('discoverView');
+const discoverNavEl = document.getElementById('discoverNav');
+const discoverBodyEl = document.getElementById('discoverBody');
+const discoverHintEl = document.getElementById('discoverHint');
+const discoverHintCloseEl = document.getElementById('discoverHintClose');
+const toggleDiscoverEl = document.getElementById('toggleDiscover');
+const discoverRowEl = document.getElementById('discoverRow');
 // quick capture
 const toggleQuickCaptureEl = document.getElementById('toggleQuickCapture');
 // storage
@@ -262,6 +288,7 @@ const textContextMenu = document.getElementById('textContextMenu');
 const aiActionsMenu = document.getElementById('aiActionsMenu');
 const toggleImageResizeEl = document.getElementById('toggleImageResize');
 const toggleImageDownloadEl = document.getElementById('toggleImageDownload');
+const toggleMdImageFullSizeEl = document.getElementById('toggleMdImageFullSize');
 const geminiApiKeyInputEl = document.getElementById('geminiApiKeyInput');
 const hfApiKeyInputEl = document.getElementById('hfApiKeyInput');
 const imageGenProviderSeg = document.getElementById('imageGenProviderSeg');
@@ -999,6 +1026,13 @@ function renderTabs() {
 
   if (settings.fastSaveEnabled) tabListEl.appendChild(makeFsTabEl());
   tabListEl.appendChild(makeAiChatTabEl());
+  // Discover lives as a compact button up by "new"/"templates" (not a tab row),
+  // so it doesn't push the note tabs down. Toggle its visibility + active state.
+  if (discoverBtn) {
+    const showDiscover = window.DISCOVER_CONFIGURED && settings.discoverEnabled;
+    discoverBtn.classList.toggle('hidden', !showDiscover);
+    discoverBtn.classList.toggle('active', discoverActive());
+  }
 
   if (state.tabs.length === 0) {
     const hint = document.createElement('div');
@@ -1497,6 +1531,7 @@ function showEditorView() {
   editorBodyEl.classList.remove('hidden');
   fastSaveViewEl.classList.add('hidden');
   aiChatViewEl.classList.add('hidden');
+  discoverViewEl.classList.add('hidden');
 }
 
 function showFastSaveView() {
@@ -1504,6 +1539,7 @@ function showFastSaveView() {
   appEl.classList.add('fastsave-active');
   editorBodyEl.classList.add('hidden');
   aiChatViewEl.classList.add('hidden');
+  discoverViewEl.classList.add('hidden');
   fastSaveViewEl.classList.remove('hidden');
   if (fsHeaderTitle) fsHeaderTitle.textContent = fsLabel();
   updateFsInputDir();
@@ -1517,6 +1553,7 @@ function showAiChatView() {
   appEl.classList.add('fastsave-active');
   editorBodyEl.classList.add('hidden');
   fastSaveViewEl.classList.add('hidden');
+  discoverViewEl.classList.add('hidden');
   aiChatViewEl.classList.remove('hidden');
   renderAiMessages();
   // one-shot appear each time the chat opens (reflow to restart the animation)
@@ -1526,10 +1563,29 @@ function showAiChatView() {
   aiInputEl.focus();
 }
 
+function showDiscoverView() {
+  selectedTabIds.clear();
+  appEl.classList.add('fastsave-active');
+  editorBodyEl.classList.add('hidden');
+  fastSaveViewEl.classList.add('hidden');
+  aiChatViewEl.classList.add('hidden');
+  discoverViewEl.classList.remove('hidden');
+  dcRender();
+  // Re-check the profile (e.g. you were just promoted to admin) and refresh the
+  // nav so the Admin button appears without needing to log out and back in.
+  if (dcClient && dcSession) {
+    const wasAdmin = dcProfile && dcProfile.is_admin;
+    dcLoadProfile().then(() => {
+      if (discoverActive() && dcProfile && !!dcProfile.is_admin !== !!wasAdmin) dcRenderNav();
+    });
+  }
+}
+
 // Show whichever view matches state.activeId (used at startup).
 function applyActiveView() {
   if (fsActive()) showFastSaveView();
   else if (aiChatActive()) showAiChatView();
+  else if (discoverActive()) showDiscoverView();
   else showEditorView();
 }
 
@@ -1554,6 +1610,18 @@ function switchToFastSave() {
   syncEditorToState();
   state.activeId = FS_ID;
   showFastSaveView();
+  renderTabs();
+  scheduleSave();
+}
+
+function switchToDiscover() {
+  if (discoverActive()) return;
+  _previewToken = null; _previewBase = null;
+  clearFindHL();
+  findBarEl.classList.add('hidden');
+  syncEditorToState();
+  state.activeId = DISCOVER_ID;
+  showDiscoverView();
   renderTabs();
   scheduleSave();
 }
@@ -2134,6 +2202,7 @@ aiInputEl.addEventListener('keydown', (e) => {
 function switchTab(id) {
   if (id === FS_ID) { switchToFastSave(); return; }
   if (id === AI_ID) { switchToAiChat(); return; }
+  if (id === DISCOVER_ID) { switchToDiscover(); return; }
   _previewToken = null; _previewBase = null;
   clearFindHL();
   // flush current editor into state first
@@ -2164,6 +2233,21 @@ function addTab(focus = true) {
   updateCounts();
   updatePlaceholderPanel();
   if (focus) editorEl.focus();
+  scheduleSave();
+}
+
+// Open a prompt from Discover in a fresh editor tab.
+function addTabWithContent(name, content) {
+  syncEditorToState();
+  const tab = { id: uid(), name: (name || '').slice(0, 60), custom: !!name, content: content || '', dir: 'auto', color: null };
+  state.tabs.push(tab);
+  state.activeId = tab.id;
+  showEditorView();
+  setEditorText(tab.content);
+  renderTabs();
+  updateCounts();
+  updatePlaceholderPanel();
+  editorEl.focus();
   scheduleSave();
 }
 
@@ -2746,6 +2830,7 @@ function confirmSaveTemplate() {
 }
 
 templatesBtn.addEventListener('click', openTemplates);
+if (discoverBtn) discoverBtn.addEventListener('click', () => switchToDiscover());
 templatesClose.addEventListener('click', closeTemplates);
 templatesOverlay.addEventListener('click', (e) => {
   if (e.target === templatesOverlay) closeTemplates();
@@ -3122,7 +3207,10 @@ function makeImgThumb(file, width) {
   img.decoding = 'async';
   img.src = 'ppimg://' + file;
   img.draggable = false;
-  if (width) img.style.width = width + 'px';
+  if (width) {
+    img.style.width = width + 'px';
+    img.classList.add('pp-img-sized');
+  }
   wrap.appendChild(img);
 
   if (settings.imageResizable) {
@@ -3160,6 +3248,7 @@ editorEl.addEventListener('mousedown', (e) => {
   const wrap = handle.closest('.pp-img-wrap');
   const img = wrap && wrap.querySelector('.pp-img');
   if (!img) return;
+  img.classList.add('pp-img-sized');
   imgResizing = {
     img,
     wrap,
@@ -3172,7 +3261,7 @@ editorEl.addEventListener('mousedown', (e) => {
 });
 window.addEventListener('mousemove', (e) => {
   if (!imgResizing) return;
-  const w = Math.max(60, Math.min(900, Math.round(imgResizing.startW + (e.clientX - imgResizing.startX))));
+  const w = Math.max(60, Math.round(imgResizing.startW + (e.clientX - imgResizing.startX)));
   imgResizing.img.style.width = w + 'px';
 });
 window.addEventListener('mouseup', () => {
@@ -3290,6 +3379,14 @@ document.addEventListener('click', (e) => {
 // handled by a more specific menu (tabs, groups, images — all of which call
 // e.preventDefault() themselves, so this only fires when nothing else did).
 let textCtxTarget = null;
+let textCtxSelection = ''; // text selected when the menu opened (for "Share to Discover")
+
+function selectedTextFrom(target) {
+  if (target && target.matches && target.matches('input, textarea')) {
+    try { return target.value.slice(target.selectionStart, target.selectionEnd); } catch { return ''; }
+  }
+  return window.getSelection().toString();
+}
 
 function showTextContextMenu(e, target, isEditable, hasSelection) {
   textCtxTarget = target;
@@ -3312,6 +3409,15 @@ function showTextContextMenu(e, target, isEditable, hasSelection) {
   document.getElementById('ctxImproveSep').classList.toggle('hidden', !showImprove);
   document.getElementById('ctxImproveItem').classList.toggle('hidden', !showImprove);
   document.getElementById('ctxAiMoreItem').classList.toggle('hidden', !showImprove);
+
+  // "Share to Discover" — any selected text, anywhere, once Discover is set up.
+  textCtxSelection = selectedTextFrom(target);
+  const showShare = !!window.DISCOVER_CONFIGURED && settings.discoverEnabled && !!dcClient && !!textCtxSelection.trim();
+  const shareSep = document.getElementById('ctxShareSep');
+  const shareItem = document.getElementById('ctxShareItem');
+  shareSep.classList.toggle('hidden', !showShare);
+  shareItem.classList.toggle('hidden', !showShare);
+  if (showShare) { shareSep.style.display = ''; shareItem.style.display = ''; }
 
   textContextMenu.style.left = e.clientX + 'px';
   textContextMenu.style.top = e.clientY + 'px';
@@ -3356,6 +3462,12 @@ textContextMenu.addEventListener('click', async (e) => {
   if (!item || item.classList.contains('disabled') || !textCtxTarget) return;
   const action = item.dataset.textAction;
   const target = textCtxTarget;
+  if (action === 'share-discover') {
+    const text = textCtxSelection;
+    hideTextContextMenu();
+    shareTextToDiscover(text);
+    return;
+  }
   if (action === 'ai-more') {
     // stop this click from bubbling to the document handler that would
     // otherwise immediately close the actions menu we're about to open
@@ -4143,7 +4255,12 @@ cmdPalette.addEventListener('mousedown', (e) => {
 // the notepad open, and it tucks back when you move away (unless you've clicked
 // in and are actively using it).
 let handyCollapseTimer = null;
+let handyExpandTimer = null;
 let handyHovered = false;
+let handyGlobalOK = false; // did the global show/hide shortcut register successfully?
+
+// The global shortcut (registered in main) forwards a toggle here.
+window.api.onToggleHandy(() => toggleHandy());
 
 function handyOpen() { return appEl.classList.contains('handy-open'); }
 
@@ -4200,24 +4317,58 @@ function handyCollapse() {
   appEl.classList.remove('handy-open');
   window.api.handyCollapse(settings.handyPosition);
 }
+// Generous delay so moving the mouse up to the window's edge to resize doesn't
+// snap it shut before you can grab the edge; a real resize keeps it open anyway
+// (see the window 'resize' handler), and re-entering cancels this.
+const HANDY_COLLAPSE_DELAY = 800;
 function scheduleHandyCollapse() {
   clearTimeout(handyCollapseTimer);
   handyCollapseTimer = setTimeout(() => {
     if (settings.handyMode && !handyHovered) handyCollapse();
-  }, 300);
+  }, HANDY_COLLAPSE_DELAY);
 }
 
-// Hover the whole (tiny) window to open.
+// Hover the whole (tiny) window to open. A short debounce means a quick
+// pass-over near the taskbar edge no longer pops the panel — killing the
+// open/close flicker — while a deliberate hover still opens promptly.
 document.documentElement.addEventListener('mouseenter', () => {
   handyHovered = true;
   clearTimeout(handyCollapseTimer);
-  if (settings.handyMode) handyExpand();
+  if (!settings.handyMode || handyOpen()) return;
+  clearTimeout(handyExpandTimer);
+  handyExpandTimer = setTimeout(() => { if (handyHovered) handyExpand(); }, 90);
 });
-document.documentElement.addEventListener('mouseleave', () => {
+document.documentElement.addEventListener('mouseleave', (e) => {
   handyHovered = false;
+  clearTimeout(handyExpandTimer); // cancel a pending open if the mouse just grazed it
+  // Don't tuck away while a button is held — the user is dragging to resize or
+  // selecting text and the pointer just crossed the window edge.
+  if (e.buttons) return;
   // 'leave' mode tucks away as soon as the mouse leaves; 'click away' mode keeps
   // it open (the blur handler closes it once you click elsewhere).
   if (settings.handyMode && settings.handyCloseMode === 'leave') scheduleHandyCollapse();
+});
+// Any pointer movement inside the window means we're still hovering — keeps
+// handyHovered accurate after an OS resize (which can leave the pointer inside
+// without firing a fresh mouseenter) so the panel doesn't tuck itself away.
+document.documentElement.addEventListener('mousemove', () => {
+  if (!settings.handyMode || !handyOpen() || handyHovered) return;
+  handyHovered = true;
+  clearTimeout(handyCollapseTimer);
+});
+
+// While the open panel is being resized (native frameless drag doesn't send DOM
+// mouse events, but the window still fires 'resize'), keep it open — and for a
+// short grace period after the last resize tick so it doesn't snap shut the
+// instant the mouse is released near the edge.
+let handyResizeIdleTimer = null;
+window.addEventListener('resize', () => {
+  if (!settings.handyMode || !handyOpen()) return;
+  clearTimeout(handyCollapseTimer);
+  clearTimeout(handyResizeIdleTimer);
+  handyResizeIdleTimer = setTimeout(() => {
+    if (settings.handyMode && settings.handyCloseMode === 'leave' && !handyHovered) handyCollapse();
+  }, 550);
 });
 window.addEventListener('blur', () => {
   if (!settings.handyMode) return;
@@ -4522,7 +4673,9 @@ document.addEventListener('keydown', (e) => {
   // Global (work in any view): hide-tabs, focus mode, command palette.
   if (!e.shiftKey && e.code === 'Backslash') { e.preventDefault(); toggleRail(); return; }
   if (e.shiftKey && e.code === 'KeyF') { e.preventDefault(); toggleZen(); return; }
-  if (e.shiftKey && e.code === 'KeyD') { e.preventDefault(); toggleHandy(); return; }
+  // Handy toggle is normally the global shortcut (works unfocused); only fall
+  // back to this local handler for the default combo if that registration failed.
+  if (e.shiftKey && e.code === 'KeyD') { e.preventDefault(); if (!handyGlobalOK) toggleHandy(); return; }
   if (!e.shiftKey && e.code === 'KeyP') { e.preventDefault(); openCommandPalette(); return; }
   // editor-only shortcuts are meaningless while the Fast Save chat is shown
   if (fsActive() && (e.code === 'KeyF' || e.code === 'KeyH' || e.code === 'KeyM')) return;
@@ -4579,11 +4732,18 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-// Ctrl+wheel over the editor zooms the font
+// Ctrl+wheel over the editor zooms the font. Anchor the zoom to the cursor
+// position (like browser/VS Code zoom) — otherwise growing the font pushes
+// everything below the cursor further down and the page appears to "scroll".
 editorEl.addEventListener('wheel', (e) => {
   if (!e.ctrlKey) return;
   e.preventDefault();
+  const oldSize = settings.fontSize || DEFAULT_SETTINGS.fontSize;
+  const mouseOffset = e.clientY - editorEl.getBoundingClientRect().top;
+  const contentY = editorEl.scrollTop + mouseOffset;
   stepFontSize(e.deltaY < 0 ? 1 : -1);
+  const newSize = settings.fontSize || DEFAULT_SETTINGS.fontSize;
+  editorEl.scrollTop = contentY * (newSize / oldSize) - mouseOffset;
 }, { passive: false });
 
 // ---- Per-tab text direction via Windows Ctrl+Shift gesture ----
@@ -4680,6 +4840,7 @@ function applySettings() {
   appEl.classList.toggle('pins-off', !settings.pinningEnabled);
   appEl.classList.toggle('close-off', !settings.closeButtonEnabled);
   appEl.classList.toggle('resize-off', !settings.railResizable);
+  appEl.classList.toggle('md-img-fullsize', !!settings.mdImageFullSize);
   document.documentElement.style.setProperty(
     '--rail-width', (settings.railWidth || 166) + 'px');
 
@@ -4980,6 +5141,12 @@ function syncSettingsUI() {
   handyCloseSeg.querySelectorAll('.seg-btn').forEach((b) => {
     b.classList.toggle('active', b.dataset.handyclose === (settings.handyCloseMode || 'click'));
   });
+  if (handyShortcutInput && !handyShortcutInput.classList.contains('capturing')) {
+    handyShortcutInput.value = settings.handyShortcut || DEFAULT_SETTINGS.handyShortcut;
+  }
+  if (quickCaptureShortcutInput && !quickCaptureShortcutInput.classList.contains('capturing')) {
+    quickCaptureShortcutInput.value = settings.quickCaptureShortcut || DEFAULT_SETTINGS.quickCaptureShortcut;
+  }
   togglePinEl.checked = settings.pinningEnabled;
   toggleCloseEl.checked = settings.closeButtonEnabled;
   toggleResizeEl.checked = settings.railResizable;
@@ -4989,9 +5156,13 @@ function syncSettingsUI() {
   opacityValueEl.textContent = (settings.windowOpacity || 100) + '%';
   toggleTrayEl.checked = !!settings.closeToTray;
   toggleFastSaveEl.checked = !!settings.fastSaveEnabled;
+  toggleDiscoverEl.checked = !!settings.discoverEnabled;
+  // Only offer the Discover toggle when a backend is actually configured.
+  if (discoverRowEl) discoverRowEl.style.display = window.DISCOVER_CONFIGURED ? '' : 'none';
   toggleQuickCaptureEl.checked = !!settings.quickCaptureEnabled;
   toggleImageResizeEl.checked = !!settings.imageResizable;
   toggleImageDownloadEl.checked = !!settings.imageDownloadEnabled;
+  toggleMdImageFullSizeEl.checked = !!settings.mdImageFullSize;
   geminiApiKeyInputEl.value = (settings.imageGen && settings.imageGen.geminiApiKey) || '';
   hfApiKeyInputEl.value = (settings.imageGen && settings.imageGen.hfApiKey) || '';
   const genProvider = (settings.imageGen && settings.imageGen.provider) || 'pollinations';
@@ -5076,6 +5247,96 @@ handyCloseSeg.addEventListener('click', (e) => {
   saveSettingsNow();
 });
 
+// ---- Handy show/hide shortcut capture ----
+// Build an Electron-accelerator string ('Ctrl+Shift+D') from a keydown. We use
+// e.code (physical key) for the main key so it's layout-independent, then map
+// it to the character Electron's globalShortcut expects.
+function accelFromEvent(e) {
+  const mods = [];
+  if (e.ctrlKey) mods.push('Ctrl');
+  if (e.altKey) mods.push('Alt');
+  if (e.shiftKey) mods.push('Shift');
+  if (e.metaKey) mods.push('Super');
+  let key = null;
+  const c = e.code;
+  if (/^Key[A-Z]$/.test(c)) key = c.slice(3);
+  else if (/^Digit[0-9]$/.test(c)) key = c.slice(5);
+  else if (/^F([1-9]|1[0-9]|2[0-4])$/.test(c)) key = c;
+  else if (c === 'Space') key = 'Space';
+  else if (c === 'Backslash') key = '\\';
+  else if (c === 'Slash') key = '/';
+  else if (c === 'Comma') key = ',';
+  else if (c === 'Period') key = '.';
+  else if (c === 'Minus') key = '-';
+  else if (c === 'Equal') key = '=';
+  else if (c === 'BracketLeft') key = '[';
+  else if (c === 'BracketRight') key = ']';
+  if (!key) return null;             // a bare modifier — not a full combo yet
+  if (mods.length === 0) return null; // require at least one modifier (avoid stealing plain keys)
+  return mods.concat(key).join('+');
+}
+
+// Wire a click-to-record shortcut field. `apply(accel)` persists + (re)registers
+// the shortcut. `defaultAccel` is used by the Reset button.
+function setupShortcutCapture(input, resetBtn, defaultAccel, apply) {
+  if (!input) return;
+  input.addEventListener('focus', () => {
+    input.classList.add('capturing');
+    input.value = 'Press a combo…';
+  });
+  input.addEventListener('blur', () => {
+    input.classList.remove('capturing');
+    syncSettingsUI(); // restore the shown value if nothing was captured
+  });
+  input.addEventListener('keydown', (e) => {
+    e.preventDefault();
+    e.stopPropagation(); // don't let the combo trigger app-level shortcuts while capturing
+    if (e.key === 'Escape') { input.blur(); return; }
+    const accel = accelFromEvent(e);
+    if (!accel) return; // wait for a full modifier+key combo
+    input.value = accel;
+    input.classList.remove('capturing');
+    apply(accel);
+    input.blur();
+  });
+  if (resetBtn) {
+    resetBtn.addEventListener('click', () => { apply(defaultAccel); syncSettingsUI(); });
+  }
+}
+
+function setHintState(hintEl, warn, okText, warnText) {
+  if (!hintEl) return;
+  hintEl.classList.toggle('shortcut-warn', warn);
+  hintEl.textContent = warn ? warnText : okText;
+}
+
+async function applyHandyShortcut(accel) {
+  settings.handyShortcut = accel;
+  saveSettingsNow();
+  try {
+    handyGlobalOK = !!(await window.api.setHandyShortcut(accel));
+  } catch { handyGlobalOK = false; }
+  setHintState(handyShortcutHint, !handyGlobalOK,
+    'Global shortcut — toggles the dock even when PromptPad isn’t focused.',
+    'That combo is already used by another app — try a different one.');
+}
+
+async function applyQuickCaptureShortcut(accel) {
+  settings.quickCaptureShortcut = accel;
+  saveSettingsNow();
+  let ok = false;
+  try { ok = !!(await window.api.setQuickCaptureShortcut(accel)); } catch {}
+  // ok is false when quick capture is simply turned off — only warn about a
+  // genuine clash, i.e. when the feature is enabled but registration failed.
+  const clash = settings.quickCaptureEnabled && !ok;
+  setHintState(quickCaptureShortcutHint, clash,
+    'Global shortcut — opens Fast Save from anywhere.',
+    'That combo is already used by another app — try a different one.');
+}
+
+setupShortcutCapture(handyShortcutInput, handyShortcutReset, DEFAULT_SETTINGS.handyShortcut, applyHandyShortcut);
+setupShortcutCapture(quickCaptureShortcutInput, quickCaptureShortcutReset, DEFAULT_SETTINGS.quickCaptureShortcut, applyQuickCaptureShortcut);
+
 togglePinEl.addEventListener('change', () => {
   settings.pinningEnabled = togglePinEl.checked;
   applySettings();
@@ -5136,6 +5397,25 @@ toggleFastSaveEl.addEventListener('change', () => {
   saveSettingsNow();
 });
 
+toggleDiscoverEl.addEventListener('change', () => {
+  settings.discoverEnabled = toggleDiscoverEl.checked;
+  if (!settings.discoverEnabled && discoverActive()) {
+    const ordered = orderedTabs();
+    if (ordered.length) switchTab(ordered[0].id);
+    else addTab(false);
+  }
+  renderTabs();
+  saveSettingsNow();
+});
+
+if (discoverHintCloseEl) {
+  discoverHintCloseEl.addEventListener('click', () => {
+    settings.discoverHintDismissed = true;
+    if (discoverHintEl) discoverHintEl.classList.add('hidden');
+    saveSettingsNow();
+  });
+}
+
 toggleQuickCaptureEl.addEventListener('change', async () => {
   const want = toggleQuickCaptureEl.checked;
   let real = false;
@@ -5155,6 +5435,12 @@ toggleImageResizeEl.addEventListener('change', () => {
 
 toggleImageDownloadEl.addEventListener('change', () => {
   settings.imageDownloadEnabled = toggleImageDownloadEl.checked;
+  saveSettingsNow();
+});
+
+toggleMdImageFullSizeEl.addEventListener('change', () => {
+  settings.mdImageFullSize = toggleMdImageFullSizeEl.checked;
+  appEl.classList.toggle('md-img-fullsize', settings.mdImageFullSize);
   saveSettingsNow();
 });
 
@@ -5738,16 +6024,19 @@ const CURRENT_VERSION = document.getElementById('aboutVersion').textContent.repl
 const WHATS_NEW =
   "What's new in v" + CURRENT_VERSION + " ✨\n" +
   '\n' +
-  '• The free AI now uses your own free key. The previous free AI service\n' +
-  '   ended its no-key access, so AI Chat, Improve and the AI actions now run\n' +
-  '   on a free OpenRouter key you add once in Settings → "AI Chat & actions".\n' +
-  '   Open AI Chat and a short guide walks you through it (about a minute, no\n' +
-  '   card needed). It works from anywhere — including Iran.\n' +
-  '• Each person uses their own key, so everyone gets their own limits.\n' +
-  '• AI actions now shimmer the text they\'re working on, so you can see it.\n' +
-  '• The AI & Speech help in Settings has a فارسی / English toggle.\n' +
-  '\n' +
-  'Tip: creating the key takes ~1 minute — tap "Get free key" in AI Chat.\n' +
+  '• Discover — a new shared prompt gallery. Sign in, browse prompts by\n' +
+  '   category (Website, Image, Music, Video, Software, Game…), and open the\n' +
+  '   "discover" button under Templates. Tap "Use" to drop any prompt into a\n' +
+  '   new tab, "Copy" it, or ❤ like it.\n' +
+  '• Publish your own — share a prompt with a title, category and an optional\n' +
+  '   image (drag & drop, auto-compressed). Music prompts can carry an audio\n' +
+  '   clip that plays right in the card. A content filter keeps it clean.\n' +
+  '• Right-click any selected text → "Share to Discover" to publish it fast.\n' +
+  '• Don\'t need it? Hide the Discover button in Settings → Tabs.\n' +
+  '• Handy dock is smoother — reliable on startup, floats off the taskbar,\n' +
+  '   no more flicker, and easier to resize.\n' +
+  '• The installer now closes a running PromptPad for you, and the quick-\n' +
+  '   capture + handy-dock shortcuts are now customizable in Settings.\n' +
   '\n' +
   'You can close this tab — it won\'t come back until the next update.';
 
@@ -5852,6 +6141,7 @@ function ensureEditorTab() {
 }
 
 window.addEventListener('dragover', (e) => {
+  if (discoverActive()) return; // Discover has its own drop zone; don't hijack the drop
   if (e.dataTransfer && Array.from(e.dataTransfer.types).includes('Files')) {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'copy';
@@ -5865,6 +6155,7 @@ window.addEventListener('dragleave', (e) => {
 
 window.addEventListener('drop', async (e) => {
   dropHintEl.classList.add('hidden');
+  if (discoverActive()) return; // let the Discover upload drop zone handle its own drops
   const files = e.dataTransfer && e.dataTransfer.files;
   if (!files || !files.length) return;
   e.preventDefault();
@@ -5888,6 +6179,878 @@ window.addEventListener('drop', async (e) => {
   }
 });
 
+// ========================================================================
+// Discover — a shared, server-backed prompt gallery (Supabase: auth + DB +
+// Storage). Everything lives in this section; integration points elsewhere are
+// DISCOVER_ID, showDiscoverView(), switchToDiscover(), the #discoverBtn rail button.
+// ========================================================================
+let dcClient = null;
+let dcSession = null;
+let dcProfile = null;             // { id, username, is_admin }
+let dcScreen = 'browse';          // 'browse' | 'upload' | 'admin'
+let dcCategories = [];
+let dcFilter = 'all';
+let dcSearch = '';
+let dcAuthMode = 'login';         // 'login' | 'register'
+let dcPrefillPrompt = '';         // text handed off from "Share to Discover" to prefill Upload
+let dcCurrentAudio = null;        // the one audio element allowed to play at a time
+const DC_BUCKET = (window.DISCOVER_CONFIG && window.DISCOVER_CONFIG.IMAGE_BUCKET) || 'discover-images';
+const DC_QUOTA_BYTES = 1024 * 1024 * 1024; // 1 GB Supabase free storage
+const DC_MAX_AUDIO_BYTES = 8 * 1024 * 1024;      // final cap after compression
+const DC_MAX_AUDIO_RAW_BYTES = 60 * 1024 * 1024; // raw upload cap (before compression)
+const DC_AUDIO_KBPS = 96;                        // MP3 bitrate we re-encode music to
+const DC_CATEGORY_SLUGS = ['website', 'image', 'music', 'video', 'software', 'game', 'other'];
+let dcLikedPosts = new Set(); // post ids the current user has liked (for the visible feed)
+
+// A bundled placeholder image per category, used when a post has no uploaded image.
+function dcDefaultImage(category) {
+  const slug = DC_CATEGORY_SLUGS.includes(category) ? category : 'other';
+  return 'category-images/' + slug + '.jpg';
+}
+
+// ---- content filter (block +18 / profanity, English + Persian) ----
+// Token-based: we split into words and match whole tokens (exact set) plus a
+// few safe prefixes (stems). This avoids false positives from substrings — e.g.
+// the Persian word «عکس» (photo) must NOT trip on «کس». Deliberately editable.
+const DC_BAD_STEMS = [
+  'fuck', 'fuk', 'shit', 'bitch', 'porn', 'pussy', 'masturbat', 'blowjob',
+  'handjob', 'whore', 'cunt', 'nigger', 'faggot', 'hentai', 'dildo', 'orgasm',
+  'pedophil', 'sex'
+];
+const DC_BAD_SET = new Set([
+  // English exact
+  'ass', 'asshole', 'bastard', 'dick', 'anal', 'cum', 'nude', 'nudes', 'nsfw',
+  'xxx', 'boobs', 'slut', 'incest', 'rape', 'raped', 'raping',
+  // Finglish (Persian in Latin)
+  'kir', 'kos', 'koss', 'koon', 'kon', 'koni', 'kony', 'kuni', 'jende', 'jakesh',
+  'koskesh', 'kire', 'kiram',
+  // Persian script
+  'کیر', 'کص', 'کس', 'کون', 'کونی', 'جنده', 'جاکش', 'کسکش', 'کسخل', 'گاییدن',
+  'گایید', 'گاییدم', 'سکس', 'پورن', 'برهنه', 'لخت', 'اورگاسم', 'کوس', 'کوص', 'ساکزدن'
+]);
+function dcContentFlag(text) {
+  const tokens = (text || '').toLowerCase()
+    .split(/[\s.,،!؟?:;/\\()\[\]{}"'«»\-_+=*#@~\n\r\t]+/)
+    .filter(Boolean);
+  for (const tok of tokens) {
+    if (DC_BAD_SET.has(tok)) return tok;
+    if (DC_BAD_STEMS.some((s) => tok.startsWith(s))) return tok;
+  }
+  return null;
+}
+
+async function dcInit() {
+  if (!window.DISCOVER_CONFIGURED || !window.supabase) return;
+  try {
+    dcClient = window.supabase.createClient(
+      window.DISCOVER_CONFIG.SUPABASE_URL,
+      window.DISCOVER_CONFIG.SUPABASE_ANON_KEY,
+      { auth: { persistSession: true, autoRefreshToken: true } }
+    );
+  } catch (e) { console.error('Discover: client init failed', e); dcClient = null; return; }
+
+  try {
+    const { data } = await dcClient.auth.getSession();
+    dcSession = (data && data.session) || null;
+    if (dcSession) await dcLoadProfile();
+    await dcLoadCategories();
+  } catch (e) { console.error('Discover: session/categories load failed', e); }
+
+  dcClient.auth.onAuthStateChange((_event, session) => {
+    const prevUid = dcSession && dcSession.user && dcSession.user.id;
+    const nextUid = session && session.user && session.user.id;
+    dcSession = session || null;
+    // A token refresh (fires when the app regains focus) keeps the same user —
+    // don't re-render the whole view, that caused the "weird refresh" flicker.
+    if (prevUid === nextUid) return;
+    if (dcSession) dcLoadProfile().then(() => { if (discoverActive()) dcRender(); });
+    else { dcProfile = null; if (discoverActive()) dcRender(); }
+  });
+}
+
+async function dcLoadProfile() {
+  if (!dcSession) { dcProfile = null; return; }
+  try {
+    const { data } = await dcClient
+      .from('profiles').select('id,username,is_admin').eq('id', dcSession.user.id).single();
+    dcProfile = data || null;
+  } catch { dcProfile = null; }
+}
+
+async function dcLoadCategories() {
+  try {
+    const { data } = await dcClient.from('categories').select('*').order('sort');
+    dcCategories = data || [];
+  } catch { dcCategories = []; }
+}
+
+async function dcLogout() {
+  try { await dcClient.auth.signOut(); } catch {}
+  dcProfile = null;
+  dcScreen = 'browse';
+  dcRender();
+}
+
+// Send selected text (from the right-click menu anywhere in the app) to the
+// Discover Upload form as a ready-to-share prompt.
+function shareTextToDiscover(text) {
+  if (!window.DISCOVER_CONFIGURED || !dcClient) return;
+  dcPrefillPrompt = (text || '').trim();
+  dcScreen = 'upload';
+  if (discoverActive()) dcRender();  // switchToDiscover no-ops if already active
+  else switchToDiscover();
+}
+
+// ---- small DOM helpers ----
+function dcEl(tag, cls, text) {
+  const el = document.createElement(tag);
+  if (cls) el.className = cls;
+  if (text != null) el.textContent = text;
+  return el;
+}
+function dcStatus(msg, kind) {
+  const el = dcEl('div', 'dc-status' + (kind ? ' dc-' + kind : ''), msg);
+  return el;
+}
+
+// ---- top-level render dispatch ----
+function dcRender() {
+  if (!discoverBodyEl) return;
+  if (discoverHintEl) discoverHintEl.classList.toggle('hidden', !!settings.discoverHintDismissed);
+  if (!window.DISCOVER_CONFIGURED || !dcClient) { dcRenderNotice(); return; }
+  dcRenderNav();
+  if (!dcSession) { dcRenderAuth(); return; }
+  if (dcScreen === 'upload') dcRenderUpload();
+  else if (dcScreen === 'admin' && dcProfile && dcProfile.is_admin) dcRenderAdmin();
+  else dcRenderBrowse();
+}
+
+function dcRenderNotice() {
+  discoverNavEl.innerHTML = '';
+  discoverBodyEl.innerHTML = '';
+  const box = dcEl('div', 'dc-empty');
+  box.appendChild(dcEl('div', 'dc-empty-title', 'Discover isn’t set up yet'));
+  box.appendChild(dcEl('div', 'dc-empty-sub',
+    'Add your Supabase URL and key in src/discover-config.js (see discover-setup/DISCOVER-SETUP.md).'));
+  discoverBodyEl.appendChild(box);
+}
+
+function dcRenderNav() {
+  discoverNavEl.innerHTML = '';
+  if (!dcSession) return;
+  const nav = (label, screen) => {
+    const b = dcEl('button', 'dc-nav' + (dcScreen === screen ? ' active' : ''), label);
+    b.addEventListener('click', () => { dcScreen = screen; dcRender(); });
+    return b;
+  };
+  discoverNavEl.appendChild(nav('Browse', 'browse'));
+  discoverNavEl.appendChild(nav('Upload', 'upload'));
+  if (dcProfile && dcProfile.is_admin) discoverNavEl.appendChild(nav('Admin', 'admin'));
+  discoverNavEl.appendChild(dcEl('span', 'dc-account', '@' + ((dcProfile && dcProfile.username) || '…')));
+  const out = dcEl('button', 'dc-nav dc-logout', 'Logout');
+  out.addEventListener('click', dcLogout);
+  discoverNavEl.appendChild(out);
+}
+
+// ---- auth screen ----
+function dcRenderAuth() {
+  discoverBodyEl.innerHTML = '';
+  const wrap = dcEl('div', 'dc-auth');
+  const tabs = dcEl('div', 'dc-auth-tabs');
+  const loginTab = dcEl('button', 'dc-auth-tab' + (dcAuthMode === 'login' ? ' active' : ''), 'Sign in');
+  const regTab = dcEl('button', 'dc-auth-tab' + (dcAuthMode === 'register' ? ' active' : ''), 'Register');
+  loginTab.addEventListener('click', () => { dcAuthMode = 'login'; dcRenderAuth(); });
+  regTab.addEventListener('click', () => { dcAuthMode = 'register'; dcRenderAuth(); });
+  tabs.appendChild(loginTab); tabs.appendChild(regTab);
+  wrap.appendChild(tabs);
+
+  const form = dcEl('form', 'dc-form');
+  let userInput;
+  if (dcAuthMode === 'register') {
+    userInput = dcEl('input', 'text-input');
+    userInput.placeholder = 'Username'; userInput.autocomplete = 'off';
+    form.appendChild(userInput);
+  }
+  const emailInput = dcEl('input', 'text-input');
+  emailInput.type = 'email'; emailInput.placeholder = 'Email'; emailInput.autocomplete = 'off';
+  const passInput = dcEl('input', 'text-input');
+  passInput.type = 'password'; passInput.placeholder = 'Password (min 6 chars)'; passInput.autocomplete = 'off';
+  form.appendChild(emailInput); form.appendChild(passInput);
+
+  const submit = dcEl('button', 'dc-primary-btn', dcAuthMode === 'login' ? 'Sign in' : 'Create account');
+  submit.type = 'submit';
+  form.appendChild(submit);
+  const status = dcEl('div', 'dc-form-status');
+  form.appendChild(status);
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    status.className = 'dc-form-status';
+    status.textContent = '';
+    const email = emailInput.value.trim();
+    const pass = passInput.value;
+    if (!email || pass.length < 6) { status.textContent = 'Enter an email and a 6+ char password.'; return; }
+    submit.disabled = true;
+    submit.textContent = 'Please wait…';
+    try {
+      if (dcAuthMode === 'register') {
+        const username = (userInput.value || '').trim() || email.split('@')[0];
+        const { data, error } = await dcClient.auth.signUp({
+          email, password: pass, options: { data: { username } }
+        });
+        if (error) throw error;
+        if (!data.session) {
+          status.classList.add('ok');
+          status.textContent = 'Account created — check your email to confirm, then sign in.';
+          dcAuthMode = 'login';
+          submit.disabled = false;
+          return;
+        }
+      } else {
+        const { error } = await dcClient.auth.signInWithPassword({ email, password: pass });
+        if (error) throw error;
+      }
+      // onAuthStateChange will refresh; also refresh profile now
+      const { data } = await dcClient.auth.getSession();
+      dcSession = data && data.session;
+      await dcLoadProfile();
+      // land on Upload if we arrived here via "Share to Discover", else Browse
+      dcScreen = dcPrefillPrompt ? 'upload' : 'browse';
+      dcRender();
+    } catch (err) {
+      status.classList.add('err');
+      status.textContent = (err && err.message) || 'Something went wrong.';
+      submit.disabled = false;
+      submit.textContent = dcAuthMode === 'login' ? 'Sign in' : 'Create account';
+    }
+  });
+
+  wrap.appendChild(form);
+  discoverBodyEl.appendChild(wrap);
+}
+
+// ---- browse screen ----
+function dcCatLabel(slug) {
+  const c = dcCategories.find((x) => x.slug === slug);
+  return c ? c.label : (slug || '');
+}
+
+async function dcRenderBrowse() {
+  discoverBodyEl.innerHTML = '';
+
+  // Controls: search + category chips
+  const controls = dcEl('div', 'dc-controls');
+  const search = dcEl('input', 'text-input dc-search');
+  search.placeholder = 'Search prompts…';
+  search.value = dcSearch;
+  let searchTimer = null;
+  search.addEventListener('input', () => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => { dcSearch = search.value.trim(); dcLoadAndRenderFeed(feed); }, 250);
+  });
+  controls.appendChild(search);
+
+  const chips = dcEl('div', 'dc-chips');
+  const mkChip = (slug, label) => {
+    const c = dcEl('button', 'dc-chip' + (dcFilter === slug ? ' active' : ''), label);
+    c.addEventListener('click', () => { dcFilter = slug; dcRenderBrowse(); });
+    return c;
+  };
+  chips.appendChild(mkChip('all', 'All'));
+  dcCategories.forEach((c) => chips.appendChild(mkChip(c.slug, c.label)));
+  controls.appendChild(chips);
+  discoverBodyEl.appendChild(controls);
+
+  const feed = dcEl('div', 'dc-feed');
+  discoverBodyEl.appendChild(feed);
+  dcLoadAndRenderFeed(feed);
+}
+
+async function dcLoadAndRenderFeed(feed) {
+  feed.innerHTML = '';
+  feed.appendChild(dcStatus('Loading…'));
+  try {
+    let q = dcClient
+      .from('posts')
+      .select('id,title,prompt,category,image_url,image_key,audio_url,audio_key,like_count,created_at,user_id,profiles!posts_user_id_fkey(username)')
+      .eq('status', 'approved')
+      .order('created_at', { ascending: false })
+      .limit(60);
+    if (dcFilter !== 'all') q = q.eq('category', dcFilter);
+    if (dcSearch) q = q.or(`title.ilike.%${dcSearch}%,prompt.ilike.%${dcSearch}%`);
+    const { data, error } = await q;
+    if (error) throw error;
+    feed.innerHTML = '';
+    if (!data || !data.length) {
+      feed.appendChild(dcStatus('No prompts yet. Be the first to share one from the Upload tab.'));
+      return;
+    }
+    await dcLoadLikes(data.map((p) => p.id));
+    data.forEach((post) => feed.appendChild(dcCard(post)));
+  } catch (err) {
+    feed.innerHTML = '';
+    feed.appendChild(dcStatus((err && err.message) || 'Failed to load.', 'err'));
+  }
+}
+
+// A compact, themed audio player (the native <audio controls> can't be styled).
+function dcAudioPlayer(url) {
+  const wrap = dcEl('div', 'dc-player');
+  const audio = document.createElement('audio');
+  audio.src = url; audio.preload = 'metadata';
+  const ICON_PLAY = '<svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><path d="M8 5v14l11-7z" fill="currentColor"/></svg>';
+  const ICON_PAUSE = '<svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><path d="M7 5h3.2v14H7zM13.8 5H17v14h-3.2z" fill="currentColor"/></svg>';
+  const play = dcEl('button', 'dc-player-btn'); play.type = 'button'; play.innerHTML = ICON_PLAY;
+  const track = dcEl('div', 'dc-player-track');
+  const fill = dcEl('div', 'dc-player-fill'); track.appendChild(fill);
+  const time = dcEl('span', 'dc-player-time', '0:00');
+
+  const fmt = (s) => { s = Math.floor(s || 0); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
+  play.addEventListener('click', (e) => { e.stopPropagation(); audio.paused ? audio.play() : audio.pause(); });
+  audio.addEventListener('play', () => {
+    // only one player at a time — pause whatever else is playing
+    if (dcCurrentAudio && dcCurrentAudio !== audio) { try { dcCurrentAudio.pause(); } catch {} }
+    dcCurrentAudio = audio;
+    play.innerHTML = ICON_PAUSE;
+  });
+  audio.addEventListener('pause', () => { play.innerHTML = ICON_PLAY; });
+  audio.addEventListener('ended', () => { play.innerHTML = ICON_PLAY; fill.style.width = '0%'; });
+  audio.addEventListener('loadedmetadata', () => { time.textContent = '0:00 / ' + fmt(audio.duration); });
+  audio.addEventListener('timeupdate', () => {
+    if (audio.duration) fill.style.width = (audio.currentTime / audio.duration * 100) + '%';
+    time.textContent = fmt(audio.currentTime) + (audio.duration ? ' / ' + fmt(audio.duration) : '');
+  });
+  track.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const r = track.getBoundingClientRect();
+    if (audio.duration) audio.currentTime = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * audio.duration;
+  });
+  wrap.appendChild(play); wrap.appendChild(track); wrap.appendChild(time); wrap.appendChild(audio);
+  return wrap;
+}
+
+function dcCard(post) {
+  const card = dcEl('div', 'dc-card');
+  const imgUrl = post.image_url || dcDefaultImage(post.category);
+  const im = dcEl('img', 'dc-card-img' + (post.image_url ? '' : ' is-default'));
+  im.loading = 'lazy'; im.src = imgUrl; im.alt = '';
+  im.addEventListener('click', () => dcOpenPost(post));
+  card.appendChild(im);
+
+  const body = dcEl('div', 'dc-card-body');
+  const top = dcEl('div', 'dc-card-top');
+  const titleEl = dcEl('div', 'dc-card-title', post.title || 'Untitled');
+  titleEl.addEventListener('click', () => dcOpenPost(post));
+  top.appendChild(titleEl);
+  if (post.category) top.appendChild(dcEl('span', 'dc-card-cat', dcCatLabel(post.category)));
+  body.appendChild(top);
+
+  if (post.audio_url) body.appendChild(dcAudioPlayer(post.audio_url));
+
+  const pr = dcEl('div', 'dc-card-prompt', post.prompt || '');
+  pr.addEventListener('click', () => dcOpenPost(post));
+  body.appendChild(pr);
+
+  const foot = dcEl('div', 'dc-card-foot');
+  const footRow = dcEl('div', 'dc-card-footrow');
+  const author = (post.profiles && post.profiles.username) ? '@' + post.profiles.username : 'anonymous';
+  footRow.appendChild(dcEl('span', 'dc-card-author', author));
+  footRow.appendChild(dcLikeButton(post));
+  foot.appendChild(footRow);
+
+  const actions = dcEl('div', 'dc-card-actions');
+  const useBtn = dcEl('button', 'dc-mini-btn dc-mini-primary', 'Use');
+  useBtn.addEventListener('click', () => { addTabWithContent(post.title, post.prompt); });
+  actions.appendChild(useBtn);
+  const copyBtn = dcEl('button', 'dc-mini-btn', 'Copy');
+  copyBtn.addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText(post.prompt || ''); copyBtn.textContent = 'Copied'; setTimeout(() => copyBtn.textContent = 'Copy', 1200); } catch {}
+  });
+  actions.appendChild(copyBtn);
+  if (dcProfile && (dcProfile.is_admin || dcProfile.id === post.user_id)) {
+    const del = dcEl('button', 'dc-mini-btn dc-mini-danger', 'Delete');
+    del.addEventListener('click', () => dcDeletePost(post, card));
+    actions.appendChild(del);
+  }
+  foot.appendChild(actions);
+  body.appendChild(foot);
+  card.appendChild(body);
+  return card;
+}
+
+// ---- likes ----
+async function dcLoadLikes(ids) {
+  dcLikedPosts = new Set();
+  if (!dcProfile || !ids.length) return;
+  try {
+    const { data } = await dcClient.from('likes').select('post_id').eq('user_id', dcProfile.id).in('post_id', ids);
+    (data || []).forEach((r) => dcLikedPosts.add(r.post_id));
+  } catch {}
+}
+function dcUpdateLikeUI(btn, countEl, post) {
+  btn.classList.toggle('liked', dcLikedPosts.has(post.id));
+  if (countEl) countEl.textContent = post.like_count || 0;
+}
+function dcLikeButton(post) {
+  const btn = dcEl('button', 'dc-like');
+  btn.innerHTML = '<svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><path d="M12 21s-7-4.35-9.5-8.5C1 9 2.6 5.5 6 5.5c2 0 3.2 1.1 4 2.6.8-1.5 2-2.6 4-2.6 3.4 0 5 3.5 3.5 7C19 16.65 12 21 12 21z"/></svg>';
+  const count = dcEl('span', 'dc-like-count', String(post.like_count || 0));
+  btn.appendChild(count);
+  dcUpdateLikeUI(btn, count, post);
+  if (!dcProfile) { btn.disabled = true; btn.title = 'Sign in to like'; }
+  btn.addEventListener('click', (e) => { e.stopPropagation(); dcToggleLike(post, btn, count); });
+  return btn;
+}
+async function dcToggleLike(post, btn, countEl) {
+  if (!dcProfile) return;
+  const wasLiked = dcLikedPosts.has(post.id);
+  if (wasLiked) { dcLikedPosts.delete(post.id); post.like_count = Math.max(0, (post.like_count || 0) - 1); }
+  else { dcLikedPosts.add(post.id); post.like_count = (post.like_count || 0) + 1; }
+  dcUpdateLikeUI(btn, countEl, post);
+  try {
+    const res = wasLiked
+      ? await dcClient.from('likes').delete().eq('user_id', dcProfile.id).eq('post_id', post.id)
+      : await dcClient.from('likes').insert({ user_id: dcProfile.id, post_id: post.id });
+    if (res.error) throw res.error;
+  } catch {
+    // revert on failure
+    if (wasLiked) { dcLikedPosts.add(post.id); post.like_count = (post.like_count || 0) + 1; }
+    else { dcLikedPosts.delete(post.id); post.like_count = Math.max(0, (post.like_count || 0) - 1); }
+    dcUpdateLikeUI(btn, countEl, post);
+  }
+}
+
+// ---- post detail modal (image + full prompt side by side) ----
+function dcOpenPost(post) {
+  const overlay = dcEl('div', 'dc-modal-overlay');
+  const modal = dcEl('div', 'dc-modal');
+
+  const imgPane = dcEl('div', 'dc-modal-media');
+  const im = dcEl('img', post.image_url ? '' : 'is-default');
+  im.src = post.image_url || dcDefaultImage(post.category);
+  imgPane.appendChild(im);
+  if (post.audio_url) imgPane.appendChild(dcAudioPlayer(post.audio_url));
+  modal.appendChild(imgPane);
+
+  const pane = dcEl('div', 'dc-modal-pane');
+  const head = dcEl('div', 'dc-modal-head');
+  head.appendChild(dcEl('div', 'dc-modal-title', post.title || 'Untitled'));
+  if (post.category) head.appendChild(dcEl('span', 'dc-card-cat', dcCatLabel(post.category)));
+  pane.appendChild(head);
+  pane.appendChild(dcEl('div', 'dc-modal-author',
+    (post.profiles && post.profiles.username) ? '@' + post.profiles.username : 'anonymous'));
+  pane.appendChild(dcEl('div', 'dc-modal-prompt', post.prompt || ''));
+
+  const acts = dcEl('div', 'dc-modal-actions');
+  const useBtn = dcEl('button', 'dc-primary-btn', 'Use this prompt');
+  useBtn.addEventListener('click', () => { addTabWithContent(post.title, post.prompt); close(); });
+  const copyBtn = dcEl('button', 'dc-mini-btn', 'Copy');
+  copyBtn.addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText(post.prompt || ''); copyBtn.textContent = 'Copied'; setTimeout(() => copyBtn.textContent = 'Copy', 1200); } catch {}
+  });
+  acts.appendChild(useBtn); acts.appendChild(copyBtn); acts.appendChild(dcLikeButton(post));
+  pane.appendChild(acts);
+  modal.appendChild(pane);
+
+  const closeBtn = dcEl('button', 'dc-modal-close', '×');
+  modal.appendChild(closeBtn);
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+
+  function close() {
+    modal.querySelectorAll('audio').forEach((a) => { try { a.pause(); } catch {} });
+    overlay.remove();
+    document.removeEventListener('keydown', onKey);
+  }
+  function onKey(e) { if (e.key === 'Escape') { e.stopPropagation(); close(); } }
+  closeBtn.addEventListener('click', close);
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+  document.addEventListener('keydown', onKey);
+}
+
+async function dcDeletePost(post, cardEl) {
+  try {
+    const keys = [post.image_key, post.audio_key].filter(Boolean);
+    if (keys.length) { try { await dcClient.storage.from(DC_BUCKET).remove(keys); } catch {} }
+    const { error } = await dcClient.from('posts').delete().eq('id', post.id);
+    if (error) throw error;
+    if (cardEl) cardEl.remove();
+  } catch (err) {
+    alert((err && err.message) || 'Delete failed.');
+  }
+}
+
+// ---- upload screen ----
+function dcRenderUpload() {
+  discoverBodyEl.innerHTML = '';
+  const form = dcEl('form', 'dc-form dc-upload');
+  form.appendChild(dcEl('label', 'dc-label', 'Title'));
+  const title = dcEl('input', 'text-input');
+  title.placeholder = 'A short name for this prompt';
+  form.appendChild(title);
+
+  form.appendChild(dcEl('label', 'dc-label', 'Category'));
+  const cat = dcEl('select', 'text-input');
+  dcCategories.forEach((c) => {
+    const o = dcEl('option', null, c.label); o.value = c.slug; cat.appendChild(o);
+  });
+  form.appendChild(cat);
+
+  form.appendChild(dcEl('label', 'dc-label', 'Prompt'));
+  const prompt = dcEl('textarea', 'text-input dc-textarea');
+  prompt.rows = 6; prompt.placeholder = 'Paste your prompt here…';
+  if (dcPrefillPrompt) { prompt.value = dcPrefillPrompt; dcPrefillPrompt = ''; } // from "Share to Discover"
+  form.appendChild(prompt);
+
+  // Image (optional) — click or drag & drop.
+  form.appendChild(dcEl('label', 'dc-label', 'Image (optional)'));
+  let imgFile = null;
+  const drop = dcEl('div', 'dc-drop');
+  drop.appendChild(dcEl('span', 'dc-drop-text', 'Drop an image here, or click to choose'));
+  const fileInput = dcEl('input', 'hidden'); fileInput.type = 'file'; fileInput.accept = 'image/*';
+  const preview = dcEl('img', 'dc-upload-preview hidden');
+  const setImg = (f) => {
+    if (!f || !f.type.startsWith('image/')) return;
+    imgFile = f;
+    preview.src = URL.createObjectURL(f);
+    preview.classList.remove('hidden');
+    drop.querySelector('.dc-drop-text').textContent = f.name;
+  };
+  drop.addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', () => setImg(fileInput.files && fileInput.files[0]));
+  drop.addEventListener('dragover', (e) => { e.preventDefault(); e.stopPropagation(); drop.classList.add('dragover'); });
+  drop.addEventListener('dragleave', () => drop.classList.remove('dragover'));
+  drop.addEventListener('drop', (e) => {
+    e.preventDefault(); e.stopPropagation(); drop.classList.remove('dragover');
+    setImg(e.dataTransfer.files && e.dataTransfer.files[0]);
+  });
+  form.appendChild(drop); form.appendChild(fileInput); form.appendChild(preview);
+
+  // Music file — only for the Music category.
+  let audioFile = null;
+  const audioWrap = dcEl('div', 'dc-audio-field hidden');
+  audioWrap.appendChild(dcEl('label', 'dc-label', 'Music file (auto-compressed to MP3 ~96 kbps)'));
+  const audioInput = dcEl('input', 'dc-file'); audioInput.type = 'file'; audioInput.accept = 'audio/*';
+  audioInput.addEventListener('change', () => { audioFile = audioInput.files && audioInput.files[0]; });
+  audioWrap.appendChild(audioInput);
+  form.appendChild(audioWrap);
+  const syncAudioField = () => audioWrap.classList.toggle('hidden', cat.value !== 'music');
+  cat.addEventListener('change', syncAudioField);
+  syncAudioField();
+
+  const submit = dcEl('button', 'dc-primary-btn', 'Share to Discover');
+  submit.type = 'submit';
+  form.appendChild(submit);
+  const status = dcEl('div', 'dc-form-status');
+  form.appendChild(status);
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    status.className = 'dc-form-status'; status.textContent = '';
+    const t = title.value.trim();
+    const p = prompt.value.trim();
+    if (!t || !p) { status.classList.add('err'); status.textContent = 'Title and prompt are required.'; return; }
+    if (dcContentFlag(t + ' ' + p)) {
+      status.classList.add('err');
+      status.textContent = 'Blocked by the content filter — please remove +18 / offensive words.';
+      return;
+    }
+    if (cat.value === 'music' && audioFile && audioFile.size > DC_MAX_AUDIO_RAW_BYTES) {
+      status.classList.add('err'); status.textContent = 'Music file is too large (max 60 MB).'; return;
+    }
+    submit.disabled = true; submit.textContent = 'Sharing…';
+    try {
+      let image_url = null, image_key = null, audio_url = null, audio_key = null, byte_size = 0;
+      if (imgFile) {
+        status.textContent = 'Compressing image…';
+        const blob = await dcCompressImage(imgFile);
+        byte_size += blob.size;
+        image_key = `${dcProfile.id}/${uid()}.webp`;
+        status.textContent = 'Uploading image…';
+        const up = await dcClient.storage.from(DC_BUCKET).upload(image_key, blob, { contentType: 'image/webp', upsert: false });
+        if (up.error) throw up.error;
+        image_url = dcClient.storage.from(DC_BUCKET).getPublicUrl(image_key).data.publicUrl;
+      }
+      if (cat.value === 'music' && audioFile) {
+        status.textContent = 'Compressing music…';
+        const outBlob = await dcCompressAudio(audioFile);
+        if (outBlob.size > DC_MAX_AUDIO_BYTES) {
+          throw new Error('Music is still over 8 MB after compression — try a shorter clip.');
+        }
+        const compressed = outBlob !== audioFile;
+        const ext = compressed ? 'mp3'
+          : ((audioFile.name.split('.').pop() || 'mp3').toLowerCase().replace(/[^a-z0-9]/g, '') || 'mp3');
+        const ctype = compressed ? 'audio/mpeg' : (audioFile.type || 'audio/mpeg');
+        audio_key = `${dcProfile.id}/${uid()}.${ext}`;
+        status.textContent = 'Uploading music…';
+        const up = await dcClient.storage.from(DC_BUCKET).upload(audio_key, outBlob, { contentType: ctype, upsert: false });
+        if (up.error) throw up.error;
+        audio_url = dcClient.storage.from(DC_BUCKET).getPublicUrl(audio_key).data.publicUrl;
+        byte_size += outBlob.size;
+      }
+      status.textContent = 'Saving…';
+      const { error } = await dcClient.from('posts').insert({
+        user_id: dcProfile.id, title: t, prompt: p, category: cat.value,
+        image_url, image_key, audio_url, audio_key, byte_size
+      });
+      if (error) throw error;
+      dcScreen = 'browse';
+      dcRender();
+    } catch (err) {
+      status.classList.add('err');
+      status.textContent = (err && err.message) || 'Upload failed.';
+      submit.disabled = false; submit.textContent = 'Share to Discover';
+    }
+  });
+
+  discoverBodyEl.appendChild(form);
+}
+
+// Re-encode an audio file to a smaller MP3 (client-side, via vendored lamejs).
+// Falls back to the original file if the encoder is missing or decoding fails.
+async function dcCompressAudio(file, kbps = DC_AUDIO_KBPS) {
+  if (!window.lamejs) return file;
+  let audio;
+  try {
+    const buf = await file.arrayBuffer();
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    const ctx = new Ctx();
+    audio = await ctx.decodeAudioData(buf);
+    try { ctx.close(); } catch {}
+  } catch { return file; } // unknown/unsupported codec — upload as-is
+
+  try {
+    const rate = audio.sampleRate;
+    const channels = Math.min(2, audio.numberOfChannels);
+    const left = audio.getChannelData(0);
+    const right = channels > 1 ? audio.getChannelData(1) : null;
+    const enc = new window.lamejs.Mp3Encoder(channels, rate, kbps);
+    const block = 1152;
+    const parts = [];
+    const toInt16 = (f32, start, len) => {
+      const out = new Int16Array(len);
+      for (let i = 0; i < len; i++) {
+        const s = Math.max(-1, Math.min(1, f32[start + i]));
+        out[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+      }
+      return out;
+    };
+    for (let i = 0; i < left.length; i += block) {
+      const len = Math.min(block, left.length - i);
+      const chunk = channels > 1
+        ? enc.encodeBuffer(toInt16(left, i, len), toInt16(right, i, len))
+        : enc.encodeBuffer(toInt16(left, i, len));
+      if (chunk.length) parts.push(new Int8Array(chunk));
+    }
+    const tail = enc.flush();
+    if (tail.length) parts.push(new Int8Array(tail));
+    const blob = new Blob(parts, { type: 'audio/mpeg' });
+    return blob.size > 0 && blob.size < file.size ? blob : file;
+  } catch { return file; }
+}
+
+// Compress/resize an image file to a small WebP blob (client-side).
+function dcCompressImage(file) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const max = 1280;
+      let w = img.naturalWidth, h = img.naturalHeight;
+      if (w > max || h > max) {
+        const s = Math.min(max / w, max / h);
+        w = Math.round(w * s); h = Math.round(h * s);
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error('Could not process image')), 'image/webp', 0.82);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Not a valid image')); };
+    img.src = url;
+  });
+}
+
+// ---- admin screen ----
+async function dcRenderAdmin() {
+  discoverBodyEl.innerHTML = '';
+
+  // storage meter
+  const meter = dcEl('div', 'dc-admin-meter');
+  meter.appendChild(dcStatus('Calculating storage…'));
+  discoverBodyEl.appendChild(meter);
+  dcRenderStorageMeter(meter);
+
+  // orphan-file cleanup (files left in Storage by a failed delete)
+  const orphanBox = dcEl('div', 'dc-admin-orphan');
+  orphanBox.appendChild(dcEl('div', 'dc-admin-h', 'Orphan files'));
+  const orphanStatus = dcEl('div', 'dc-meter-label', 'Storage files with no matching post (e.g. from a failed delete).');
+  const orphanBtn = dcEl('button', 'dc-mini-btn', 'Scan for orphans');
+  orphanBtn.onclick = () => dcScanOrphans(orphanStatus, orphanBtn);
+  orphanBox.appendChild(orphanStatus);
+  orphanBox.appendChild(orphanBtn);
+  discoverBodyEl.appendChild(orphanBox);
+
+  // add category
+  const catBox = dcEl('div', 'dc-admin-cats');
+  catBox.appendChild(dcEl('div', 'dc-admin-h', 'Categories'));
+  const catRow = dcEl('div', 'dc-cat-row');
+  dcCategories.forEach((c) => catRow.appendChild(dcEl('span', 'dc-chip', c.label)));
+  catBox.appendChild(catRow);
+  const addRow = dcEl('div', 'dc-cat-add');
+  const slugI = dcEl('input', 'text-input'); slugI.placeholder = 'slug (e.g. video)';
+  const labelI = dcEl('input', 'text-input'); labelI.placeholder = 'Label (e.g. Video)';
+  const addBtn = dcEl('button', 'dc-mini-btn dc-mini-primary', 'Add');
+  addBtn.addEventListener('click', async () => {
+    const slug = slugI.value.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
+    const label = labelI.value.trim();
+    if (!slug || !label) return;
+    try {
+      const { error } = await dcClient.from('categories').insert({ slug, label, sort: dcCategories.length + 1 });
+      if (error) throw error;
+      await dcLoadCategories();
+      dcRenderAdmin();
+    } catch (err) { alert((err && err.message) || 'Could not add category.'); }
+  });
+  addRow.appendChild(slugI); addRow.appendChild(labelI); addRow.appendChild(addBtn);
+  catBox.appendChild(addRow);
+  discoverBodyEl.appendChild(catBox);
+
+  // moderation list
+  const modBox = dcEl('div', 'dc-admin-mod');
+  modBox.appendChild(dcEl('div', 'dc-admin-h', 'Recent posts'));
+  const list = dcEl('div', 'dc-mod-list');
+  modBox.appendChild(list);
+  discoverBodyEl.appendChild(modBox);
+
+  list.appendChild(dcStatus('Loading…'));
+  try {
+    const { data, error } = await dcClient
+      .from('posts')
+      .select('id,title,status,category,image_key,audio_key,user_id,created_at,profiles!posts_user_id_fkey(username)')
+      .order('created_at', { ascending: false })
+      .limit(100);
+    if (error) throw error;
+    list.innerHTML = '';
+    if (!data.length) { list.appendChild(dcStatus('No posts yet.')); return; }
+    data.forEach((post) => list.appendChild(dcModRow(post)));
+  } catch (err) {
+    list.innerHTML = '';
+    list.appendChild(dcStatus((err && err.message) || 'Failed to load.', 'err'));
+  }
+}
+
+async function dcRenderStorageMeter(meter) {
+  try {
+    const { data, error } = await dcClient.from('posts').select('byte_size');
+    if (error) throw error;
+    const used = (data || []).reduce((s, r) => s + (r.byte_size || 0), 0);
+    const pct = Math.min(100, Math.round((used / DC_QUOTA_BYTES) * 100));
+    meter.innerHTML = '';
+    meter.appendChild(dcEl('div', 'dc-admin-h', 'Image storage'));
+    const bar = dcEl('div', 'dc-meter-bar');
+    const fill = dcEl('div', 'dc-meter-fill');
+    fill.style.width = pct + '%';
+    if (pct > 85) fill.classList.add('warn');
+    bar.appendChild(fill);
+    meter.appendChild(bar);
+    meter.appendChild(dcEl('div', 'dc-meter-label',
+      `${dcFmtBytes(used)} of 1 GB used (${pct}%)`));
+  } catch (err) {
+    meter.innerHTML = '';
+    meter.appendChild(dcStatus((err && err.message) || 'Could not read storage.', 'err'));
+  }
+}
+
+// List every object path in the bucket (bucket layout is "<uid>/<file>").
+async function dcListAllStoragePaths() {
+  const out = [];
+  const { data: roots } = await dcClient.storage.from(DC_BUCKET).list('', { limit: 1000 });
+  for (const entry of (roots || [])) {
+    if (entry.id) { out.push({ path: entry.name, size: (entry.metadata && entry.metadata.size) || 0 }); continue; }
+    const { data: files } = await dcClient.storage.from(DC_BUCKET).list(entry.name, { limit: 1000 });
+    for (const f of (files || [])) {
+      if (!f.id) continue;
+      out.push({ path: entry.name + '/' + f.name, size: (f.metadata && f.metadata.size) || 0 });
+    }
+  }
+  return out;
+}
+
+// Find files in Storage not referenced by any post; then let the admin delete them.
+async function dcScanOrphans(statusEl, btn) {
+  btn.disabled = true; const label = 'Scan for orphans'; btn.textContent = 'Scanning…';
+  try {
+    const { data: posts } = await dcClient.from('posts').select('image_key,audio_key');
+    const referenced = new Set();
+    (posts || []).forEach((p) => { if (p.image_key) referenced.add(p.image_key); if (p.audio_key) referenced.add(p.audio_key); });
+    const orphans = (await dcListAllStoragePaths()).filter((o) => !referenced.has(o.path));
+    const bytes = orphans.reduce((s, o) => s + (o.size || 0), 0);
+    if (!orphans.length) {
+      statusEl.textContent = 'No orphan files — storage is clean. ✓';
+      btn.textContent = label; btn.disabled = false; btn.onclick = () => dcScanOrphans(statusEl, btn);
+      return;
+    }
+    statusEl.textContent = `${orphans.length} orphan file(s) · ${dcFmtBytes(bytes)}.`;
+    btn.textContent = `Delete ${orphans.length} orphan(s)`; btn.disabled = false;
+    btn.onclick = async () => {
+      btn.disabled = true; btn.textContent = 'Deleting…';
+      try {
+        for (let i = 0; i < orphans.length; i += 100) {
+          await dcClient.storage.from(DC_BUCKET).remove(orphans.slice(i, i + 100).map((o) => o.path));
+        }
+        statusEl.textContent = `Deleted ${orphans.length} file(s), freed ${dcFmtBytes(bytes)}. ✓`;
+      } catch (err) {
+        statusEl.textContent = (err && err.message) || 'Delete failed.';
+      }
+      btn.textContent = label; btn.disabled = false; btn.onclick = () => dcScanOrphans(statusEl, btn);
+    };
+  } catch (err) {
+    statusEl.textContent = (err && err.message) || 'Scan failed.';
+    btn.textContent = label; btn.disabled = false; btn.onclick = () => dcScanOrphans(statusEl, btn);
+  }
+}
+
+function dcFmtBytes(n) {
+  if (n < 1024) return n + ' B';
+  if (n < 1024 * 1024) return (n / 1024).toFixed(0) + ' KB';
+  return (n / 1024 / 1024).toFixed(1) + ' MB';
+}
+
+function dcModRow(post) {
+  const row = dcEl('div', 'dc-mod-row');
+  const info = dcEl('div', 'dc-mod-info');
+  info.appendChild(dcEl('span', 'dc-mod-title', post.title || 'Untitled'));
+  info.appendChild(dcEl('span', 'dc-mod-meta',
+    `${(post.profiles && post.profiles.username) ? '@' + post.profiles.username : '—'} · ${post.status}`));
+  row.appendChild(info);
+  const acts = dcEl('div', 'dc-mod-acts');
+  const setStatus = async (status) => {
+    try {
+      const { error } = await dcClient.from('posts').update({ status }).eq('id', post.id);
+      if (error) throw error;
+      post.status = status;
+      dcRenderAdmin();
+    } catch (err) { alert((err && err.message) || 'Update failed.'); }
+  };
+  if (post.status !== 'approved') {
+    const ok = dcEl('button', 'dc-mini-btn dc-mini-primary', 'Approve');
+    ok.addEventListener('click', () => setStatus('approved'));
+    acts.appendChild(ok);
+  }
+  if (post.status !== 'rejected') {
+    const no = dcEl('button', 'dc-mini-btn', 'Reject');
+    no.addEventListener('click', () => setStatus('rejected'));
+    acts.appendChild(no);
+  }
+  const del = dcEl('button', 'dc-mini-btn dc-mini-danger', 'Delete');
+  del.addEventListener('click', async () => { await dcDeletePost(post, null); dcRenderAdmin(); });
+  acts.appendChild(del);
+  row.appendChild(acts);
+  return row;
+}
+
 // ---------- Init ----------
 (async function init() {
   // Platform-specific copy — the setting/shortcut itself already works
@@ -5895,8 +7058,6 @@ window.addEventListener('drop', async (e) => {
   if (window.api.platform === 'darwin') {
     const startupHintEl = document.getElementById('startupHint');
     if (startupHintEl) startupHintEl.textContent = 'Open PromptPad when your Mac starts';
-    const qcHintEl = document.getElementById('quickCaptureHint');
-    if (qcHintEl) qcHintEl.textContent = '⌘+Shift+Space opens Fast Save from anywhere';
   }
 
   const savedSettings = await window.api.loadSettings();
@@ -5914,11 +7075,10 @@ window.addEventListener('drop', async (e) => {
   try { settings.launchAtStartup = await window.api.getStartup(); } catch {}
   applySettings();
 
-  const hadSaved = await loadState();
-  maybeShowWhatsNew(hadSaved);
-  applyActiveView();
-
-  // Re-enter handy (peek) dock if it was on last time — start collapsed.
+  // Re-enter handy (peek) dock if it was on last time — start collapsed. Do
+  // this BEFORE the potentially-slow loadState() so the collapse (which also
+  // reveals the window when it booted hidden) is never gated behind notes
+  // loading; a cold-boot load stall used to leave a dead full-size window.
   if (settings.handyMode) {
     appEl.classList.add('handy-mode');
     appEl.classList.remove('handy-open');
@@ -5926,6 +7086,10 @@ window.addEventListener('drop', async (e) => {
     handyBtn.title = 'Exit handy mode (Ctrl+Shift+D)';
     window.api.handyEnter(settings.handyPosition);
   }
+
+  const hadSaved = await loadState();
+  maybeShowWhatsNew(hadSaved);
+  applyActiveView();
 
   const onTop = await window.api.getAlwaysOnTop();
   pinBtn.classList.toggle('active', onTop);
@@ -5945,11 +7109,24 @@ window.addEventListener('drop', async (e) => {
     if (fsActive()) renderFsMessages();
     scheduleSave();
   });
+  // Push the saved quick-capture accelerator into main before enabling, so the
+  // shortcut registers on the user's chosen combo (not just the built-in default).
+  try { await window.api.setQuickCaptureShortcut(settings.quickCaptureShortcut); } catch {}
   if (settings.quickCaptureEnabled) {
     try {
       settings.quickCaptureEnabled = !!(await window.api.setQuickCapture(true));
     } catch { settings.quickCaptureEnabled = false; }
   }
+
+  // Register the global show/hide-handy shortcut (falls back to the local
+  // Ctrl+Shift+D handler if this fails, e.g. the combo is already taken).
+  try {
+    handyGlobalOK = !!(await window.api.setHandyShortcut(settings.handyShortcut));
+  } catch { handyGlobalOK = false; }
+
+  // Discover (shared prompt gallery) — connect to Supabase in the background.
+  dcInit().then(() => { if (discoverActive()) dcRender(); });
+  renderTabs(); // so the Discover rail entry shows if configured
 
   // close overlays with Escape (priority: lightbox > ctx menu > find bar > dialogs > overlays)
   document.addEventListener('keydown', (e) => {

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta http-equiv="Content-Security-Policy"
-        content="default-src 'self'; img-src 'self' ppimg:; style-src 'self' 'unsafe-inline'; script-src 'self';" />
+        content="default-src 'self'; img-src 'self' ppimg: blob: https://*.supabase.co; media-src 'self' blob: https://*.supabase.co; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' https://*.supabase.co wss://*.supabase.co;" />
   <title>PromptPad</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
@@ -87,6 +87,13 @@
             <line x1="4" y1="17" x2="14" y2="17" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
           </svg>
           <span>templates</span>
+        </button>
+        <button id="discoverBtn" class="templates-btn discover-btn hidden" title="Discover — shared prompt gallery">
+          <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+            <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.8"/>
+            <path d="M15.5 8.5l-2 5-5 2 2-5 5-2z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+          </svg>
+          <span>discover</span>
         </button>
         <div class="tab-list" id="tabList"></div>
       </nav>
@@ -275,6 +282,22 @@
             </div>
           </div>
         </div>
+        <!-- Discover: a shared, server-backed prompt gallery (Supabase). Its
+             screens (sign-in, browse, upload, admin) are rendered by JS. -->
+        <div id="discoverView" class="fastsave-view discover-view hidden">
+          <div class="fs-header">
+            <span class="fs-header-title">Discover</span>
+            <div class="fs-header-actions" id="discoverNav"></div>
+          </div>
+          <div id="discoverHint" class="dc-hint hidden">
+            <div class="dc-hint-text">
+              <span>Don’t need this? You can hide the Discover tab in Settings → Tabs.</span>
+              <span dir="rtl">این تب رو لازم نداری؟ می‌تونی از تنظیمات → Tabs مخفی‌اش کنی.</span>
+            </div>
+            <button id="discoverHintClose" class="dc-hint-close" title="Dismiss">×</button>
+          </div>
+          <div id="discoverBody" class="discover-body"></div>
+        </div>
         <footer class="statusbar">
           <div class="counts">
             <span id="charCount">0 chars</span>
@@ -457,6 +480,15 @@
             <small class="set-hint">"Click away" keeps it open while you're typing; "Mouse leaves" tucks it back the moment your cursor leaves the panel.</small>
           </section>
 
+          <section class="set-group">
+            <h3 class="set-label">Handy mode — show/hide shortcut</h3>
+            <div class="shortcut-row">
+              <input type="text" id="handyShortcutInput" class="text-input shortcut-input" readonly placeholder="Click, then press a key combo" />
+              <button class="seg-btn" id="handyShortcutReset" type="button">Reset</button>
+            </div>
+            <small class="set-hint" id="handyShortcutHint">Global shortcut — toggles the dock even when PromptPad isn't focused. Click the box and press your keys (e.g. Ctrl+Shift+D).</small>
+          </section>
+
           <!-- Tabs -->
           <section class="set-group">
             <div class="set-toggle-row">
@@ -466,6 +498,16 @@
               </div>
               <label class="switch">
                 <input type="checkbox" id="toggleFastSave" />
+                <span class="slider"></span>
+              </label>
+            </div>
+            <div class="set-toggle-row" id="discoverRow">
+              <div class="set-toggle-text">
+                <span>Discover</span>
+                <small>Shared prompt gallery tab (browse &amp; publish prompts)</small>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="toggleDiscover" />
                 <span class="slider"></span>
               </label>
             </div>
@@ -554,6 +596,16 @@
               </div>
               <label class="switch">
                 <input type="checkbox" id="toggleImageDownload" />
+                <span class="slider"></span>
+              </label>
+            </div>
+            <div class="set-toggle-row">
+              <div class="set-toggle-text">
+                <span>Full-size preview images</span>
+                <small>In markdown preview, images fill the window width instead of staying small</small>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="toggleMdImageFullSize" />
                 <span class="slider"></span>
               </label>
             </div>
@@ -690,13 +742,18 @@
             <div class="set-toggle-row">
               <div class="set-toggle-text">
                 <span>Global quick capture</span>
-                <small id="quickCaptureHint">Ctrl+Shift+Space opens Fast Save from anywhere</small>
+                <small id="quickCaptureHint">Opens Fast Save from anywhere, even when PromptPad isn’t focused</small>
               </div>
               <label class="switch">
                 <input type="checkbox" id="toggleQuickCapture" />
                 <span class="slider"></span>
               </label>
             </div>
+            <div class="shortcut-row">
+              <input type="text" id="quickCaptureShortcutInput" class="text-input shortcut-input" readonly placeholder="Click, then press a key combo" />
+              <button class="seg-btn" id="quickCaptureShortcutReset" type="button">Reset</button>
+            </div>
+            <small class="set-hint" id="quickCaptureShortcutHint">Click the box and press your keys. Tip: avoid Ctrl+Shift combos — Windows uses them to switch keyboard layout.</small>
           </section>
 
           <!-- Storage -->
@@ -740,7 +797,7 @@
             <div class="about-box">
               <div class="about-brand">
                 <span class="brand-dot"></span>
-                <span>PromptPad <em id="aboutVersion">v2.4.2</em></span>
+                <span>PromptPad <em id="aboutVersion">v2.5.0</em></span>
               </div>
               <p class="about-desc">A compact notepad for writing AI prompts.</p>
               <div class="about-links">
@@ -944,6 +1001,8 @@
       <div class="ctx-sep hidden" id="ctxImproveSep"></div>
       <div class="ctx-item hidden" id="ctxImproveItem" data-text-action="improve">Improve Prompt</div>
       <div class="ctx-item hidden" id="ctxAiMoreItem" data-text-action="ai-more">AI actions&nbsp;&nbsp;›</div>
+      <div class="ctx-sep hidden" id="ctxShareSep"></div>
+      <div class="ctx-item hidden" id="ctxShareItem" data-text-action="share-discover">Share to Discover</div>
     </div>
 
     <!-- AI actions menu (opens from the editor right-click menu or by
@@ -1080,6 +1139,9 @@
 
   <script src="themes.js"></script>
   <script src="markdown.js"></script>
+  <script src="supabase.js"></script>
+  <script src="lame.js"></script>
+  <script src="discover-config.js"></script>
   <script src="renderer.js"></script>
 </body>
 </html>

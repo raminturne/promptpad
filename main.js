@@ -25,16 +25,19 @@ let handyNormalBounds = null;   // expanded/normal bounds (updated when the user
 let handyPrevAlwaysOnTop = null;
 let handyPrevOpacity = 1;       // window opacity to restore when the panel opens/exits
 let handyAnimTimer = null;
+let handyAccel = null;          // currently-registered global show/hide shortcut
 const HANDY_HANDLE_W = 168;
-const HANDY_HANDLE_H = 8;       // requested; Windows clamps top-level windows to ~39px
+const HANDY_HANDLE_H = 40;      // deterministic, easy hover target (above Windows' ~39px clamp)
 const HANDY_EDGE_MARGIN = 18;
-const HANDY_BOTTOM_GAP = 7;     // lift the line off the taskbar so it floats
+const HANDY_BOTTOM_GAP = 20;    // float the line clearly off the taskbar (no flicker at the edge)
+const HANDY_EXPANDED_GAP = 12;  // float the open panel off the taskbar too, so its bottom edge is grabbable to resize
 const HANDY_COLLAPSED_OPACITY = 0.4; // faint, mostly-transparent line when tucked away
 
-// CommandOrControl resolves to ⌘ on mac and Ctrl elsewhere — a literal
-// 'Control+Shift+Space' would register the physical Control key on mac
-// instead of the idiomatic ⌘+Shift+Space.
-const QUICK_CAPTURE_ACCEL = 'CommandOrControl+Shift+Space';
+// The quick-capture global shortcut is user-configurable (Settings). This holds
+// the currently-registered accelerator; the renderer sets it on startup and when
+// changed. Default lives in the renderer's DEFAULT_SETTINGS.quickCaptureShortcut.
+let quickCaptureAccel = 'Ctrl+Shift+Space';
+let quickCaptureOn = false; // whether the shortcut is currently registered
 
 // Dev/testing: run against an isolated data directory (also isolates the
 // single-instance lock), e.g. electron . --pp-data-dir=C:\tmp\pp-test
@@ -81,6 +84,11 @@ function createWindow(BrowserWindow) {
   const win = (saved && saved.window) || {};
   const savedSettings = (saved && saved.settings) || {};
   closeToTray = !!savedSettings.closeToTray;
+  // If we booted into handy (peek) mode last time, start hidden so the user
+  // never sees a full-size frameless window flash on the taskbar before the
+  // renderer collapses it to the sliver — the renderer's early handy-enter
+  // reveals it as the collapsed dock (see the handy-enter handler).
+  const bootHandy = !!savedSettings.handyMode;
 
   mainWindow = new BrowserWindow({
     width: win.width || 500,
@@ -89,6 +97,7 @@ function createWindow(BrowserWindow) {
     minHeight: 300,
     x: win.x,
     y: win.y,
+    show: !bootHandy,
     frame: false,
     transparent: false,
     backgroundColor: '#1B211A',
@@ -103,6 +112,14 @@ function createWindow(BrowserWindow) {
       nodeIntegration: false
     }
   });
+
+  // Safety net: never leave the window permanently invisible if the renderer's
+  // handy-enter never arrives (e.g. a cold-boot load failure). Show it anyway.
+  if (bootHandy) {
+    setTimeout(() => {
+      if (mainWindow && !mainWindow.isVisible()) mainWindow.show();
+    }, 4000);
+  }
 
   if (mainWindow.isAlwaysOnTop()) {
     mainWindow.setAlwaysOnTop(true, 'floating');
@@ -352,8 +369,9 @@ if (!app.requestSingleInstanceLock()) {
     if (position === 'left') x = wa.x + HANDY_EDGE_MARGIN;
     else if (position === 'right') x = wa.x + wa.width - W - HANDY_EDGE_MARGIN;
     else x = wa.x + Math.round((wa.width - W) / 2);
-    // collapsed line floats a little above the taskbar; the panel sits flush
-    const gap = collapsed ? HANDY_BOTTOM_GAP : 0;
+    // Both the collapsed line and the open panel float above the taskbar — the
+    // panel's gap keeps its bottom edge grabbable for resizing (and off the taskbar).
+    const gap = collapsed ? HANDY_BOTTOM_GAP : HANDY_EXPANDED_GAP;
     const y = wa.y + wa.height - H - gap;
     return { x, y, width: W, height: H };
   }
@@ -393,7 +411,16 @@ if (!app.requestSingleInstanceLock()) {
       mainWindow.setAlwaysOnTop(true, 'floating');
     }
     handyExpanded = false;
-    animateHandyTo(handyTargetBounds(true, position), 220, null, HANDY_COLLAPSED_OPACITY);
+    // Snap straight to the collapsed sliver on the very first enter (startup),
+    // then reveal — so a window created hidden appears already docked, with no
+    // full-size flash. Later toggles (window already visible) animate normally.
+    if (!mainWindow.isVisible()) {
+      mainWindow.setBounds(handyTargetBounds(true, position));
+      mainWindow.setOpacity(HANDY_COLLAPSED_OPACITY);
+      mainWindow.showInactive();
+    } else {
+      animateHandyTo(handyTargetBounds(true, position), 220, null, HANDY_COLLAPSED_OPACITY);
+    }
     return true;
   });
 
@@ -1316,10 +1343,42 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   ipcMain.handle('set-quick-capture', (_e, enabled) => {
-    try { globalShortcut.unregister(QUICK_CAPTURE_ACCEL); } catch {}
+    try { globalShortcut.unregister(quickCaptureAccel); } catch {}
+    quickCaptureOn = !!enabled;
     if (!enabled) return false;
     try {
-      return globalShortcut.register(QUICK_CAPTURE_ACCEL, triggerQuickCapture);
+      return globalShortcut.register(quickCaptureAccel, triggerQuickCapture);
+    } catch {
+      return false;
+    }
+  });
+
+  // Change the quick-capture accelerator; re-registers on the fly if it's on.
+  // Returns whether it's active on the new combo (false if the combo is taken).
+  ipcMain.handle('set-quick-capture-accel', (_e, accel) => {
+    try { globalShortcut.unregister(quickCaptureAccel); } catch {}
+    if (accel) quickCaptureAccel = accel;
+    if (!quickCaptureOn) return false;
+    try {
+      return globalShortcut.register(quickCaptureAccel, triggerQuickCapture);
+    } catch {
+      return false;
+    }
+  });
+
+  // Global (system-wide) show/hide for the handy dock. The renderer owns the
+  // handy state, so the shortcut just forwards a toggle to it. Returns whether
+  // registration succeeded so the settings UI can warn about a taken combo.
+  ipcMain.handle('set-handy-shortcut', (_e, accel) => {
+    if (handyAccel) { try { globalShortcut.unregister(handyAccel); } catch {} }
+    handyAccel = null;
+    if (!accel) return false;
+    try {
+      const ok = globalShortcut.register(accel, () => {
+        if (mainWindow) mainWindow.webContents.send('toggle-handy');
+      });
+      if (ok) handyAccel = accel;
+      return ok;
     } catch {
       return false;
     }

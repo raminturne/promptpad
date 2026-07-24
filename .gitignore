@@ -18,6 +18,9 @@ skills-lock.json
 android/.gradle/
 android/build/
 android/app/build/
+
+# Discover category source images (already copied into src/category-images/)
+/*-prompt.jpg
 android/local.properties
 android/.kotlin/
 

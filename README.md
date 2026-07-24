@@ -2,7 +2,7 @@
 
 A compact, always-on-top desktop notepad for writing and organizing AI prompts. Built with Electron.
 
-Minimal, fast, and right next to your work — with tabs, 14 themes, live placeholder fill, templates, find & replace, a Telegram-style Fast Save, a free built-in AI chat, one-click AI actions, speech-to-text, a handy edge-dock, inline images, todo checklists, and a global quick-capture hotkey.
+Minimal, fast, and right next to your work — with tabs, 14 themes, live placeholder fill, templates, find & replace, a Telegram-style Fast Save, a free built-in AI chat, one-click AI actions, speech-to-text, a handy edge-dock, inline images, todo checklists, a **Discover** gallery to share & reuse prompts, and a global quick-capture hotkey.
 
 ## 📸 Screenshots
 
@@ -19,6 +19,10 @@ Shown in the **Mono** theme — 14 themes total (7 dark + 7 light) are available
 | AI actions — Improve, Translate, Summarize, Fix grammar, change tone | Settings — theme picker, tab size, handy dock & more |
 |:---:|:---:|
 | ![AI actions](screenshots/05-ai-actions.png) | ![Settings](screenshots/06-settings.png) |
+
+| Discover — a shared prompt gallery: browse by category, publish with an image or music, ❤ like, and reuse any prompt in one click |
+|:---:|
+| ![Discover](screenshots/07-discover.jpg) |
 
 ## ✨ Features
 
@@ -40,10 +44,11 @@ Shown in the **Mono** theme — 14 themes total (7 dark + 7 light) are available
 - **AI Chat** — a free, no-signup chat pinned in the sidebar next to Fast Save, for quick questions without leaving the app. One continuous conversation, cleared with a click; auto-trims after 200 messages so it never bloats.
 - **Improve Prompt & AI actions** — rewrites your draft into a clearer, more effective prompt with one click (or right-click → Improve, or on just a selected line). Right-click the Improve button — or the editor's **AI actions ▸** menu — for more: **Translate** (Persian ⇄ English), **Summarize**, **Fix grammar**, and tone presets (Professional / Casual / Concise). Works on a whole tab, a single selected line, or an individual code block in Markdown preview.
 - **Speech to text** — the mic button records your voice and inserts the transcribed text at the caret (there's a mic in the AI Chat composer too); Persian and English are both supported (auto-detected). Free (rate-limited), via Hugging Face's Whisper model — needs a free token in Settings.
-- **Handy dock** — collapse the whole window to a thin line at the bottom edge; hover it and the notepad slides open, then tucks away when you leave (or click away). Keeps your notes one glance away without getting in the way. Dock left / center / right in Settings, or toggle with `Ctrl+Shift+D`.
+- **Handy dock** — collapse the whole window to a thin line at the bottom edge; hover it and the notepad slides open, then tucks away when you leave (or click away). Keeps your notes one glance away without getting in the way. Dock left / center / right in Settings, or toggle with a customizable global shortcut (default `Ctrl+Shift+D`).
 - **Focus mode** — hide every bit of chrome for distraction-free writing (`Ctrl+Shift+F`, `Esc` to exit).
 - **Command palette** — `Ctrl+P` to fuzzy-jump between tabs, Fast Save, and AI Chat, or run common actions from the keyboard.
-- **Quick capture** — press `Ctrl+Shift+Space` anywhere (even when the window is hidden) to pop a floating box; type or paste and hit Enter to drop it straight into Fast Save. Toggle in Settings.
+- **Discover** — a shared, community prompt gallery (opens from the **discover** button under Templates). Sign in with email + password, then browse prompts by category (Website, Image, Music, Video, Software, Game…), search, and **❤ like** the good ones. Hit **Use** to drop any prompt into a new tab, or **Copy** it. **Publish** your own with a title, category, and an optional image (drag & drop, auto-compressed) — **Music** prompts can carry an audio clip that plays inline. A built-in content filter (English + Persian) keeps posts clean, right-click any selected text to **Share to Discover**, and an admin panel handles moderation, categories & storage. Don't need it? Hide it in Settings → Tabs. *(Backed by your own free Supabase project — see [`discover-setup/`](discover-setup/).)*
+- **Quick capture** — press `Ctrl+Shift+Space` anywhere (even when the window is hidden) to pop a floating box; type or paste and hit Enter to drop it straight into Fast Save. The shortcut is customizable in Settings.
 - **Images** — paste (`Ctrl+V`), the image button, or drag & drop a file into a note. Thumbnails render inline; **drag a corner to resize**, **right-click to save a copy**, click to zoom. Both resize and right-click-save are toggleable in Settings → Images.
 - **Todo checklists** — the checkbox button or type `- [ ] `; select several lines to turn them all into todos at once; click a checkbox to toggle done. Renders in the editor and the markdown preview.
 - **Formatting toolbar** — `Ctrl+B` bold (marks stay hidden, just the bold text shows), `Ctrl+K` (or the link button) to insert a hyperlink, an **emoji picker**, a **justify** toggle, a **clean-up** button that tidies extra spaces and blank lines, and a **paste** button. Every button can be shown or hidden from Settings → Toolbar buttons, **drag-and-drop to reorder**, or drag one onto the overflow arrow to tuck it away (Windows-taskbar style) — drag it back out any time. Links open in your browser from the markdown preview.

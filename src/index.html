@@ -256,7 +256,7 @@
             </div>
           </div>
         </div>
-        <!-- AI Chat: free-form chat with a free AI backend (Pollinations text API) -->
+        <!-- AI Chat: free-form chat via OpenRouter or OpenAI (user's own key) -->
         <div id="aiChatView" class="fastsave-view hidden">
           <div class="fs-header">
             <span class="fs-header-title">AI Chat</span>
@@ -698,18 +698,35 @@
               <button type="button" class="lang-toggle" title="فارسی / English"><span class="lt-to-fa">فارسی</span><span class="lt-to-en">English</span></button>
             </div>
             <p class="set-hint help-en">Powers AI Chat, Improve, and the AI actions (translate, summarize, fix grammar…).
-              Each person uses their own free key, so everyone gets their own limits.</p>
-            <p class="set-hint help-fa" dir="rtl">پشتِ چت هوش مصنوعی، Improve و اکشن‌های AI (ترجمه، خلاصه‌سازی، اصلاح گرامر…) همینه.
-              هر کاربر با کلیدِ رایگانِ خودش کار می‌کنه، پس لیمیتِ هرکس برای خودشه.</p>
-            <input type="password" id="aiApiKeyInput" class="text-input" placeholder="OpenRouter API key (sk-or-v1-…)" autocomplete="off" spellcheck="false" />
-            <p class="backup-note help-en">Free — create a key at
-              <a href="#" class="about-link" data-url="https://openrouter.ai/keys">openrouter.ai/keys</a>
-              (free account, no card required), then paste it here. Uses OpenRouter's free models. Stored
-              locally, same as your other preferences.</p>
-            <p class="backup-note help-fa" dir="rtl">رایگان — یه کلید بساز از
-              <a href="#" class="about-link" data-url="https://openrouter.ai/keys">openrouter.ai/keys</a>
-              (حسابِ رایگان، بدون کارت بانکی)، بعد همین‌جا بذارش. از مدل‌های رایگانِ OpenRouter استفاده می‌کنه.
-              فقط روی همین دستگاه ذخیره می‌شه.</p>
+              Pick a provider and paste your own API key — keys stay on this device.</p>
+            <p class="set-hint help-fa" dir="rtl">این تنظیمات برای چت هوش مصنوعی، Improve و اکشن‌های AI (ترجمه، خلاصه‌سازی، اصلاح گرامر و…) استفاده می‌شه.
+              یه سرویس انتخاب کن و کلید API خودتو وارد کن — کلید فقط روی همین دستگاه ذخیره می‌شه.</p>
+            <div class="seg" id="aiProviderSeg" style="margin-bottom: 10px;">
+              <button type="button" class="seg-btn active" data-provider="openrouter">OpenRouter</button>
+              <button type="button" class="seg-btn" data-provider="openai">OpenAI</button>
+            </div>
+            <div id="aiOpenrouterFields">
+              <input type="password" id="aiApiKeyInput" class="text-input" placeholder="OpenRouter API key (sk-or-v1-…)" autocomplete="off" spellcheck="false" />
+              <p class="backup-note help-en">Free — create a key at
+                <a href="#" class="about-link" data-url="https://openrouter.ai/keys">openrouter.ai/keys</a>
+                (free account, no card required), then paste it here. Uses OpenRouter's free models. Stored
+                locally, same as your other preferences.</p>
+              <p class="backup-note help-fa" dir="rtl">رایگان — یه کلید بساز از
+                <a href="#" class="about-link" data-url="https://openrouter.ai/keys">openrouter.ai/keys</a>
+                (حسابِ رایگان، بدون کارت بانکی)، بعد همین‌جا بذارش. از مدل‌های رایگانِ OpenRouter استفاده می‌کنه.
+                فقط روی همین دستگاه ذخیره می‌شه.</p>
+            </div>
+            <div id="aiOpenaiFields" class="hidden">
+              <input type="password" id="aiOpenaiKeyInput" class="text-input" placeholder="OpenAI API key (sk-…)" autocomplete="off" spellcheck="false" />
+              <p class="backup-note help-en">Paid — create a key at
+                <a href="#" class="about-link" data-url="https://platform.openai.com/api-keys">platform.openai.com/api-keys</a>,
+                then paste it here. Uses <code>gpt-4o-mini</code>. Billing depends on your OpenAI account.
+                Stored locally, same as your other preferences.</p>
+              <p class="backup-note help-fa" dir="rtl">پولی — یه کلید بساز از
+                <a href="#" class="about-link" data-url="https://platform.openai.com/api-keys">platform.openai.com/api-keys</a>،
+                بعد همین‌جا بذارش. از مدل <code>gpt-4o-mini</code> استفاده می‌کنه. هزینه بسته به حساب OpenAI ته.
+                فقط روی همین دستگاه ذخیره می‌شه.</p>
+            </div>
           </section>
 
           <!-- Speech to text -->
@@ -831,7 +848,7 @@
             <div class="about-box">
               <div class="about-brand">
                 <span class="brand-dot"></span>
-                <span>PromptPad <em id="aboutVersion">v2.6.0</em></span>
+                <span>PromptPad <em id="aboutVersion">v2.6.1</em></span>
               </div>
               <p class="about-desc">A compact notepad for writing AI prompts.</p>
               <div class="about-links">

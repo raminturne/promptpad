@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('api', {
   switchProfile: (id) => ipcRenderer.invoke('switch-profile', id),
   renameProfile: (id, name) => ipcRenderer.invoke('rename-profile', id, name),
   deleteProfile: (id) => ipcRenderer.invoke('delete-profile', id),
+  copyIntoProfile: (payload) => ipcRenderer.invoke('copy-into-profile', payload),
   minimize: () => ipcRenderer.send('window-minimize'),
   close: () => ipcRenderer.send('window-close'),
   toggleMaximize: () => ipcRenderer.invoke('window-toggle-maximize'),

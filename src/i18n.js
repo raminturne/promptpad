@@ -31,6 +31,12 @@
       'خاموش کردن این گزینه فقط سوییچر را پنهان می‌کند — پروفایل‌ها و تب‌هایشان حفظ می‌شوند.',
     'Switch profile': 'تعویض پروفایل',
     'Add profile': 'افزودن پروفایل',
+    // ---- move / copy tabs & groups between profiles ----
+    'Move to profile': 'انتقال به پروفایل',
+    'Copy to profile': 'کپی به پروفایل',
+    'Moved to': 'منتقل شد به',
+    'Copied to': 'کپی شد به',
+    "Couldn't move those to that profile.": 'انتقال به آن پروفایل انجام نشد.',
     'New profile': 'پروفایل جدید',
     'Profile name': 'نام پروفایل',
     'Rename profile': 'تغییر نام پروفایل',
@@ -78,6 +84,11 @@
     'Toggle todo on this line': 'تبدیل این خط به آیتم کار',
     'Insert link (Ctrl+K)': 'درج لینک (Ctrl+K)',
     'Align text': 'تراز کردن متن',
+    'Color': 'رنگ',
+    'Group': 'گروه',
+    'Direction': 'جهت',
+    'Left to right': 'چپ به راست',
+    'Right to left': 'راست به چپ',
     'Justify text': 'هم‌تراز کردن متن',
     'Clean up spacing': 'مرتب کردن فاصله‌ها',
     'Improve this prompt': 'بهبود این پرامپت',
@@ -134,9 +145,6 @@
     'Also: Ctrl + scroll, Ctrl+= / Ctrl+- / Ctrl+0': 'همچنین: Ctrl + اسکرول، Ctrl+= / Ctrl+- / Ctrl+0',
     'Smaller': 'کوچک‌تر',
     'Bigger': 'بزرگ‌تر',
-    'Text alignment': 'تراز متن',
-    "Auto follows each line's own direction. Also on the Align button in the toolbar.":
-      'خودکار از جهت خودِ هر خط پیروی می‌کند. از دکمه «تراز» در نوار ابزار هم در دسترس است.',
     'Tab size': 'اندازه تب',
     'Small': 'کوچک',
     'Medium': 'متوسط',
@@ -369,10 +377,14 @@
   // Card titles and prompt bodies in Discover / Prompt Lab are user-written too
   // — a prompt titled "Copy" must not become "کپی".
   // Profile names are user content: a profile called "Settings" or "new" would
-  // otherwise get swapped for its Persian translation.
+  // otherwise get swapped for its Persian translation. That covers the chip,
+  // the switcher rows, the move/copy pickers (.ctx-profile-list — those hold
+  // nothing but names) and the toast's name span, whose message half sits in a
+  // sibling and is translated normally.
   const SKIP_SELECTORS = '#editor, #mdPreview, #tabList, #fsMessages, #aiMessages, ' +
     '.md-block-edit, .dc-card-title, .dc-card-prompt, .dc-mod-title, ' +
-    '#profileChipName, .profile-menu-name, #profileDeleteText';
+    '#profileChipName, .profile-menu-name, #profileDeleteText, ' +
+    '.ctx-profile-list, .toast-name';
 
   const originals = new WeakMap();   // node/attr key -> original English
   let applying = false;

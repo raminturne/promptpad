@@ -1,6 +1,6 @@
 // ---------- State ----------
 let state = {
-  tabs: [],      // { id, name, custom, content, dir, pinned, color, groupId, snapshots }
+  tabs: [],      // { id, name, custom, content, dir, align, md, pinned, color, groupId, snapshots, files }
   activeId: null,
   seq: 1,
   templates: [], // { id, name, content }
@@ -96,9 +96,9 @@ const DEFAULT_SETTINGS = {
   imageResizable: true,
   imageDownloadEnabled: true,
   mdImageFullSize: false, // markdown preview: show images at full size (fit window) instead of the small thumbnail cap
-  // 'auto' keeps the old per-direction behaviour (RTL lines right, LTR left);
-  // the rest force one alignment for every line. Migrated from the old boolean
-  // `editorJustify` at boot.
+  // Legacy. Alignment is per-tab now (t.align); this is kept only as the source
+  // migrateTabAlign() in main.js reads once at boot. The renderer never writes
+  // it any more — see the Text alignment section.
   editorAlign: 'auto', // 'auto' | 'left' | 'center' | 'right' | 'justify'
   fastSaveName: 'Fast Save',
   // which status-bar buttons are shown (toggle in Settings → Toolbar)
@@ -174,7 +174,6 @@ const settingsOverlay = document.getElementById('settingsOverlay');
 const settingsClose = document.getElementById('settingsClose');
 const themeRow = document.getElementById('themeRow');
 const tabSizeSeg = document.getElementById('tabSizeSeg');
-const editorAlignSeg = document.getElementById('editorAlignSeg');
 const handyPosSeg = document.getElementById('handyPosSeg');
 const handyCloseSeg = document.getElementById('handyCloseSeg');
 const handyShortcutInput = document.getElementById('handyShortcutInput');
@@ -211,6 +210,13 @@ const ctxPinItem = ctxMenuEl.querySelector('[data-action="pin"]');
 const ctxPinGroup = document.getElementById('ctxPinGroup');
 const ctxColorRowEl = ctxMenuEl.querySelector('.ctx-color-row');
 const ctxGroupListEl = document.getElementById('ctxGroupList');
+const ctxDirListEl = document.getElementById('ctxDirList');
+const ctxMoveListEl = document.getElementById('ctxMoveList');
+const ctxCopyListEl = document.getElementById('ctxCopyList');
+// toast
+const toastEl = document.getElementById('toast');
+const toastMsgEl = document.getElementById('toastMsg');
+const toastNameEl = document.getElementById('toastName');
 // group name dialog
 const groupNameDialog = document.getElementById('groupNameDialog');
 const groupNameInput = document.getElementById('groupNameInput');
@@ -407,8 +413,12 @@ const tabMultiMenu = document.getElementById('tabMultiMenu');
 const tabMultiHead = document.getElementById('tabMultiHead');
 const multiColorRow = document.getElementById('multiColorRow');
 const multiGroupList = document.getElementById('multiGroupList');
+const multiMoveList = document.getElementById('multiMoveList');
+const multiCopyList = document.getElementById('multiCopyList');
 const groupContextMenu = document.getElementById('groupContextMenu');
 const groupColorRow = document.getElementById('groupColorRow');
+const groupMoveList = document.getElementById('groupMoveList');
+const groupCopyList = document.getElementById('groupCopyList');
 const multiRenameDialog = document.getElementById('multiRenameDialog');
 const multiRenameInput = document.getElementById('multiRenameInput');
 const multiRenameCancel = document.getElementById('multiRenameCancel');
@@ -804,6 +814,7 @@ function updateLineDirs() {
   cleanLineBreaks();
   const t = activeTab();
   const forced = t && (t.dir === 'rtl' || t.dir === 'ltr') ? t.dir : null;
+  const align = editorAlign(); // resolved once — this runs on every keystroke
   const activeLine = currentLine();
   let changed = false;
   editorLines().forEach((d) => {
@@ -812,7 +823,7 @@ function updateLineDirs() {
     if (d.getAttribute('dir') !== want) {
       d.setAttribute('dir', want);
       d.style.direction = want;
-      d.style.textAlign = lineAlignFor(want);
+      d.style.textAlign = lineAlignFor(want, align);
       d.style.textAlignLast = '';
       changed = true;
     }
@@ -1434,6 +1445,36 @@ function buildCtxGroupList(tab) {
   mk('+ New…', false, () => openGroupDialog(tab.id));
 }
 
+// The Ctrl+Shift gesture is a one-way setter (and idempotent, like Windows), so
+// without this row a tab forced to rtl/ltr could never go back to auto-detection.
+function setTabDir(tabId, dir) {
+  const t = state.tabs.find((x) => x.id === tabId);
+  if (!t) return;
+  t.dir = (dir === 'rtl' || dir === 'ltr') ? dir : 'auto';
+  if (t.id === state.activeId) {
+    applyEditorDir();
+    if (mdOn()) renderMdPreview();
+  }
+  scheduleSave();
+}
+
+// Direction picker inside the tab context menu
+function buildCtxDirList(tab) {
+  ctxDirListEl.innerHTML = '';
+  const cur = (tab.dir === 'rtl' || tab.dir === 'ltr') ? tab.dir : 'auto';
+  [['Auto', 'auto'], ['Left to right', 'ltr'], ['Right to left', 'rtl']].forEach(([label, dir]) => {
+    const b = document.createElement('button');
+    b.className = 'ctx-group-item' + (cur === dir ? ' active' : '');
+    b.textContent = label;
+    b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      hideCtxMenu();
+      setTabDir(tab.id, dir);
+    });
+    ctxDirListEl.appendChild(b);
+  });
+}
+
 function openGroupDialog(tabId) {
   groupNameDialog.dataset.tabId = tabId;
   groupNameDialog.dataset.multi = '';
@@ -1780,6 +1821,7 @@ function closeAllProfileScopedUI() {
   closeLightbox(); closeGallery(); closeFilesPanel(); closeLinkDialog();
   closeSaveTemplateDialog(); closeGroupDialog(); closeHistory(); closeTemplates();
   closeToolbarOverflow(); closeFind(); closeFsSearch();
+  hideToast(); // names the outgoing profile — must not linger into the new one
   if (multiRenameDialog) multiRenameDialog.classList.add('hidden');
 }
 
@@ -2763,6 +2805,7 @@ function switchTab(id) {
   renderTabs();
   updateCounts();
   updatePlaceholderPanel();
+  applyEditorAlign(); // alignment is per-note too — repaint the button and preview class
   applyMdView(); // markdown is per-note — honour this tab's own setting
   if (mdOn()) renderMdPreview();
   else {
@@ -2775,7 +2818,7 @@ function switchTab(id) {
 function addTab(focus = true) {
   commitMdBlockEdit();
   syncEditorToState();
-  const tab = { id: uid(), name: '', custom: false, content: '', dir: 'auto', color: null, md: false };
+  const tab = { id: uid(), name: '', custom: false, content: '', dir: 'auto', align: 'auto', color: null, md: false };
   state.tabs.push(tab);
   state.activeId = tab.id;
   showEditorView();
@@ -2783,6 +2826,7 @@ function addTab(focus = true) {
   renderTabs();
   updateCounts();
   updatePlaceholderPanel();
+  applyEditorAlign();
   applyMdView();
   if (focus) editorEl.focus();
   scheduleSave();
@@ -2792,7 +2836,7 @@ function addTab(focus = true) {
 function addTabWithContent(name, content) {
   commitMdBlockEdit();
   syncEditorToState();
-  const tab = { id: uid(), name: (name || '').slice(0, 60), custom: !!name, content: content || '', dir: 'auto', color: null, md: false };
+  const tab = { id: uid(), name: (name || '').slice(0, 60), custom: !!name, content: content || '', dir: 'auto', align: 'auto', color: null, md: false };
   state.tabs.push(tab);
   state.activeId = tab.id;
   showEditorView();
@@ -2800,6 +2844,7 @@ function addTabWithContent(name, content) {
   renderTabs();
   updateCounts();
   updatePlaceholderPanel();
+  applyEditorAlign();
   applyMdView();
   editorEl.focus();
   scheduleSave();
@@ -2818,6 +2863,7 @@ function closeTab(id) {
     applyMdView();
     if (mdOn()) renderMdPreview();
   }
+  applyEditorAlign();
   renderTabs();
   updateCounts();
   updatePlaceholderPanel();
@@ -2909,8 +2955,8 @@ function duplicateTab(id) {
   const src = state.tabs.find((t) => t.id === id);
   if (!src) return;
   const tab = {
-    id: uid(), name: src.name, custom: src.custom,
-    content: src.content, dir: src.dir, color: src.color || null, md: !!src.md
+    id: uid(), name: src.name, custom: src.custom, content: src.content,
+    dir: src.dir, align: src.align || 'auto', color: src.color || null, md: !!src.md
   };
   const idx = state.tabs.indexOf(src);
   state.tabs.splice(idx + 1, 0, tab);
@@ -2920,6 +2966,7 @@ function duplicateTab(id) {
   renderTabs();
   updateCounts();
   updatePlaceholderPanel();
+  applyEditorAlign();
   applyMdView();
   if (mdOn()) renderMdPreview();
   scheduleSave();
@@ -2965,18 +3012,10 @@ function showCtxMenu(e, tabId) {
   });
 
   buildCtxGroupList(tab);
+  buildCtxDirList(tab);
+  wireProfileSections(ctxMenuEl, ctxMoveListEl, ctxCopyListEl, hideCtxMenu, () => [tabId]);
 
-  ctxMenuEl.style.left = e.clientX + 'px';
-  ctxMenuEl.style.top = e.clientY + 'px';
-  ctxMenuEl.classList.remove('hidden');
-
-  requestAnimationFrame(() => {
-    const rect = ctxMenuEl.getBoundingClientRect();
-    const vw = document.documentElement.clientWidth;
-    const vh = document.documentElement.clientHeight;
-    if (rect.right > vw - 4) ctxMenuEl.style.left = Math.max(4, vw - rect.width - 4) + 'px';
-    if (rect.bottom > vh - 4) ctxMenuEl.style.top = Math.max(4, vh - rect.height - 4) + 'px';
-  });
+  placeMenuAt(ctxMenuEl, e);
 }
 
 function hideCtxMenu() {
@@ -3066,12 +3105,43 @@ function placeMenuAt(menuEl, e) {
   menuEl.style.top = e.clientY + 'px';
   menuEl.classList.remove('hidden');
   requestAnimationFrame(() => {
-    const rect = menuEl.getBoundingClientRect();
+    // offsetWidth/Height rather than getBoundingClientRect(): the `pop` opening
+    // animation scales the menu, so a rect measured on this frame is smaller
+    // than the settled box and the clamp would leave a tall menu overhanging.
+    const w = menuEl.offsetWidth;
+    const h = menuEl.offsetHeight;
     const vw = document.documentElement.clientWidth;
     const vh = document.documentElement.clientHeight;
-    if (rect.right > vw - 4) menuEl.style.left = Math.max(4, vw - rect.width - 4) + 'px';
-    if (rect.bottom > vh - 4) menuEl.style.top = Math.max(4, vh - rect.height - 4) + 'px';
+    if (e.clientX + w > vw - 4) menuEl.style.left = Math.max(4, vw - w - 4) + 'px';
+    if (e.clientY + h > vh - 4) menuEl.style.top = Math.max(4, vh - h - 4) + 'px';
   });
+}
+
+// ---------- Toast ----------
+// `msg` must be an English literal so the i18n pass can swap it; `name` is user
+// content (a profile name) and lands in a span excluded from translation.
+let toastTimer = null;
+let toastHideTimer = null;
+
+function showToast(msg, name) {
+  toastMsgEl.textContent = msg;
+  toastNameEl.textContent = name || '';
+  clearTimeout(toastTimer);
+  clearTimeout(toastHideTimer);
+  toastEl.classList.remove('hidden');
+  void toastEl.offsetWidth; // restart the transition when one toast follows another
+  toastEl.classList.add('toast-show');
+  toastTimer = setTimeout(() => {
+    toastEl.classList.remove('toast-show');
+    toastHideTimer = setTimeout(() => toastEl.classList.add('hidden'), 200);
+  }, 2200);
+}
+
+function hideToast() {
+  clearTimeout(toastTimer);
+  clearTimeout(toastHideTimer);
+  toastEl.classList.remove('toast-show');
+  toastEl.classList.add('hidden');
 }
 
 // Build a color swatch row into `container`; onPick(color) fires per swatch.
@@ -3124,6 +3194,10 @@ function showTabMultiMenu(e) {
       scheduleSave();
     },
     () => { hideTabMultiMenu(); openMultiGroupDialog(); });
+  // Selected tabs travel loose: their group (if any) stays behind. Moving a
+  // whole group is what the group header's own menu is for.
+  wireProfileSections(tabMultiMenu, multiMoveList, multiCopyList, hideTabMultiMenu,
+    () => [...selectedTabIds]);
   placeMenuAt(tabMultiMenu, e);
 }
 function hideTabMultiMenu() { tabMultiMenu.classList.add('hidden'); }
@@ -3192,6 +3266,9 @@ function showGroupCtxMenu(e, groupId) {
     renderTabs();
     scheduleSave();
   }, group && group.color);
+  wireProfileSections(groupContextMenu, groupMoveList, groupCopyList, hideGroupCtxMenu,
+    () => orderedTabs().filter((t) => t.groupId === groupId).map((t) => t.id),
+    () => groupId);
   placeMenuAt(groupContextMenu, e);
 }
 
@@ -3215,7 +3292,7 @@ function duplicateGroup(groupId) {
   members.forEach((t) => {
     state.tabs.push({
       id: uid(), name: t.name, custom: t.custom, content: t.content,
-      dir: t.dir, color: t.color || null, groupId: ng.id
+      dir: t.dir, align: t.align || 'auto', color: t.color || null, groupId: ng.id
     });
   });
   renderTabs();
@@ -3257,6 +3334,128 @@ document.addEventListener('click', (e) => {
   if (!tabMultiMenu.classList.contains('hidden') && !tabMultiMenu.contains(e.target)) hideTabMultiMenu();
   if (!groupContextMenu.classList.contains('hidden') && !groupContextMenu.contains(e.target)) hideGroupCtxMenu();
 });
+
+// ---------- Move / copy to another profile ----------
+// Profiles own separate workspaces, so this is the only way to get a note across
+// without going through the clipboard. The target is always a parked profile —
+// main refuses to write the active one, whose workspace the renderer owns live.
+
+// Profiles you can send to: never the current one, and none at all when the
+// profile switcher is turned off in Settings.
+function otherProfiles() {
+  if (settings.profilesEnabled === false) return [];
+  return profiles.filter((p) => p.id !== activeProfileId);
+}
+function profilesTargetable() { return otherProfiles().length > 0; }
+
+// Build a profile picker into `container`; onPick(profileId) per pill.
+function buildProfilePicker(container, onPick) {
+  container.innerHTML = '';
+  otherProfiles().forEach((p) => {
+    const b = document.createElement('button');
+    b.className = 'ctx-group-item';
+    b.textContent = p.name;
+    b.setAttribute('dir', detectDir(p.name));
+    b.addEventListener('click', (e) => { e.stopPropagation(); onPick(p.id); });
+    container.appendChild(b);
+  });
+}
+
+// Show or hide both pickers in one menu, wiring them to the given selection.
+// `getIds`/`getGid` are read at click time so a menu built before the user
+// changed the selection can't send the wrong tabs.
+function wireProfileSections(menuEl, moveEl, copyEl, hide, getIds, getGid) {
+  const show = profilesTargetable();
+  menuEl.querySelectorAll('.ctx-profile-sec').forEach((n) => n.classList.toggle('hidden', !show));
+  if (!show) return;
+  const pick = (mode) => (pid) => {
+    const ids = getIds();
+    const gid = getGid ? getGid() : null;
+    hide();
+    sendToProfile(pid, mode, ids, gid);
+  };
+  buildProfilePicker(moveEl, pick('move'));
+  buildProfilePicker(copyEl, pick('copy'));
+}
+
+// Snapshot a tab for transport, with a fresh id — nothing references a tab id
+// across profiles, so re-issuing on move as well as copy keeps both paths the
+// same. `groupId` is the caller's (already remapped) target group.
+function tabPayload(t, mode, groupId) {
+  return {
+    id: uid(), name: t.name, custom: !!t.custom, content: t.content || '',
+    dir: t.dir || 'auto', align: t.align || 'auto', pinned: !!t.pinned,
+    color: t.color || null, groupId: groupId || null, md: !!t.md,
+    files: Array.isArray(t.files) ? t.files.map((f) => ({ ...f })) : [],
+    snapshots: mode === 'move' && Array.isArray(t.snapshots) ? t.snapshots : []
+  };
+}
+
+async function sendToProfile(targetId, mode, tabIds, groupId) {
+  const target = profiles.find((p) => p.id === targetId);
+  if (!target || target.id === activeProfileId) return;
+
+  commitMdBlockEdit(); // flush an open preview-block editor first…
+  syncEditorToState(); // …because syncEditorToState no-ops in md mode
+
+  let groups = [];
+  let newGid = null;
+  if (groupId) {
+    const g = (state.groups || []).find((x) => x.id === groupId);
+    if (!g) return;
+    newGid = uid();
+    groups = [{
+      id: newGid, name: g.name, collapsed: false,
+      color: g.color || null, pinned: !!g.pinned
+    }];
+  }
+  const srcTabs = orderedTabs().filter((t) => tabIds.includes(t.id));
+  if (!srcTabs.length && !groups.length) return;
+  const tabs = srcTabs.map((t) => tabPayload(t, mode, newGid));
+
+  // Remote write first: if it fails nothing local has changed, and if the app
+  // dies between the two writes the worst case is a duplicate, never a loss.
+  let res = null;
+  try {
+    res = await window.api.copyIntoProfile({ targetId, mode, tabs, groups });
+  } catch (err) {
+    console.error('copy-into-profile failed', err);
+  }
+  if (!res || !res.ok) { showToast("Couldn't move those to that profile.", ''); return; }
+
+  if (mode === 'move') removeMovedLocally(srcTabs, groupId);
+  showToast(mode === 'move' ? 'Moved to' : 'Copied to', target.name);
+}
+
+// Drop the tabs (and the group, if any) that just left for another profile.
+function removeMovedLocally(srcTabs, groupId) {
+  const ids = new Set(srcTabs.map((t) => t.id));
+  const firstIdx = state.tabs.findIndex((t) => ids.has(t.id));
+  srcTabs.forEach((t) => { clearTimeout(t.checkpointTimer); t.checkpointTimer = null; });
+
+  state.tabs = state.tabs.filter((t) => !ids.has(t.id));
+  if (groupId) state.groups = (state.groups || []).filter((g) => g.id !== groupId);
+  selectedTabIds.clear();
+  lastClickedTabId = null;
+
+  if (!state.tabs.some((t) => t.id === state.activeId)) {
+    commitMdBlockEdit(true);
+    const next = state.tabs[Math.min(Math.max(firstIdx, 0), state.tabs.length - 1)] || null;
+    state.activeId = next ? next.id : null;
+    showEditorView();
+    setEditorText(next ? next.content : '');
+    applyEditorAlign();
+    applyMdView();
+    if (mdOn()) renderMdPreview();
+  }
+  renderTabs();
+  updateCounts();
+  updatePlaceholderPanel();
+  // Flush now rather than on the 350ms debounce: the tabs are already on disk
+  // in the target profile, so a crash before the save would leave them in both.
+  clearTimeout(saveTimer);
+  doSave();
+}
 
 // ---------- Templates ----------
 function openTemplates() {
@@ -3347,7 +3546,7 @@ function startTemplateRename(tmpl, nameEl) {
 
 function createFromTemplate(tmpl) {
   syncEditorToState();
-  const tab = { id: uid(), name: tmpl.name, custom: true, content: tmpl.content, dir: 'auto', color: null };
+  const tab = { id: uid(), name: tmpl.name, custom: true, content: tmpl.content, dir: 'auto', align: 'auto', color: null };
   state.tabs.push(tab);
   state.activeId = tab.id;
   showEditorView();
@@ -3355,6 +3554,7 @@ function createFromTemplate(tmpl) {
   renderTabs();
   updateCounts();
   updatePlaceholderPanel();
+  applyEditorAlign();
   editorEl.focus();
   scheduleSave();
 }
@@ -3560,7 +3760,7 @@ async function loadState() {
 
   state.tabs = hadSaved
     ? tabs
-    : [{ id: uid(), name: '', custom: false, content: '', dir: 'auto', color: null }];
+    : [{ id: uid(), name: '', custom: false, content: '', dir: 'auto', align: 'auto', color: null }];
   state.seq = saved.seq || 1;
   state.templates = Array.isArray(saved.templates) ? saved.templates : [];
   state.groups = Array.isArray(saved.groups) ? saved.groups : [];
@@ -3579,6 +3779,7 @@ async function loadState() {
   trimAiMessages();
   const t = activeTab();
   setEditorText(t ? t.content : '');
+  applyEditorAlign();
   renderTabs();
   updateCounts();
   updatePlaceholderPanel();
@@ -4563,6 +4764,9 @@ linkTextInput.addEventListener('keydown', (e) => {
 });
 
 // ---------- Text alignment ----------
+// The mode lives on the tab (t.align), like t.dir and t.md — aligning one note
+// must not re-flow every other one. It used to be a single global setting.
+//
 // Editor lines carry an inline text-align (updateLineDirs rewrites it on every
 // keystroke), so alignment cannot be a CSS class — an inline style always wins.
 // Both paths go through lineAlignFor() so typing can never undo the choice.
@@ -4575,14 +4779,20 @@ const ALIGN_ICON_MID = {
   auto: [4, 20], left: [4, 15], center: [7, 17], right: [9, 20], justify: [4, 20]
 };
 
+// No fallback to the old settings.editorAlign: the boot migration in main.js
+// stamps that value onto every tab once, so a live fallback would only make
+// "this tab was set back to auto" indistinguishable from "never set".
 function editorAlign() {
-  const m = settings.editorAlign;
+  const t = activeTab();
+  const m = t && t.align;
   return EDITOR_ALIGNS.includes(m) ? m : 'auto';
 }
 
-// The text-align a line should carry, given its own detected direction.
-function lineAlignFor(dir) {
-  const m = editorAlign();
+// The text-align a line should carry, given its own detected direction. `mode`
+// is optional so callers looping over every line resolve the tab only once —
+// this runs from updateLineDirs() on every keystroke.
+function lineAlignFor(dir, mode) {
+  const m = mode || editorAlign();
   if (m === 'auto') return dir === 'rtl' ? 'right' : 'left';
   return m;
 }
@@ -4601,16 +4811,17 @@ function applyEditorAlign() {
   }
   EDITOR_ALIGNS.forEach((a) => mdPreviewEl.classList.toggle('align-' + a, a === m));
   editorLines().forEach((d) => {
-    d.style.textAlign = lineAlignFor(d.getAttribute('dir') || 'ltr');
+    d.style.textAlign = lineAlignFor(d.getAttribute('dir') || 'ltr', m);
     d.style.textAlignLast = '';
   });
 }
 
 function setEditorAlign(mode) {
-  settings.editorAlign = EDITOR_ALIGNS.includes(mode) ? mode : 'auto';
+  const t = activeTab();
+  if (!t) return; // Fast Save / AI Chat / Discover / Lab have no note to align
+  t.align = EDITOR_ALIGNS.includes(mode) ? mode : 'auto';
   applyEditorAlign();
-  syncSettingsUI();
-  saveSettingsNow();
+  scheduleSave();
 }
 
 justifyBtn.addEventListener('click', () => {
@@ -5484,7 +5695,9 @@ editorEl.addEventListener('wheel', (e) => {
 
 // ---- Per-tab text direction via Windows Ctrl+Shift gesture ----
 // Ctrl + Right-Shift = RTL, Ctrl + Left-Shift = LTR. We persist the choice
-// on the active tab so it doesn't leak to other tabs.
+// on the active tab so it doesn't leak to other tabs. Both combos are
+// idempotent, like Windows itself — the way back to 'auto' is the Direction
+// row in the tab's context menu (setTabDir).
 let chordUsedOtherKey = false;
 window.addEventListener('keydown', (e) => {
   if (e.ctrlKey && e.code !== 'ShiftLeft' && e.code !== 'ShiftRight' &&
@@ -5498,7 +5711,11 @@ window.addEventListener('keyup', (e) => {
       const t = activeTab();
       if (t) {
         t.dir = e.code === 'ShiftRight' ? 'rtl' : 'ltr';
+        // applyEditorDir() runs unconditionally: the hidden editor is kept in
+        // sync with t.content on every md path, so re-stamping it costs nothing
+        // and leaving preview mode already shows the right direction.
         applyEditorDir();
+        if (mdOn()) renderMdPreview();
         scheduleSave();
       }
     }
@@ -5917,9 +6134,6 @@ function syncSettingsUI() {
   tabSizeSeg.querySelectorAll('.seg-btn').forEach((b) => {
     b.classList.toggle('active', b.dataset.tabsize === (settings.tabSize || 'medium'));
   });
-  editorAlignSeg.querySelectorAll('.seg-btn').forEach((b) => {
-    b.classList.toggle('active', b.dataset.align === editorAlign());
-  });
   handyPosSeg.querySelectorAll('.seg-btn').forEach((b) => {
     b.classList.toggle('active', b.dataset.handypos === (settings.handyPosition || 'center'));
   });
@@ -6049,12 +6263,6 @@ tabSizeSeg.addEventListener('click', (e) => {
   applySettings();
   syncSettingsUI();
   saveSettingsNow();
-});
-
-editorAlignSeg.addEventListener('click', (e) => {
-  const btn = e.target.closest('.seg-btn');
-  if (!btn) return;
-  setEditorAlign(btn.dataset.align);
 });
 
 handyPosSeg.addEventListener('click', (e) => {
@@ -6662,8 +6870,16 @@ function mdOn() {
 function renderMdPreview() {
   const t = activeTab();
   mdPreviewEl.innerHTML = window.renderMarkdown(t ? t.content : '', { ai: aiOn() });
+  // Mirror updateLineDirs()'s `forced` rule: a manual per-tab direction wins over
+  // per-block auto-detection, exactly as it does in the raw editor. The dir on the
+  // container matters too — list bullets and the blockquote bar take their side
+  // from the container, not from the li, so without it a forced-RTL note renders
+  // right-aligned text with left-hand bullets.
+  const forced = t && (t.dir === 'rtl' || t.dir === 'ltr') ? t.dir : null;
+  if (forced) mdPreviewEl.setAttribute('dir', forced);
+  else mdPreviewEl.removeAttribute('dir');
   mdPreviewEl.querySelectorAll('p, h1, h2, h3, h4, li, blockquote').forEach((el) => {
-    el.setAttribute('dir', detectDir(el.textContent));
+    el.setAttribute('dir', forced || detectDir(el.textContent));
   });
 }
 
@@ -7030,31 +7246,26 @@ const CURRENT_VERSION = document.getElementById('aboutVersion').textContent.repl
 const WHATS_NEW =
   "What's new in v" + CURRENT_VERSION + " ✨\n" +
   '\n' +
-  '• Profiles — separate sets of tabs, like Chrome. Click your name in the\n' +
-  '   title bar to switch, add, rename or delete one. Each profile keeps its\n' +
-  '   own tabs, groups, templates, Fast Save and AI Chat; your Prompt Lab and\n' +
-  '   your Discover login are shared by all of them. Switching is instant —\n' +
-  '   no restart. Don\'t want it? Settings → Sidebar → Profiles hides it, and\n' +
-  '   nothing is deleted.\n' +
-  '• Text alignment. The old Justify button is now Align: click it to cycle\n' +
-  '   Auto → Left → Center → Right → Justify, or pick one in Settings. Auto is\n' +
-  '   the old behaviour (each line follows its own direction) and stays the\n' +
-  '   default, so Persian notes are unchanged.\n' +
-  '• A maximize button, next to minimize. The window remembers the size you\n' +
-  '   chose, so restoring puts it back where it was.\n' +
+  '• Move or copy a note to another profile. Right-click a tab — or a group\n' +
+  '   header, or several selected tabs — and pick "Move to profile" or "Copy\n' +
+  '   to profile". Moving a group takes its notes with it. You stay where you\n' +
+  '   are; a small note confirms where it went. Attached files come along, and\n' +
+  '   a copy gets its own, so deleting one profile can never break the other.\n' +
+  '• Text alignment is per note now. Align used to be one setting for the\n' +
+  '   whole app, so centering one prompt centered all of them. Each note keeps\n' +
+  '   its own choice, and the Settings control is gone — it lives on the Align\n' +
+  '   button in the toolbar. Your current alignment is kept on every note.\n' +
+  '• A Direction row in the tab right-click menu: Auto, Left to right, Right\n' +
+  '   to left. Ctrl+Shift only ever turned direction on, with no way back to\n' +
+  '   Auto — now there is one.\n' +
   '\n' +
-  '• Fixed: resized images turned into the text "!img". Dragging an image to\n' +
-  '   resize it stored a width in the note, which the markdown preview didn\'t\n' +
-  '   understand — so the picture was dropped and several images in a row ran\n' +
-  '   into each other. Widths now show correctly in the preview too.\n' +
-  '• Fixed: linking selected text did nothing. The link dialog stole the\n' +
-  '   selection, so your text was left alone and a stray [text](url) landed at\n' +
-  '   the bottom of the note. It now replaces exactly what you selected.\n' +
-  '• Links look like links. Only the text shows — underlined, in the accent\n' +
-  '   colour, and clickable — with the URL hidden. Put the cursor on that line\n' +
-  '   to bring the address back and edit it.\n' +
-  '• Fixed: typing next to an image could make it disappear, and pasting or\n' +
-  '   dropping several images in a row scattered them to the end of the note.\n' +
+  '• Fixed: Ctrl+Shift did nothing in markdown preview. The direction was\n' +
+  '   stored but the preview never redrew, and it ignored the note\'s own\n' +
+  '   direction anyway. It now flips immediately, and list bullets and quote\n' +
+  '   bars move to the correct side with it.\n' +
+  '• Fixed: the tab right-click menu could run off the bottom of a small\n' +
+  '   window, putting "Close tab" out of reach. It now scrolls and always\n' +
+  '   fits on screen.\n' +
   '\n' +
   'You can close this tab — it won\'t come back until the next update.';
 
@@ -7068,7 +7279,7 @@ function maybeShowWhatsNew(hadSaved) {
   if (hadSaved) {
     const tab = {
       id: uid(), name: "What's new ✨", custom: true,
-      content: WHATS_NEW, dir: 'ltr', color: null
+      content: WHATS_NEW, dir: 'ltr', align: 'auto', color: null
     };
     state.tabs.push(tab);
     state.activeId = tab.id;
@@ -7076,6 +7287,7 @@ function maybeShowWhatsNew(hadSaved) {
     renderTabs();
     updateCounts();
     updatePlaceholderPanel();
+    applyEditorAlign();
   }
   scheduleSave();
 }
@@ -7195,6 +7407,7 @@ function createTabFromFile(name, content) {
     custom: true,
     content,
     dir: 'auto',
+    align: 'auto',
     color: null
   };
   state.tabs.push(tab);
@@ -7204,6 +7417,7 @@ function createTabFromFile(name, content) {
   renderTabs();
   updateCounts();
   updatePlaceholderPanel();
+  applyEditorAlign();
   scheduleSave();
 }
 

@@ -92,12 +92,36 @@ function withShared(data, ws) {
   };
 }
 
+// Text alignment moved from the global settings.editorAlign onto each tab
+// (t.align). Stamp the old global once so upgrading users see no visual change.
+//
+// This has to run in main, not the renderer: the renderer only ever sees the
+// active profile's workspace, so a renderer-side migration would leave every
+// parked profile's tabs at 'auto' and silently reset their alignment.
+//
+// The per-tab guard is `align === undefined`, so a tab the user later sets back
+// to 'auto' is never re-stamped — which also makes the whole pass idempotent if
+// the app quits before the flag reaches disk.
+function migrateTabAlign(data) {
+  if (data.alignMigrated) return;
+  const s = data.settings || {};
+  const mode = s.editorAlign || (s.editorJustify ? 'justify' : 'auto');
+  if (mode !== 'auto') {
+    const stamp = (ws) => (ws && Array.isArray(ws.tabs) ? ws.tabs : [])
+      .forEach((t) => { if (t && t.align === undefined) t.align = mode; });
+    stamp(data.notes);
+    Object.keys(data.profileData || {}).forEach((k) => stamp(data.profileData[k]));
+  }
+  data.alignMigrated = true;
+}
+
 // Idempotent: only ever adds keys, and bails out once profiles exist. Nothing
 // is deleted from `notes`, so the migration is lossless and safe to re-run.
 function migrateProfiles(data) {
   if (!data) return data;
   data.shared = data.shared || {};
   data.profileData = data.profileData || {};
+  migrateTabAlign(data);
   if (Array.isArray(data.profiles) && data.profiles.length) {
     if (!Array.isArray(data.shared.promptLab)) data.shared.promptLab = [];
     return data;
@@ -1415,6 +1439,80 @@ if (!app.requestSingleInstanceLock()) {
     if (!safeStored(storedName)) return { ok: false };
     try { fs.unlinkSync(storedPath(storedName)); } catch {}
     return { ok: true };
+  });
+
+  // ---- Move / copy tabs and groups into another profile ----
+  // Registered down here, not next to the other profile handlers, because it
+  // needs safeStored/storedPath/newStoredName from the block above.
+  //
+  // Only a PARKED profile can be written. The active profile's workspace is
+  // data.notes, live-owned by the renderer, so anything written there would be
+  // clobbered by the next debounced save-notes. Ids arrive pre-freshened from
+  // the renderer, which also remaps members' groupId for a group move.
+  //
+  // The tab shape below is a whitelist on purpose: it is the one place that
+  // guarantees session-only junk (undoStack, redoStack, checkpointTimer) can
+  // never reach another profile's workspace on disk.
+  ipcMain.handle('copy-into-profile', (_e, payload) => {
+    const data = ensureData();
+    const targetId = payload && payload.targetId;
+    const p = (data.profiles || []).find((x) => x.id === targetId);
+    if (!p) return { ok: false, reason: 'missing' };
+    if (targetId === data.activeProfileId) return { ok: false, reason: 'active' };
+
+    const inTabs = Array.isArray(payload.tabs) ? payload.tabs : [];
+    const inGroups = Array.isArray(payload.groups) ? payload.groups : [];
+    if (!inTabs.length && !inGroups.length) return { ok: false, reason: 'empty' };
+    const copying = payload.mode === 'copy';
+
+    const ws = data.profileData[targetId] || emptyWorkspace();
+    if (!Array.isArray(ws.tabs)) ws.tabs = [];
+    if (!Array.isArray(ws.groups)) ws.groups = [];
+
+    const tabs = inTabs.map((t) => {
+      const files = (Array.isArray(t.files) ? t.files : []).map((f) => {
+        if (!f || !safeStored(f.storedName)) return null;
+        if (!copying) return f; // move: ownership transfers, the file stays put
+        // Copy: the clone gets its own file on disk. delete-profile unlinks
+        // storedNames with no refcount, so sharing one across two profiles
+        // would make deleting either silently break the other's attachment.
+        try {
+          if (!fs.existsSync(storedPath(f.storedName))) return null;
+          const nn = newStoredName(f.ext);
+          fs.copyFileSync(storedPath(f.storedName), storedPath(nn));
+          return { ...f, storedName: nn };
+        } catch (err) {
+          console.error('copy-into-profile: file copy failed', err);
+          return null; // a missing attachment beats one that dies later
+        }
+      }).filter(Boolean);
+
+      // Snapshots follow a move (same note, new home) but not a copy — the same
+      // call duplicateTab has always made.
+      const snaps = (!copying && Array.isArray(t.snapshots)) ? t.snapshots.slice(0, 15) : [];
+      return {
+        id: t.id, name: t.name || '', custom: !!t.custom, content: t.content || '',
+        dir: t.dir || 'auto', align: t.align || 'auto', pinned: !!t.pinned,
+        color: t.color || null, groupId: t.groupId || null, md: !!t.md,
+        ...(files.length ? { files } : {}),
+        ...(snaps.length ? { snapshots: snaps } : {})
+      };
+    });
+
+    // Forced expanded: a group that arrives collapsed in a profile you aren't
+    // looking at is effectively invisible.
+    const groups = inGroups.map((g) => ({
+      id: g.id, name: g.name || 'Group', collapsed: false,
+      color: g.color || null, pinned: !!g.pinned
+    }));
+
+    ws.tabs.push(...tabs);
+    ws.groups.push(...groups);
+    data.profileData[targetId] = ws;
+    if (!writeData(data)) return { ok: false, reason: 'write' };
+    // Inline images (ppimg:// tokens in content) are deliberately left shared:
+    // nothing ever reclaims IMAGES_DIR, so both profiles can point at one file.
+    return { ok: true, tabs: tabs.length, groups: groups.length, profileName: p.name };
   });
 
   // ---- Storage location (where attached images/files are kept) ----

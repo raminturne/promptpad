@@ -524,17 +524,8 @@
             </div>
           </section>
 
-          <section class="set-group">
-            <h3 class="set-label">Text alignment</h3>
-            <div class="seg seg-wrap" id="editorAlignSeg">
-              <button class="seg-btn" data-align="auto">Auto</button>
-              <button class="seg-btn" data-align="left">Left</button>
-              <button class="seg-btn" data-align="center">Center</button>
-              <button class="seg-btn" data-align="right">Right</button>
-              <button class="seg-btn" data-align="justify">Justify</button>
-            </div>
-            <p class="set-hint">Auto follows each line's own direction. Also on the Align button in the toolbar.</p>
-          </section>
+          <!-- Text alignment used to live here as a global setting. It is per-note
+               now, so it belongs only on the toolbar's Align button. -->
 
           <section class="set-group">
             <div class="set-toggle-row">
@@ -951,7 +942,7 @@
             <div class="about-box">
               <div class="about-brand">
                 <span class="brand-dot"></span>
-                <span>PromptPad <em id="aboutVersion">v2.8.0</em></span>
+                <span>PromptPad <em id="aboutVersion">v2.9.0</em></span>
               </div>
               <p class="about-desc">A compact notepad for writing AI prompts.</p>
               <div class="about-links">
@@ -1008,6 +999,22 @@
         <span class="ctx-color-label">Group</span>
         <div class="ctx-group-list" id="ctxGroupList"></div>
       </div>
+      <div class="ctx-sep"></div>
+      <!-- The Ctrl+Shift gesture only ever sets rtl/ltr; this is the way back. -->
+      <div class="ctx-colors">
+        <span class="ctx-color-label">Direction</span>
+        <div class="ctx-group-list" id="ctxDirList"></div>
+      </div>
+      <!-- Hidden unless a second profile exists (see profilesTargetable). -->
+      <div class="ctx-sep ctx-profile-sec"></div>
+      <div class="ctx-colors ctx-profile-sec">
+        <span class="ctx-color-label">Move to profile</span>
+        <div class="ctx-group-list ctx-profile-list" id="ctxMoveList"></div>
+      </div>
+      <div class="ctx-colors ctx-profile-sec">
+        <span class="ctx-color-label">Copy to profile</span>
+        <div class="ctx-group-list ctx-profile-list" id="ctxCopyList"></div>
+      </div>
       <div id="ctxPinGroup">
         <div class="ctx-sep"></div>
         <div class="ctx-item" data-action="pin">Pin</div>
@@ -1031,6 +1038,15 @@
         <span class="ctx-color-label">Group</span>
         <div class="ctx-group-list" id="multiGroupList"></div>
       </div>
+      <div class="ctx-sep ctx-profile-sec"></div>
+      <div class="ctx-colors ctx-profile-sec">
+        <span class="ctx-color-label">Move to profile</span>
+        <div class="ctx-group-list ctx-profile-list" id="multiMoveList"></div>
+      </div>
+      <div class="ctx-colors ctx-profile-sec">
+        <span class="ctx-color-label">Copy to profile</span>
+        <div class="ctx-group-list ctx-profile-list" id="multiCopyList"></div>
+      </div>
       <div class="ctx-sep"></div>
       <div class="ctx-item ctx-danger" data-multi-action="close">Close selected</div>
     </div>
@@ -1046,6 +1062,16 @@
       <div class="ctx-colors">
         <span class="ctx-color-label">Color</span>
         <div class="ctx-color-row" id="groupColorRow"></div>
+      </div>
+      <!-- Carries the group record plus every member tab. -->
+      <div class="ctx-sep ctx-profile-sec"></div>
+      <div class="ctx-colors ctx-profile-sec">
+        <span class="ctx-color-label">Move to profile</span>
+        <div class="ctx-group-list ctx-profile-list" id="groupMoveList"></div>
+      </div>
+      <div class="ctx-colors ctx-profile-sec">
+        <span class="ctx-color-label">Copy to profile</span>
+        <div class="ctx-group-list ctx-profile-list" id="groupCopyList"></div>
       </div>
       <div class="ctx-sep"></div>
       <div class="ctx-item" data-group-action="pin">Pin group</div>
@@ -1312,6 +1338,14 @@
 
     <!-- Drag & drop hint -->
     <div id="dropHint" class="drop-hint hidden">Drop files to add</div>
+
+    <!-- Transient confirmation (move/copy to profile). Auto-hides, never blocks.
+         Two spans on purpose: the message is an English literal so the i18n pass
+         translates it, while the name is user content and must be left alone. -->
+    <div id="toast" class="toast hidden" role="status" aria-live="polite">
+      <span class="toast-msg" id="toastMsg"></span>
+      <span class="toast-name" id="toastName"></span>
+    </div>
   </div>
 
   <script src="themes.js"></script>

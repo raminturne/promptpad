@@ -1324,6 +1324,12 @@ body {
   min-width: 180px;
   box-shadow: 0 8px 28px rgba(0, 0, 0, .45);
   animation: pop 0.14s cubic-bezier(0.2, 0.8, 0.3, 1);
+  /* The tab menu is taller than a small window (colors, groups, direction and
+     the two profile pickers), and the viewport clamp can only push it to the
+     top edge — without this the last items are simply unreachable. */
+  max-height: calc(100vh - 8px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .ctx-item {
@@ -2276,10 +2282,50 @@ body {
 }
 
 /* =========================================================
+   TOAST
+   ========================================================= */
+/* Transient confirmation, currently only for move/copy to profile. Sits above
+   the emoji panel (10001) so it is never covered, and never eats a click. */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 46px; /* clear of the status bar */
+  transform: translate(-50%, 8px);
+  z-index: 10002;
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  max-width: 78%;
+  padding: 7px 13px;
+  border-radius: 999px;
+  background: var(--elevated);
+  border: 1px solid var(--border-strong);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, .45);
+  color: var(--text);
+  font-size: 12px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity .16s ease, transform .16s ease;
+}
+
+.toast.toast-show {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+.toast-name {
+  font-weight: 600;
+  color: var(--accent);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* =========================================================
    EDITOR JUSTIFY (v1.6.1)
    ========================================================= */
-/* Text alignment — mirrors settings.editorAlign. .align-auto adds nothing: the
-   preview blocks carry their own dir attribute, so the browser's natural
+/* Text alignment — mirrors the active tab's `align`. .align-auto adds nothing:
+   the preview blocks carry their own dir attribute, so the browser's natural
    `text-align: start` already does per-direction alignment. */
 .md-preview.align-justify p,
 .md-preview.align-justify li,

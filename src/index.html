@@ -27,6 +27,14 @@
         </button>
       </div>
       <div class="win-controls">
+        <!-- Shared-note invites. Hidden until Discover is configured and signed in. -->
+        <button id="invitesBtn" class="win-btn invites-btn hidden" title="Invitations">
+          <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+            <path d="M6 9a6 6 0 0 1 12 0c0 4 1.5 5.5 1.5 5.5h-15S6 13 6 9z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
+            <path d="M10.2 18a2 2 0 0 0 3.6 0" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+          </svg>
+          <span id="invitesBadge" class="invites-badge hidden"></span>
+        </button>
         <button id="railToggleBtn" class="win-btn" title="Hide tabs (Ctrl+\)">
           <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
             <rect x="3" y="5" width="18" height="14" rx="2.2" fill="none" stroke="currentColor" stroke-width="1.7"/>
@@ -167,6 +175,13 @@
                 <button id="replaceAll" class="find-action">All</button>
               </div>
               <div id="findResults" class="find-results hidden"></div>
+            </div>
+            <!-- Shown only on a shared note: who else is in it, and who's typing. -->
+            <div id="collabBar" class="collab-bar hidden">
+              <span id="collabState" class="collab-state" title="Connection"></span>
+              <div id="collabPeople" class="collab-people"></div>
+              <span id="collabTyping" class="collab-typing"></span>
+              <button id="collabShareBtn" class="collab-btn" title="Manage sharing">Share…</button>
             </div>
             <div id="editor" class="editor-area" contenteditable="plaintext-only"
               spellcheck="false" data-placeholder="Write your prompt here…"></div>
@@ -612,6 +627,16 @@
                 <span class="slider"></span>
               </label>
             </div>
+            <div class="set-toggle-row" id="collabRow">
+              <div class="set-toggle-text">
+                <span>Shared notes</span>
+                <small>Invite another user to edit one of your notes with you, live</small>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="toggleCollab" />
+                <span class="slider"></span>
+              </label>
+            </div>
             <div class="set-toggle-row" id="labRow">
               <div class="set-toggle-text">
                 <span>Prompt Lab</span>
@@ -942,7 +967,7 @@
             <div class="about-box">
               <div class="about-brand">
                 <span class="brand-dot"></span>
-                <span>PromptPad <em id="aboutVersion">v2.9.0</em></span>
+                <span>PromptPad <em id="aboutVersion">v3.0.0</em></span>
               </div>
               <p class="about-desc">A compact notepad for writing AI prompts.</p>
               <div class="about-links">
@@ -989,6 +1014,8 @@
       <div class="ctx-item" data-action="copy">Copy content</div>
       <div class="ctx-item" data-action="export">Export as file…</div>
       <div class="ctx-item" data-action="save-template">Save as template…</div>
+      <!-- Hidden unless Discover is configured and you're signed in (see showCtxMenu). -->
+      <div class="ctx-item ctx-share-item hidden" data-action="share">Share &amp; invite…</div>
       <div class="ctx-sep"></div>
       <div class="ctx-colors">
         <span class="ctx-color-label">Color</span>
@@ -1163,6 +1190,46 @@
     </div>
 
     <!-- Templates panel -->
+    <!-- Invitations dropdown (anchored under the bell in the title bar) -->
+    <div id="invitesPanel" class="ctx-menu invites-panel hidden">
+      <div class="invites-head">Invitations</div>
+      <div id="invitesList" class="invites-list"></div>
+    </div>
+
+    <!-- Share a note: invite by username, and manage who's already in it -->
+    <div id="shareOverlay" class="overlay hidden">
+      <div class="templates-card share-card">
+        <div class="templates-head">
+          <span class="templates-title">share note</span>
+          <button id="shareClose" class="win-btn" title="Close">
+            <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+              <line x1="6" y1="6" x2="18" y2="18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+              <line x1="18" y1="6" x2="6" y2="18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+            </svg>
+          </button>
+        </div>
+        <div class="share-body">
+          <div class="share-note" id="shareNoteName"></div>
+          <div class="share-row" id="shareInviteRow">
+            <input id="shareUserInput" class="text-input share-user" type="text"
+                   placeholder="Username" spellcheck="false" autocomplete="off" maxlength="40" />
+            <select id="shareRoleSelect" class="share-role">
+              <option value="editor">Can edit</option>
+              <option value="viewer">Can view</option>
+            </select>
+            <button id="shareInviteBtn" class="dc-primary-btn share-invite">Invite</button>
+          </div>
+          <div id="shareStatus" class="dc-form-status"></div>
+          <div class="share-people-head">People</div>
+          <div id="sharePeople" class="share-people"></div>
+          <div class="share-foot">
+            <span class="share-hint">Everyone here edits the same note live.</span>
+            <button id="shareLeaveBtn" class="share-danger">Stop sharing</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div id="templatesOverlay" class="overlay hidden">
       <div class="templates-card">
         <div class="templates-head">

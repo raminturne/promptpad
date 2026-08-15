@@ -68,5 +68,8 @@ contextBridge.exposeInMainWorld('api', {
   onQuickCapture: (cb) => ipcRenderer.on('quick-capture', () => cb()),
   qcSubmit: (payload) => ipcRenderer.send('qc-submit', payload),
   qcClose: () => ipcRenderer.send('qc-close'),
-  onQcMessage: (cb) => ipcRenderer.on('qc-message', (_e, payload) => cb(payload))
+  onQcMessage: (cb) => ipcRenderer.on('qc-message', (_e, payload) => cb(payload)),
+  notify: (payload) => ipcRenderer.invoke('notify', payload),
+  stopFlash: () => ipcRenderer.send('stop-flash'),
+  onNotificationClick: (cb) => ipcRenderer.on('notification-click', (_e, kind) => cb(kind))
 });

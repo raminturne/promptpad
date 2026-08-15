@@ -89,6 +89,7 @@ const DEFAULT_SETTINGS = {
   discoverHintDismissed: false, // one-time "you can hide this in Settings" note
   promptLabEnabled: true,       // show the Prompt Lab (local library) button in the rail
   promptLabHintDismissed: false, // one-time "this is your private space" note
+  collabEnabled: true,          // shared notes — invite another user into one of your tabs
   aiEnabled: true,              // master switch — hides every AI surface when off
   aiChatEnabled: true,          // show the AI Chat button in the rail (only when aiEnabled)
   profilesEnabled: true,        // show the profile switcher in the title bar (hiding it keeps every profile)
@@ -298,6 +299,8 @@ const labHintCloseEl = document.getElementById('labHintClose');
 const promptLabBtn = document.getElementById('promptLabBtn');
 const toggleLabEl = document.getElementById('toggleLab');
 const labRowEl = document.getElementById('labRow');
+const toggleCollabEl = document.getElementById('toggleCollab');
+const collabRowEl = document.getElementById('collabRow');
 // feature switches
 const toggleTemplatesEl = document.getElementById('toggleTemplates');
 const toggleAiChatEl = document.getElementById('toggleAiChat');
@@ -1212,6 +1215,24 @@ function renderTabs() {
     nameEl.textContent = dispName;
     el.appendChild(nameEl);
 
+    // A shared note gets a small badge so it's never a surprise that someone
+    // else can see what you're typing.
+    if (tab.shareId) {
+      const shareEl = document.createElement('span');
+      shareEl.className = 'tab-share';
+      shareEl.innerHTML =
+        '<svg viewBox="0 0 24 24" width="11" height="11" aria-hidden="true">' +
+        '<circle cx="17" cy="5.5" r="2.6" fill="none" stroke="currentColor" stroke-width="1.9"/>' +
+        '<circle cx="6.5" cy="12" r="2.6" fill="none" stroke="currentColor" stroke-width="1.9"/>' +
+        '<circle cx="17" cy="18.5" r="2.6" fill="none" stroke="currentColor" stroke-width="1.9"/>' +
+        '<line x1="8.9" y1="10.7" x2="14.6" y2="6.8" stroke="currentColor" stroke-width="1.7"/>' +
+        '<line x1="8.9" y1="13.3" x2="14.6" y2="17.2" stroke="currentColor" stroke-width="1.7"/></svg>';
+      shareEl.title = tab.shareRole === 'viewer'
+        ? tr('collab.tabBadgeView', 'Shared note — you can read it')
+        : tr('collab.tabBadge', 'Shared note — edited live with others');
+      el.appendChild(shareEl);
+    }
+
     // Markdown is per-note now, so mark which tabs open rendered.
     if (tab.md) {
       const mdEl = document.createElement('span');
@@ -1688,6 +1709,8 @@ function startRename(tab, tabEl, nameEl, index) {
     }
     renderTabs();
     scheduleSave();
+    // A shared note carries one name for everybody — push the new one.
+    if (tab.shareId) shPushTitle(tab);
   };
 
   input.addEventListener('blur', commit);
@@ -1708,6 +1731,7 @@ function showEditorView() {
   aiChatViewEl.classList.add('hidden');
   discoverViewEl.classList.add('hidden');
   promptLabViewEl.classList.add('hidden');
+  shUpdateBar();
 }
 
 function showFastSaveView() {
@@ -1821,6 +1845,7 @@ function closeAllProfileScopedUI() {
   closeLightbox(); closeGallery(); closeFilesPanel(); closeLinkDialog();
   closeSaveTemplateDialog(); closeGroupDialog(); closeHistory(); closeTemplates();
   closeToolbarOverflow(); closeFind(); closeFsSearch();
+  shCloseShareDialog(); shCloseInvitesPanel();
   hideToast(); // names the outgoing profile — must not linger into the new one
   if (multiRenameDialog) multiRenameDialog.classList.add('hidden');
 }
@@ -1838,6 +1863,7 @@ function resetProfileScopedState() {
   todoBtnSavedRange = null; linkSavedRange = null; pendingLinkSel = null;
   imgResizing = null; emojiAnchor = null; qcPendingImage = null;
   mdEditEl = null; cmdItems = []; cmdActiveIdx = 0;
+  shShareTabId = null;
   findMatches = []; findIdx = 0;
   handySavedScroll = 0;
   caretLineEl = null;
@@ -2853,7 +2879,11 @@ function addTabWithContent(name, content) {
 function closeTab(id) {
   const idx = state.tabs.findIndex((t) => t.id === id);
   if (idx === -1) return;
+  // Closing a shared note only closes it here — flush any last edit and drop
+  // the channel; you stay a member and can rejoin from the invitations bell.
+  const shareId = state.tabs[idx].shareId;
   state.tabs.splice(idx, 1);
+  if (shareId) shDisconnect(shareId);
 
   if (state.activeId === id) {
     commitMdBlockEdit(true);
@@ -2867,6 +2897,7 @@ function closeTab(id) {
   renderTabs();
   updateCounts();
   updatePlaceholderPanel();
+  shUpdateBar();
   scheduleSave();
 }
 
@@ -3015,6 +3046,15 @@ function showCtxMenu(e, tabId) {
   buildCtxDirList(tab);
   wireProfileSections(ctxMenuEl, ctxMoveListEl, ctxCopyListEl, hideCtxMenu, () => [tabId]);
 
+  // Sharing needs the Discover backend and a signed-in account behind it.
+  const shareItem = ctxMenuEl.querySelector('.ctx-share-item');
+  if (shareItem) {
+    shareItem.classList.toggle('hidden', !shConfigured());
+    shareItem.textContent = tab.shareId
+      ? tr('ctx.manageShare', 'Sharing & people…')
+      : tr('ctx.share', 'Share & invite…');
+  }
+
   placeMenuAt(ctxMenuEl, e);
 }
 
@@ -3051,6 +3091,7 @@ ctxMenuEl.addEventListener('click', (e) => {
       break;
     }
     case 'save-template': openSaveTemplateDialog(id); break;
+    case 'share': shShareTab(id); break;
     case 'pin': togglePin(id); break;
     case 'close': closeTab(id); break;
   }
@@ -3118,13 +3159,15 @@ function placeMenuAt(menuEl, e) {
 }
 
 // ---------- Toast ----------
-// `msg` must be an English literal so the i18n pass can swap it; `name` is user
-// content (a profile name) and lands in a span excluded from translation.
+// `msg` must be an English literal — it's the dictionary key. A toast appears
+// long after applyLanguage() has walked the DOM, so it's translated here at
+// call time rather than by the pass. `name` is user content (a profile name, a
+// username) and lands in a span excluded from translation.
 let toastTimer = null;
 let toastHideTimer = null;
 
 function showToast(msg, name) {
-  toastMsgEl.textContent = msg;
+  toastMsgEl.textContent = tr('toast', msg);
   toastNameEl.textContent = name || '';
   clearTimeout(toastTimer);
   clearTimeout(toastHideTimer);
@@ -3382,13 +3425,24 @@ function wireProfileSections(menuEl, moveEl, copyEl, hide, getIds, getGid) {
 // across profiles, so re-issuing on move as well as copy keeps both paths the
 // same. `groupId` is the caller's (already remapped) target group.
 function tabPayload(t, mode, groupId) {
-  return {
+  const payload = {
     id: uid(), name: t.name, custom: !!t.custom, content: t.content || '',
     dir: t.dir || 'auto', align: t.align || 'auto', pinned: !!t.pinned,
     color: t.color || null, groupId: groupId || null, md: !!t.md,
     files: Array.isArray(t.files) ? t.files.map((f) => ({ ...f })) : [],
     snapshots: mode === 'move' && Array.isArray(t.snapshots) ? t.snapshots : []
   };
+  // A shared note follows a move (it just lives in the other profile now), but
+  // a *copy* must not: two tabs bound to one note would be two local buffers
+  // fighting over the same text. The copy becomes an ordinary local note.
+  if (mode === 'move' && t.shareId) {
+    payload.shareId = t.shareId;
+    payload.shareRole = t.shareRole;
+    payload.shareOwner = t.shareOwner || '';
+    payload.shareBase = t.shareBase != null ? t.shareBase : (t.content || '');
+    payload.shareRev = t.shareRev || 0;
+  }
+  return payload;
 }
 
 async function sendToProfile(targetId, mode, tabIds, groupId) {
@@ -3432,6 +3486,8 @@ function removeMovedLocally(srcTabs, groupId) {
   const ids = new Set(srcTabs.map((t) => t.id));
   const firstIdx = state.tabs.findIndex((t) => ids.has(t.id));
   srcTabs.forEach((t) => { clearTimeout(t.checkpointTimer); t.checkpointTimer = null; });
+  // The note travelled with the tab; this profile stops listening for it.
+  srcTabs.forEach((t) => { if (t.shareId) shDisconnect(t.shareId); });
 
   state.tabs = state.tabs.filter((t) => !ids.has(t.id));
   if (groupId) state.groups = (state.groups || []).filter((g) => g.id !== groupId);
@@ -3720,6 +3776,11 @@ function takeSnapshot(t, force = false) {
 async function doSave() {
   syncEditorToState();
   takeSnapshot(activeTab());
+  // Every path that changes a tab's text ends up scheduling a save — markdown
+  // block edits, AI actions, undo, snapshot restore, clean-up. Sweeping the
+  // shared tabs here covers all of them with one check (shLocalEdit no-ops when
+  // the text already matches what the other side has).
+  state.tabs.forEach((t) => { if (t.shareId) shLocalEdit(t); });
   // Persist only durable tab fields. undo/redo stacks (up to 100 full copies
   // of a tab's content each) and checkpoint bookkeeping are session-only;
   // serializing them into every autosave made saves grow with typing history
@@ -3783,6 +3844,9 @@ async function loadState() {
   renderTabs();
   updateCounts();
   updatePlaceholderPanel();
+  // Shared notes belong to the profile they were accepted into, so a profile
+  // switch has to drop the outgoing profile's channels and open this one's.
+  shSyncChannels();
   return hadSaved;
 }
 
@@ -3796,6 +3860,9 @@ function handleEditorChanged() {
     const prevContent = t.content;
     t.content = getEditorText();
     if (t.content !== prevContent) noteEditForUndo(t, prevContent);
+    // Shared note: push this keystroke out on its own (short) debounce rather
+    // than waiting for the 350ms autosave to notice.
+    if (t.shareId && t.content !== prevContent) shLocalEdit(t);
     // live update auto-name if not custom — patch just the name span; a full
     // renderTabs() here rebuilt the whole rail on every keystroke (visible
     // flicker + wasted layout with many tabs)
@@ -6158,6 +6225,9 @@ function syncSettingsUI() {
   toggleDiscoverEl.checked = !!settings.discoverEnabled;
   // Only offer the Discover toggle when a backend is actually configured.
   if (discoverRowEl) discoverRowEl.style.display = window.DISCOVER_CONFIGURED ? '' : 'none';
+  // Shared notes ride on the same backend + account as Discover.
+  if (toggleCollabEl) toggleCollabEl.checked = settings.collabEnabled !== false;
+  if (collabRowEl) collabRowEl.style.display = window.DISCOVER_CONFIGURED ? '' : 'none';
   if (toggleLabEl) toggleLabEl.checked = settings.promptLabEnabled !== false;
   if (toggleTemplatesEl) toggleTemplatesEl.checked = settings.templatesEnabled !== false;
   if (toggleAiChatEl) toggleAiChatEl.checked = settings.aiChatEnabled !== false;
@@ -6456,6 +6526,15 @@ toggleDiscoverEl.addEventListener('change', () => {
     if (ordered.length) switchTab(ordered[0].id);
     else addTab(false);
   }
+  renderTabs();
+  saveSettingsNow();
+});
+
+// Turning shared notes off drops every live channel but leaves the tabs (and
+// their text) alone, so turning it back on just reconnects them.
+if (toggleCollabEl) toggleCollabEl.addEventListener('change', () => {
+  settings.collabEnabled = toggleCollabEl.checked;
+  shRefresh();
   renderTabs();
   saveSettingsNow();
 });
@@ -7246,28 +7325,51 @@ const CURRENT_VERSION = document.getElementById('aboutVersion').textContent.repl
 const WHATS_NEW =
   "What's new in v" + CURRENT_VERSION + " ✨\n" +
   '\n' +
-  '• Move or copy a note to another profile. Right-click a tab — or a group\n' +
-  '   header, or several selected tabs — and pick "Move to profile" or "Copy\n' +
-  '   to profile". Moving a group takes its notes with it. You stay where you\n' +
-  '   are; a small note confirms where it went. Attached files come along, and\n' +
-  '   a copy gets its own, so deleting one profile can never break the other.\n' +
-  '• Text alignment is per note now. Align used to be one setting for the\n' +
-  '   whole app, so centering one prompt centered all of them. Each note keeps\n' +
-  '   its own choice, and the Settings control is gone — it lives on the Align\n' +
-  '   button in the toolbar. Your current alignment is kept on every note.\n' +
-  '• A Direction row in the tab right-click menu: Auto, Left to right, Right\n' +
-  '   to left. Ctrl+Shift only ever turned direction on, with no way back to\n' +
-  '   Auto — now there is one.\n' +
+  '• Shared notes. Right-click any tab → "Share & invite…", type someone\'s\n' +
+  '   username, and they get an invitation inside PromptPad (plus a desktop\n' +
+  '   notification if the app isn\'t in front of them). Once they accept, the\n' +
+  '   note opens as a tab for both of you and you edit the same text live —\n' +
+  '   you can see who is in the note and who is typing right now.\n' +
+  '• Two people on different lines both keep their work. On the same line the\n' +
+  '   incoming text wins, unless your cursor is sitting in it — text is never\n' +
+  '   pulled out from under you mid-sentence.\n' +
+  '• Invite people as an editor or as a read-only viewer. The owner can\n' +
+  '   change their mind: remove anyone, cancel an invitation, or stop sharing\n' +
+  '   entirely. Guests can leave whenever they like. However it ends, the\n' +
+  '   text stays in your tab as an ordinary note.\n' +
+  '• A bell in the title bar keeps your pending invitations, and shared tabs\n' +
+  '   carry a small badge so it is never a surprise that someone else can see\n' +
+  '   what you are typing.\n' +
   '\n' +
-  '• Fixed: Ctrl+Shift did nothing in markdown preview. The direction was\n' +
-  '   stored but the preview never redrew, and it ignored the note\'s own\n' +
-  '   direction anyway. It now flips immediately, and list bullets and quote\n' +
-  '   bars move to the correct side with it.\n' +
-  '• Fixed: the tab right-click menu could run off the bottom of a small\n' +
-  '   window, putting "Close tab" out of reach. It now scrolls and always\n' +
-  '   fits on screen.\n' +
+  '   You need a Discover account for this (Discover tab → Register), and it\n' +
+  '   can be turned off completely in Settings → Tabs → Shared notes.\n' +
   '\n' +
-  'You can close this tab — it won\'t come back until the next update.';
+  'You can close this tab — it won\'t come back until the next update.\n' +
+  '\n' +
+  '\n' +
+  'تازه‌ها در نسخه ' + CURRENT_VERSION + ' ✨\n' +
+  '\n' +
+  '• یادداشت اشتراکی. روی هر تب راست‌کلیک کن → «اشتراک‌گذاری و دعوت…»، نام\n' +
+  '   کاربری طرف را بنویس؛ دعوت‌نامه داخل خودِ برنامه برایش می‌آید (و اگر\n' +
+  '   برنامه جلوی چشمش نباشد، یک نوتیفیکیشن ویندوز هم می‌گیرد). با قبول کردن،\n' +
+  '   آن یادداشت برای هر دوی شما به شکل یک تب باز می‌شود و همان متن را زنده\n' +
+  '   با هم ویرایش می‌کنید — می‌بینی چه کسانی داخل یادداشت‌اند و چه کسی همین\n' +
+  '   حالا در حال نوشتن است.\n' +
+  '• اگر دو نفر روی دو خط جدا بنویسند، کار هیچ‌کدام از بین نمی‌رود. روی یک خطِ\n' +
+  '   مشترک، متنِ طرف مقابل اعمال می‌شود مگر اینکه مکان‌نمای تو همان‌جا باشد —\n' +
+  '   یعنی وسط نوشتن، متن از زیر دستت کشیده نمی‌شود.\n' +
+  '• می‌توانی کسی را به‌عنوان ویرایشگر یا فقط‌خواننده دعوت کنی. صاحب یادداشت\n' +
+  '   هر وقت خواست می‌تواند کسی را حذف کند، دعوت‌نامه را لغو کند یا کلاً\n' +
+  '   اشتراک‌گذاری را تمام کند؛ مهمان‌ها هم هر وقت بخواهند خارج می‌شوند. در هر\n' +
+  '   حالت، متن به‌شکل یک یادداشت معمولی توی تبِ خودت باقی می‌ماند.\n' +
+  '• یک زنگوله در نوار عنوان، دعوت‌نامه‌های در انتظارت را نگه می‌دارد، و تب‌های\n' +
+  '   اشتراکی یک نشان کوچک دارند تا هیچ‌وقت غافلگیر نشوی که کس دیگری هم\n' +
+  '   می‌بیند چه می‌نویسی.\n' +
+  '\n' +
+  '   برای این قابلیت به حساب کشف (Discover) نیاز داری (تب کشف ← ثبت‌نام)، و\n' +
+  '   از تنظیمات ← Tabs ← Shared notes می‌شود کاملاً خاموشش کرد.\n' +
+  '\n' +
+  'این تب را می‌توانی ببندی — تا آپدیت بعدی دیگر برنمی‌گردد.';
 
 // Only ever called from init(). The version marker lives in settings (global)
 // rather than in the workspace, so creating a profile doesn't re-trigger it.
@@ -7559,8 +7661,16 @@ async function dcInit() {
     // A token refresh (fires when the app regains focus) keeps the same user —
     // don't re-render the whole view, that caused the "weird refresh" flicker.
     if (prevUid === nextUid) return;
-    if (dcSession) dcLoadProfile().then(() => { if (discoverActive()) dcRender(); });
-    else { dcProfile = null; if (discoverActive()) dcRender(); }
+    if (dcSession) {
+      dcLoadProfile().then(() => {
+        if (discoverActive()) dcRender();
+        shRefresh(); // shared notes need the profile (username) as well as the session
+      });
+    } else {
+      dcProfile = null;
+      if (discoverActive()) dcRender();
+      shRefresh();
+    }
   });
 }
 
@@ -7585,6 +7695,7 @@ async function dcLogout() {
   dcProfile = null;
   dcScreen = 'browse';
   dcRender();
+  shRefresh(); // drop the live channels and the invitations bell with the session
 }
 
 // Send selected text (from the right-click menu anywhere in the app) to the
@@ -7713,6 +7824,7 @@ function dcRenderAuth() {
       // land on Upload if we arrived here via "Share to Discover", else Browse
       dcScreen = dcPrefillPrompt ? 'upload' : 'browse';
       dcRender();
+      shRefresh();
     } catch (err) {
       status.classList.add('err');
       status.textContent = (err && err.message) || 'Something went wrong.';
@@ -8934,6 +9046,1097 @@ document.addEventListener('paste', (e) => {
   }
 });
 
+// ========================================================================
+// Shared notes — live collaboration
+// ========================================================================
+// One tab becomes a "shared note": a row in Supabase that other signed-in
+// users are invited into by username. Everyone in the note edits the same text
+// at the same time.
+//
+// The `shared_notes` row is the single source of truth, and its `rev` column is
+// what puts every change in one agreed order. A client:
+//
+//   1. remembers the revision it last accepted (`base` + `rev`);
+//   2. writes with `... where id = ? and rev = ?`, so the write only lands if
+//      nothing else has been accepted meanwhile (a database trigger bumps rev);
+//   3. on losing that race, re-reads the row, rebases its own text onto the
+//      accepted revision with a line-level three-way merge, and tries again.
+//
+// Everyone therefore rebases onto the same sequence of revisions, which is what
+// makes two buffers converge instead of quietly disagreeing. Peer-to-peer
+// snapshot swapping does *not* have that property — with messages crossing in
+// flight there is no common ancestor to merge against, and the two sides settle
+// on different text (found by the fuzz test that drove this design).
+//
+// The merge (shMerge3) keeps both people's work when they're on different
+// lines. On the same line the accepted revision wins, unless the local caret is
+// sitting in it — then the local text is kept and pushed as the next revision,
+// so nothing is yanked out from under a cursor mid-sentence.
+//
+// Realtime carries the accepted revision to the other clients the moment it
+// lands (with postgres_changes on the row as the backstop), plus presence and
+// the "…is typing" pings. It is delivery, never authority.
+const shInvitesBtn = document.getElementById('invitesBtn');
+const shInvitesBadge = document.getElementById('invitesBadge');
+const shInvitesPanel = document.getElementById('invitesPanel');
+const shInvitesList = document.getElementById('invitesList');
+const shCollabBar = document.getElementById('collabBar');
+const shCollabState = document.getElementById('collabState');
+const shCollabPeople = document.getElementById('collabPeople');
+const shCollabTyping = document.getElementById('collabTyping');
+const shCollabShareBtn = document.getElementById('collabShareBtn');
+const shShareOverlay = document.getElementById('shareOverlay');
+const shShareClose = document.getElementById('shareClose');
+const shShareNoteName = document.getElementById('shareNoteName');
+const shShareInviteRow = document.getElementById('shareInviteRow');
+const shShareUserInput = document.getElementById('shareUserInput');
+const shShareRoleSelect = document.getElementById('shareRoleSelect');
+const shShareInviteBtn = document.getElementById('shareInviteBtn');
+const shShareStatus = document.getElementById('shareStatus');
+const shSharePeople = document.getElementById('sharePeople');
+const shShareLeaveBtn = document.getElementById('shareLeaveBtn');
+
+const SH_PUSH_DELAY = 400;    // keystroke → write
+const SH_RETRY_DELAY = 900;   // backoff after a write that errored outright
+const SH_TYPING_TTL = 2600;   // how long a "typing" ping keeps someone lit up
+const SH_LCS_CELLS = 250000;  // ceiling on the merge DP table (see shRegions)
+
+let shInvites = [];              // pending invites addressed to me
+const shLive = new Map();        // noteId → { chan, status, base, rev, peers, … }
+let shInviteChan = null;         // realtime channel carrying my incoming invites
+let shShareTabId = null;         // tab open in the Share dialog
+
+function shConfigured() {
+  return !!(window.DISCOVER_CONFIGURED && settings.collabEnabled !== false);
+}
+function shReady() {
+  return !!(shConfigured() && dcClient && dcSession && dcProfile);
+}
+function shUid() {
+  return (dcSession && dcSession.user && dcSession.user.id) || null;
+}
+function shName() {
+  return (dcProfile && dcProfile.username) || 'me';
+}
+function shTabFor(noteId) {
+  return state.tabs.find((t) => t.shareId === noteId) || null;
+}
+// True while the given tab's text lives in the editor DOM rather than t.content
+// (markdown preview hides the editor and edits t.content directly).
+function shTabIsLive(tab) {
+  return !!(tab && tab.id === state.activeId && !tab.md &&
+    !fsActive() && !aiChatActive() && !discoverActive() && !labActive());
+}
+function shBufferOf(tab) {
+  return shTabIsLive(tab) ? getEditorText() : (tab.content || '');
+}
+
+// ---------- three-way line merge ----------
+// Longest common subsequence over two line arrays, as matched index pairs.
+function shLcsPairs(a, b) {
+  const n = a.length;
+  const m = b.length;
+  const w = m + 1;
+  const dp = new Uint32Array((n + 1) * w);
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) {
+      dp[i * w + j] = a[i] === b[j]
+        ? dp[(i + 1) * w + j + 1] + 1
+        : Math.max(dp[(i + 1) * w + j], dp[i * w + j + 1]);
+    }
+  }
+  const pairs = [];
+  let i = 0;
+  let j = 0;
+  while (i < n && j < m) {
+    if (a[i] === b[j]) { pairs.push([i, j]); i++; j++; }
+    else if (dp[(i + 1) * w + j] >= dp[i * w + j + 1]) i++;
+    else j++;
+  }
+  return pairs;
+}
+
+// Express `side` as a list of edits against `base`: replace base[lo..hi) with
+// `lines`. Common head/tail lines are trimmed first, which is what keeps the
+// LCS table tiny for the usual case (one edited line in a long note).
+function shRegions(base, side) {
+  const limit = Math.min(base.length, side.length);
+  let head = 0;
+  while (head < limit && base[head] === side[head]) head++;
+  let tail = 0;
+  while (tail < limit - head &&
+         base[base.length - 1 - tail] === side[side.length - 1 - tail]) tail++;
+
+  const a = base.slice(head, base.length - tail);
+  const b = side.slice(head, side.length - tail);
+  if (!a.length && !b.length) return [];
+  // Too big to diff line-by-line — treat the whole middle as one edit. That is
+  // exactly what a wholesale rewrite (paste, AI action, undo) actually is.
+  if (a.length * b.length > SH_LCS_CELLS) {
+    return [{ lo: head, hi: head + a.length, lines: b }];
+  }
+
+  const regions = [];
+  let bi = 0;
+  let si = 0;
+  for (const [pb, ps] of shLcsPairs(a, b)) {
+    if (pb > bi || ps > si) regions.push({ lo: head + bi, hi: head + pb, lines: b.slice(si, ps) });
+    bi = pb + 1;
+    si = ps + 1;
+  }
+  if (bi < a.length || si < b.length) {
+    regions.push({ lo: head + bi, hi: head + a.length, lines: b.slice(si) });
+  }
+  return regions;
+}
+
+// Merge `mine` and `theirs`, both descended from `base`. Edits that don't
+// overlap are all kept. For the ones that do, `preferMine(lo, hi)` decides —
+// see shWinsClash, which makes that call the same way on both machines so the
+// two buffers can't settle on different text.
+function shMerge3(baseTxt, mineTxt, theirsTxt, preferMine) {
+  if (mineTxt === theirsTxt) return mineTxt;
+  if (baseTxt === mineTxt) return theirsTxt;   // I changed nothing
+  if (baseTxt === theirsTxt) return mineTxt;   // they changed nothing
+
+  const base = baseTxt.split('\n');
+  const edits = shRegions(base, mineTxt.split('\n')).map((r) => ({ ...r, mine: true }))
+    .concat(shRegions(base, theirsTxt.split('\n')).map((r) => ({ ...r, mine: false })))
+    .sort((x, y) => x.lo - y.lo || x.hi - y.hi);
+
+  const out = [];
+  let cursor = 0;
+  let k = 0;
+  while (k < edits.length) {
+    // Gather every edit that touches this stretch of base. Two edits that start
+    // at the same line clash even when one of them is a pure insertion (hi===lo).
+    let lo = edits[k].lo;
+    let hi = edits[k].hi;
+    let end = k + 1;
+    while (end < edits.length && (edits[end].lo < hi || edits[end].lo === lo)) {
+      hi = Math.max(hi, edits[end].hi);
+      end++;
+    }
+    const cluster = edits.slice(k, end);
+    const clash = cluster.some((r) => r.mine) && cluster.some((r) => !r.mine);
+    const keepMine = clash && !!preferMine(lo, hi);
+
+    out.push(...base.slice(cursor, lo));
+    let at = lo;
+    for (const r of cluster) {
+      if (clash && r.mine !== keepMine) continue;
+      out.push(...base.slice(at, r.lo));
+      out.push(...r.lines);
+      at = Math.max(at, r.hi);
+    }
+    out.push(...base.slice(at, hi));
+    cursor = hi;
+    k = end;
+  }
+  out.push(...base.slice(cursor));
+  return out.join('\n');
+}
+
+// ---------- editor patching ----------
+// Rewrite only the lines that actually differ. setEditorText() would rebuild
+// every line on every remote keystroke, which loses the caret and flickers
+// image thumbnails in a long note.
+function shPatchEditor(next) {
+  const lines = next.split('\n');
+  const cur = editorLines();
+  for (let i = 0; i < lines.length; i++) {
+    if (i < cur.length) {
+      if (cur[i].textContent !== lines[i]) cur[i].replaceWith(makeLine(lines[i]));
+    } else {
+      editorEl.appendChild(makeLine(lines[i]));
+    }
+  }
+  while (editorEl.children.length > lines.length) editorEl.lastElementChild.remove();
+  updateLineDirs();
+  updateEmptyState();
+}
+
+function shCaretPos() {
+  const line = currentLine();
+  if (!line) return null;
+  const idx = editorLines().indexOf(line);
+  if (idx < 0) return null;
+  return { line: idx, offset: getCaretOffsetIn(line) || 0, text: line.textContent };
+}
+
+// Put the caret back on *its* line after a merge shifted the note around it.
+// Search outward from where it was rather than taking the first textual match,
+// so a repeated line elsewhere in the note doesn't steal the cursor.
+function shRestoreCaret(pos, lines) {
+  if (!pos) return;
+  const els = editorLines();
+  if (!els.length) return;
+  let idx = -1;
+  for (let d = 0; d < lines.length && idx < 0; d++) {
+    if (pos.line - d >= 0 && lines[pos.line - d] === pos.text) idx = pos.line - d;
+    else if (pos.line + d < lines.length && lines[pos.line + d] === pos.text) idx = pos.line + d;
+  }
+  if (idx < 0) idx = Math.min(pos.line, els.length - 1);
+  const el = els[Math.min(idx, els.length - 1)];
+  placeCaretInLine(el, Math.min(pos.offset, el.textContent.length));
+}
+
+// ---------- channels ----------
+function shConnect(noteId) {
+  if (!shReady() || shLive.has(noteId)) return;
+  const tab = shTabFor(noteId);
+  if (!tab) return;
+
+  const rec = {
+    chan: null,
+    status: 'connecting',
+    // The revision we last accepted: `base` is its text, `rev` its number. Both
+    // move only when a revision is accepted — ours or someone else's.
+    base: tab.shareBase != null ? tab.shareBase : (tab.content || ''),
+    rev: Number(tab.shareRev) || 0,
+    peers: [],
+    typing: new Map(),   // uid → { username, until }
+    typingSentAt: 0,
+    typingTimer: null,
+    pushTimer: null,
+    pushing: false,
+    wantPush: false
+  };
+  shLive.set(noteId, rec);
+
+  const chan = dcClient.channel('ppnote:' + noteId, {
+    config: { presence: { key: shUid() }, broadcast: { self: false } }
+  });
+  rec.chan = chan;
+
+  // A revision that has already been accepted by the database, relayed by the
+  // client that wrote it so the others don't wait on replication.
+  chan.on('broadcast', { event: 'rev' }, ({ payload }) => {
+    if (!payload || payload.from === shUid()) return;
+    shApplyTitle(noteId, payload.title);
+    shApplyRemote(noteId, String(payload.content || ''), Number(payload.rev) || 0);
+  });
+
+  chan.on('broadcast', { event: 'typing' }, ({ payload }) => {
+    if (!payload || payload.from === shUid()) return;
+    rec.typing.set(payload.from, { username: payload.username || '…', until: Date.now() + SH_TYPING_TTL });
+    shUpdateBar();
+    // One pending repaint, not one per ping — that's what clears "…is typing"
+    // when the other side stops.
+    clearTimeout(rec.typingTimer);
+    rec.typingTimer = setTimeout(shUpdateBar, SH_TYPING_TTL + 60);
+  });
+
+  chan.on('presence', { event: 'sync' }, () => {
+    const st = chan.presenceState() || {};
+    rec.peers = Object.keys(st).map((key) => {
+      const first = (st[key] && st[key][0]) || {};
+      return { uid: first.uid || key, username: first.username || '…' };
+    });
+    shUpdateBar();
+  });
+
+  // The backstop for a relay that never arrived. Applying the same revision
+  // twice is free — shApplyRemote only acts on a rev it hasn't seen.
+  chan.on('postgres_changes',
+    { event: 'UPDATE', schema: 'public', table: 'shared_notes', filter: 'id=eq.' + noteId },
+    ({ new: row }) => {
+      if (!row) return;
+      shApplyTitle(noteId, row.title);
+      shApplyRemote(noteId, String(row.content || ''), Number(row.rev) || 0);
+    });
+
+  // The owner ended the share, or someone was removed from it.
+  chan.on('postgres_changes',
+    { event: 'DELETE', schema: 'public', table: 'shared_notes', filter: 'id=eq.' + noteId },
+    () => shDetach(noteId, true));
+  chan.on('postgres_changes',
+    { event: 'DELETE', schema: 'public', table: 'note_members', filter: 'note_id=eq.' + noteId },
+    ({ old: row }) => { if (row && row.user_id === shUid()) shDetach(noteId, true); });
+
+  chan.subscribe(async (status) => {
+    const live = shLive.get(noteId);
+    if (live !== rec) return; // a reconnect replaced us
+    if (status === 'SUBSCRIBED') {
+      rec.status = 'live';
+      try { await chan.track({ uid: shUid(), username: shName() }); } catch {}
+      await shPull(noteId);
+    } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+      rec.status = 'offline';
+    }
+    shUpdateBar();
+  });
+}
+
+function shDisconnect(noteId) {
+  const rec = shLive.get(noteId);
+  if (!rec) return;
+  clearTimeout(rec.pushTimer);
+  clearTimeout(rec.typingTimer);
+  // Don't lose an edit that was still sitting on the debounce. shPush captures
+  // what it needs synchronously, so it survives the removal just below.
+  shPush(noteId);
+  shLive.delete(noteId);
+  try { if (rec.chan) dcClient.removeChannel(rec.chan); } catch {}
+}
+
+function shDisconnectAll() {
+  Array.from(shLive.keys()).forEach(shDisconnect);
+}
+
+// Open a channel for every shared tab in the current profile, and close the
+// ones whose tab is gone (closed, or left behind by a profile switch).
+function shSyncChannels() {
+  if (!shReady()) { shDisconnectAll(); shUpdateBar(); return; }
+  const want = new Set(state.tabs.filter((t) => t.shareId).map((t) => t.shareId));
+  Array.from(shLive.keys()).forEach((id) => { if (!want.has(id)) shDisconnect(id); });
+  want.forEach((id) => { if (!shLive.has(id)) shConnect(id); });
+  shUpdateBar();
+}
+
+async function shReadRow(noteId) {
+  try {
+    const { data, error } = await dcClient
+      .from('shared_notes').select('title,content,rev').eq('id', noteId).maybeSingle();
+    if (error) { console.error('shared note read failed', error); return null; }
+    if (!data) { shDetach(noteId, true); return null; }  // deleted, or we were removed
+    return data;
+  } catch (err) {
+    console.error('shared note read failed', err);
+    return null;
+  }
+}
+
+// Catch up with the row: on joining the channel, and after losing a write race.
+async function shPull(noteId) {
+  if (!shLive.has(noteId)) return;
+  const row = await shReadRow(noteId);
+  const rec = shLive.get(noteId);
+  if (!row || !rec) return;
+  shApplyTitle(noteId, row.title);
+  shApplyRemote(noteId, String(row.content || ''), Number(row.rev) || 0);
+  // Edits made while the app was closed (or offline) exist only here — nothing
+  // else would ever notice them, so get them into the row now that we're back.
+  const tab = shTabFor(noteId);
+  if (tab && shBufferOf(tab) !== rec.base) shQueuePush(noteId, 0);
+}
+
+// A shared note has one name for everyone, so the tab name and the note title
+// are the same string kept in step — renaming the tab renames it for the others.
+function shApplyTitle(noteId, title) {
+  const tab = shTabFor(noteId);
+  if (!tab || title == null) return;
+  const next = String(title).slice(0, 60);
+  if (tab.name === next) return;
+  tab.name = next;
+  tab.custom = !!tab.name;
+  renderTabs();
+  if (shShareTabId === tab.id) {
+    shShareNoteName.textContent = autoName(tab, state.tabs.indexOf(tab));
+  }
+  scheduleSave();
+}
+
+async function shPushTitle(tab) {
+  if (!tab || !tab.shareId || tab.shareRole === 'viewer') return;
+  const title = autoName(tab, state.tabs.indexOf(tab)).slice(0, 60);
+  try {
+    await dcClient.from('shared_notes').update({ title, updated_by: shUid() }).eq('id', tab.shareId);
+  } catch (err) {
+    console.error('shared note rename failed', err);
+  }
+}
+
+// ---------- accepting a revision ----------
+// Rebase this client's buffer onto revision `rev`. Applying a revision we've
+// already accepted is a no-op, which is what makes the relay and the
+// postgres_changes backstop safe to run side by side.
+function shApplyRemote(noteId, content, rev) {
+  const rec = shLive.get(noteId);
+  const tab = shTabFor(noteId);
+  if (!rec || !tab) return;
+  if (!(rev > rec.rev)) return;
+
+  const onScreen = shTabIsLive(tab);
+  const mine = shBufferOf(tab);
+  const caret = onScreen ? shCaretPos() : null;
+  // A clash on the line the caret is in keeps the local text — and because the
+  // rebase is then pushed as the next revision, that choice reaches everyone
+  // instead of quietly disagreeing with the row.
+  const merged = shMerge3(rec.base, mine, content, (lo, hi) =>
+    !!caret && caret.line >= lo && caret.line <= hi);
+
+  rec.base = content;
+  rec.rev = rev;
+  tab.shareBase = content;
+  tab.shareRev = rev;
+
+  if (merged !== mine) {
+    tab.content = merged;
+    if (onScreen) {
+      shPatchEditor(merged);
+      shRestoreCaret(caret, merged.split('\n'));
+      updateCounts();
+      updatePlaceholderPanel();
+    } else if (tab.md && tab.id === state.activeId) {
+      renderMdPreview();
+    }
+    // A note whose title is blank still auto-names itself from its first line.
+    if (!tab.custom) { if (onScreen) updateActiveTabName(tab); else renderTabs(); }
+    scheduleSave();
+  }
+
+  // Our rebase produced text the row doesn't have yet — it still has to land.
+  if (merged !== content) shQueuePush(noteId, SH_PUSH_DELAY);
+  shUpdateBar();
+}
+
+// ---------- writing a revision ----------
+function shQueuePush(noteId, delay) {
+  const rec = shLive.get(noteId);
+  if (!rec) return;
+  clearTimeout(rec.pushTimer);
+  rec.pushTimer = setTimeout(() => shPush(noteId), delay == null ? SH_PUSH_DELAY : delay);
+}
+
+// Write the local text as the next revision, but only if nothing else has been
+// accepted since the one we rebased onto — that `eq('rev', …)` is the whole
+// concurrency story. Losing the race isn't an error: re-read, rebase, retry.
+async function shPush(noteId) {
+  const rec = shLive.get(noteId);
+  const tab = shTabFor(noteId);
+  if (!rec || !tab || tab.shareRole === 'viewer') return;
+  if (rec.pushing) { rec.wantPush = true; return; }
+  const body = shBufferOf(tab);
+  if (body === rec.base) return;
+
+  rec.pushing = true;
+  try {
+    const { data, error } = await dcClient
+      .from('shared_notes')
+      .update({ content: body, updated_by: shUid() })
+      .eq('id', noteId).eq('rev', rec.rev)
+      .select('content,rev,title');
+    if (error) {
+      console.error('shared note write failed', error);
+      shQueuePush(noteId, SH_RETRY_DELAY);
+      return;
+    }
+    if (data && data.length) {
+      const row = data[0];
+      rec.base = String(row.content || '');
+      rec.rev = Number(row.rev) || rec.rev + 1;
+      tab.shareBase = rec.base;
+      tab.shareRev = rec.rev;
+      shRelay(rec, row);
+      return;
+    }
+    // No row came back: someone else's revision landed first. Take theirs and
+    // rebase onto it — shApplyRemote queues the retry, but only if the rebase
+    // still leaves us with something the row doesn't have.
+    const row = await shReadRow(noteId);
+    if (!row || !shLive.has(noteId)) return;
+    shApplyTitle(noteId, row.title);
+    shApplyRemote(noteId, String(row.content || ''), Number(row.rev) || 0);
+  } catch (err) {
+    console.error('shared note write failed', err);
+  } finally {
+    rec.pushing = false;
+    if (rec.wantPush) { rec.wantPush = false; shQueuePush(noteId, 0); }
+  }
+}
+
+// Hand the accepted revision straight to the other clients rather than making
+// them wait for replication. Purely a shortcut — postgres_changes carries the
+// same thing, and shApplyRemote ignores whichever arrives second.
+function shRelay(rec, row) {
+  if (rec.status !== 'live' || !rec.chan) return;
+  try {
+    rec.chan.send({
+      type: 'broadcast', event: 'rev',
+      payload: {
+        content: String(row.content || ''), rev: Number(row.rev) || 0,
+        title: row.title, from: shUid()
+      }
+    });
+  } catch (err) {
+    console.error('shared note relay failed', err);
+  }
+}
+
+// Called whenever a shared tab's text may have changed. Cheap and idempotent —
+// it no-ops when the buffer already matches the accepted revision, which is why
+// doSave() can sweep every shared tab through it.
+function shLocalEdit(tab) {
+  if (!tab || !tab.shareId || tab.shareRole === 'viewer') return;
+  const rec = shLive.get(tab.shareId);
+  if (!rec || rec.status !== 'live') return;
+  if (shBufferOf(tab) === rec.base) return;
+
+  shQueuePush(tab.shareId, SH_PUSH_DELAY);
+
+  // "…is typing" for the others, throttled well below the write rate.
+  if (Date.now() - rec.typingSentAt > 1500) {
+    rec.typingSentAt = Date.now();
+    try {
+      rec.chan.send({
+        type: 'broadcast', event: 'typing',
+        payload: { from: shUid(), username: shName() }
+      });
+    } catch {}
+  }
+}
+
+// ---------- presence bar ----------
+const SH_AVATAR_COLORS = TAB_COLORS.filter(Boolean);
+
+function shColorFor(uid) {
+  let h = 0;
+  for (let i = 0; i < (uid || '').length; i++) h = (h * 31 + uid.charCodeAt(i)) >>> 0;
+  return SH_AVATAR_COLORS[h % SH_AVATAR_COLORS.length];
+}
+
+function shUpdateBar() {
+  if (!shCollabBar) return;
+  const tab = activeTab();
+  const on = !!(tab && tab.shareId && shConfigured() &&
+    !fsActive() && !aiChatActive() && !discoverActive() && !labActive());
+
+  shCollabBar.classList.toggle('hidden', !on);
+  const readonly = !!(on && tab.shareRole === 'viewer');
+  editorEl.classList.toggle('collab-readonly', readonly);
+  editorEl.setAttribute('contenteditable', readonly ? 'false' : 'plaintext-only');
+  if (!on) return;
+
+  const rec = shLive.get(tab.shareId);
+  const status = rec ? rec.status : 'offline';
+  shCollabState.className = 'collab-state ' + (status === 'live' ? 'live' : status === 'offline' ? 'offline' : '');
+  shCollabState.title = status === 'live'
+    ? tr('collab.live', 'Connected — edits are shared live')
+    : status === 'offline'
+      ? tr('collab.offline', 'Offline — your edits are saved and will sync when you reconnect')
+      : tr('collab.connecting', 'Connecting…');
+
+  const peers = (rec && rec.peers) || [];
+  shCollabPeople.innerHTML = '';
+  peers.slice(0, 6).forEach((p) => {
+    const a = document.createElement('span');
+    a.className = 'collab-avatar' + (p.uid === shUid() ? ' is-me' : '');
+    a.style.background = shColorFor(p.uid);
+    a.textContent = (p.username || '?').slice(0, 1);
+    a.title = '@' + (p.username || '') + (p.uid === shUid() ? ' (' + tr('collab.you', 'you') + ')' : '');
+    shCollabPeople.appendChild(a);
+  });
+
+  const now = Date.now();
+  const typing = Array.from((rec ? rec.typing : new Map()).entries())
+    .filter(([, v]) => v.until > now)
+    .map(([, v]) => v.username);
+  if (typing.length === 1) {
+    shCollabTyping.textContent = '@' + typing[0] + ' ' + tr('collab.isTyping', 'is typing…');
+  } else if (typing.length > 1) {
+    shCollabTyping.textContent = typing.length + ' ' + tr('collab.areTyping', 'people are typing…');
+  } else if (readonly) {
+    shCollabTyping.textContent = tr('collab.viewOnly', 'View only');
+  } else {
+    shCollabTyping.textContent = peers.length > 1
+      ? peers.length + ' ' + tr('collab.here', 'here')
+      : tr('collab.aloneHere', 'Only you here');
+  }
+}
+
+// ---------- turning a tab into a shared note ----------
+async function shShareTab(tabId) {
+  const tab = state.tabs.find((t) => t.id === tabId);
+  if (!tab) return;
+  if (!shConfigured()) {
+    showToast('Shared notes are turned off', '');
+    return;
+  }
+  if (!shReady()) {
+    showToast('Sign in on the Discover tab first', '');
+    switchToDiscover();
+    return;
+  }
+  if (tab.shareId) { shOpenShareDialog(tabId); return; }
+
+  if (tab.id === state.activeId) { commitMdBlockEdit(); syncEditorToState(); }
+  const title = autoName(tab, state.tabs.indexOf(tab)).slice(0, 60);
+  try {
+    const { data, error } = await dcClient
+      .from('shared_notes')
+      .insert({ owner_id: shUid(), title, content: tab.content || '', dir: tab.dir || 'auto' })
+      .select('id,rev')
+      .single();
+    if (error || !data) throw error || new Error('insert failed');
+    tab.shareId = data.id;
+    tab.shareRole = 'owner';
+    tab.shareOwner = shName();
+    tab.shareBase = tab.content || '';
+    tab.shareRev = Number(data.rev) || 1;
+    // Pin the name down: from here the tab name IS the note title everyone sees,
+    // so it must not keep drifting with the first line of the text.
+    tab.name = title;
+    tab.custom = !!title;
+    renderTabs();
+    scheduleSave();
+    shConnect(data.id);
+    shUpdateBar();
+    shOpenShareDialog(tabId);
+  } catch (err) {
+    console.error('share failed', err);
+    showToast("Couldn't share that note", '');
+  }
+}
+
+// Unlink a tab from its note. The text stays exactly where it is — it just goes
+// back to being an ordinary local tab.
+function shDetach(noteId, tell) {
+  const tab = shTabFor(noteId);
+  shDisconnect(noteId);
+  if (tab) {
+    const name = autoName(tab, state.tabs.indexOf(tab));
+    delete tab.shareId;
+    delete tab.shareRole;
+    delete tab.shareOwner;
+    delete tab.shareBase;
+    delete tab.shareRev;
+    renderTabs();
+    scheduleSave();
+    if (tell) showToast('Sharing ended for', name);
+  }
+  if (shShareTabId && tab && shShareTabId === tab.id) shCloseShareDialog();
+  shUpdateBar();
+}
+
+// ---------- share dialog ----------
+function shShareDialogOpen() { return !shShareOverlay.classList.contains('hidden'); }
+
+function shOpenShareDialog(tabId) {
+  const tab = state.tabs.find((t) => t.id === tabId);
+  if (!tab || !tab.shareId) return;
+  shShareTabId = tabId;
+  shShareStatus.className = 'dc-form-status';
+  shShareStatus.textContent = '';
+  shShareUserInput.value = '';
+  shShareNoteName.textContent = autoName(tab, state.tabs.indexOf(tab));
+  shShareNoteName.setAttribute('dir', detectDir(shShareNoteName.textContent));
+
+  const owner = tab.shareRole === 'owner';
+  shShareInviteRow.classList.toggle('hidden', !owner);
+  shShareLeaveBtn.textContent = owner
+    ? tr('collab.stopSharing', 'Stop sharing')
+    : tr('collab.leaveNote', 'Leave note');
+  shShareOverlay.classList.remove('hidden');
+  shRenderPeople(tab);
+  if (owner) setTimeout(() => shShareUserInput.focus(), 40);
+}
+
+function shCloseShareDialog() {
+  shShareOverlay.classList.add('hidden');
+  shShareTabId = null;
+}
+
+async function shRenderPeople(tab) {
+  shSharePeople.innerHTML = '';
+  const loading = document.createElement('div');
+  loading.className = 'share-person';
+  loading.textContent = tr('collab.loading', 'Loading…');
+  shSharePeople.appendChild(loading);
+  let rows = [];
+  try {
+    const { data } = await dcClient.rpc('note_member_list', { nid: tab.shareId });
+    rows = data || [];
+  } catch (err) {
+    console.error('member list failed', err);
+  }
+  if (shShareTabId !== tab.id) return;   // dialog moved on while we waited
+
+  shSharePeople.innerHTML = '';
+  const rank = (r) => (r.role === 'owner' ? 0 : r.state === 'member' ? 1 : 2);
+  rows.sort((a, b) => rank(a) - rank(b) || String(a.username).localeCompare(String(b.username)));
+
+  rows.forEach((r) => {
+    const row = document.createElement('div');
+    row.className = 'share-person' + (r.state === 'pending' ? ' pending' : '');
+
+    const dot = document.createElement('span');
+    dot.className = 'collab-avatar';
+    dot.style.background = shColorFor(r.user_id);
+    dot.textContent = (r.username || '?').slice(0, 1);
+    row.appendChild(dot);
+
+    const name = document.createElement('span');
+    name.className = 'share-person-name';
+    name.textContent = '@' + (r.username || '') + (r.user_id === shUid() ? ' (' + tr('collab.you', 'you') + ')' : '');
+    row.appendChild(name);
+
+    const role = document.createElement('span');
+    role.className = 'share-person-role';
+    role.textContent = r.state === 'pending'
+      ? tr('collab.invited', 'invited')
+      : r.role === 'owner' ? tr('collab.owner', 'owner')
+        : r.role === 'viewer' ? tr('collab.canView', 'can view')
+          : tr('collab.canEdit', 'can edit');
+    row.appendChild(role);
+
+    // Only the owner prunes the roster, and never themselves.
+    if (tab.shareRole === 'owner' && r.role !== 'owner') {
+      const rm = document.createElement('button');
+      rm.className = 'share-person-remove';
+      rm.innerHTML = '&times;';
+      rm.title = r.state === 'pending'
+        ? tr('collab.cancelInvite', 'Cancel invitation')
+        : tr('collab.removePerson', 'Remove from note');
+      rm.addEventListener('click', () => shRemovePerson(tab, r, rm));
+      row.appendChild(rm);
+    }
+    shSharePeople.appendChild(row);
+  });
+}
+
+async function shRemovePerson(tab, person, btn) {
+  btn.disabled = true;
+  try {
+    if (person.state === 'pending') {
+      await dcClient.from('note_invites')
+        .delete().eq('note_id', tab.shareId).eq('to_id', person.user_id).eq('status', 'pending');
+    } else {
+      await dcClient.from('note_members')
+        .delete().eq('note_id', tab.shareId).eq('user_id', person.user_id);
+    }
+    shRenderPeople(tab);
+  } catch (err) {
+    console.error('remove failed', err);
+    btn.disabled = false;
+  }
+}
+
+const SH_INVITE_ERRORS = {
+  no_user: 'No user with that username.',
+  self: "That's you.",
+  already_member: 'They are already in this note.',
+  already_invited: 'They already have a pending invitation.',
+  not_owner: 'Only the note owner can invite people.'
+};
+
+async function shSendInvite() {
+  const tab = state.tabs.find((t) => t.id === shShareTabId);
+  if (!tab || !tab.shareId) return;
+  const username = shShareUserInput.value.trim();
+  shShareStatus.className = 'dc-form-status';
+  if (!username) { shShareStatus.textContent = tr('collab.enterUsername', 'Enter a username.'); return; }
+
+  shShareInviteBtn.disabled = true;
+  const label = shShareInviteBtn.textContent;
+  shShareInviteBtn.textContent = tr('collab.sending', 'Sending…');
+  try {
+    const { data, error } = await dcClient.rpc('invite_to_note', {
+      nid: tab.shareId, uname: username, r: shShareRoleSelect.value
+    });
+    if (error) throw error;
+    if (data && data.ok) {
+      shShareStatus.classList.add('ok');
+      shShareStatus.textContent = tr('collab.inviteSent', 'Invitation sent to') + ' @' + (data.username || username);
+      shShareUserInput.value = '';
+      shRenderPeople(tab);
+    } else {
+      shShareStatus.classList.add('err');
+      const key = (data && data.error) || '';
+      shShareStatus.textContent = tr('collab.err.' + key, SH_INVITE_ERRORS[key] || 'Could not send that invitation.');
+    }
+  } catch (err) {
+    shShareStatus.classList.add('err');
+    shShareStatus.textContent = (err && err.message) || 'Could not send that invitation.';
+  } finally {
+    shShareInviteBtn.disabled = false;
+    shShareInviteBtn.textContent = label;
+  }
+}
+
+// "Stop sharing" (owner) deletes the note for everyone; "Leave note" (guest)
+// only drops your own membership.
+async function shLeaveOrStop() {
+  const tab = state.tabs.find((t) => t.id === shShareTabId);
+  if (!tab || !tab.shareId) return;
+  const owner = tab.shareRole === 'owner';
+  const msg = owner
+    ? tr('collab.confirmStop', 'Stop sharing this note? Everyone else loses access — your copy stays.')
+    : tr('collab.confirmLeave', 'Leave this note? Your copy of the text stays here.');
+  if (!confirm(msg)) return;
+
+  const noteId = tab.shareId;
+  shShareLeaveBtn.disabled = true;
+  try {
+    // Get any last edit into the row before we lose write access to it.
+    const rec = shLive.get(noteId);
+    if (rec) { clearTimeout(rec.pushTimer); await shPush(noteId); }
+    if (owner) await dcClient.from('shared_notes').delete().eq('id', noteId);
+    else await dcClient.from('note_members').delete().eq('note_id', noteId).eq('user_id', shUid());
+  } catch (err) {
+    console.error('leave/stop failed', err);
+  } finally {
+    shShareLeaveBtn.disabled = false;
+  }
+  shCloseShareDialog();
+  shDetach(noteId, false);
+  showToast(owner ? 'Stopped sharing' : 'Left the note', '');
+}
+
+// ---------- invitations ----------
+async function shLoadInvites() {
+  if (!shReady()) { shInvites = []; shRenderInvites(); return; }
+  try {
+    const { data, error } = await dcClient.rpc('my_note_invites');
+    shInvites = error ? [] : (data || []);
+  } catch (err) {
+    console.error('invite load failed', err);
+    shInvites = [];
+  }
+  shRenderInvites();
+}
+
+function shRenderInvites() {
+  if (!shInvitesBtn) return;
+  const n = shInvites.length;
+  shInvitesBtn.classList.toggle('hidden', !shReady());
+  shInvitesBtn.classList.toggle('has-invites', n > 0);
+  shInvitesBadge.classList.toggle('hidden', n === 0);
+  shInvitesBadge.textContent = n > 9 ? '9+' : String(n);
+
+  shInvitesList.innerHTML = '';
+  if (!n) {
+    const empty = document.createElement('div');
+    empty.className = 'invites-empty';
+    empty.textContent = tr('collab.noInvites', 'No invitations right now.');
+    shInvitesList.appendChild(empty);
+    return;
+  }
+  shInvites.forEach((inv) => {
+    const row = document.createElement('div');
+    row.className = 'invite-row';
+
+    const text = document.createElement('div');
+    text.className = 'invite-text';
+    const who = document.createElement('b');
+    who.textContent = '@' + (inv.from_username || '');
+    text.appendChild(who);
+    text.appendChild(document.createTextNode(' ' + tr('collab.invitedYouTo', 'invited you to') + ' '));
+    const noteName = document.createElement('span');
+    noteName.textContent = '“' + (inv.note_title || 'a note') + '”';
+    noteName.setAttribute('dir', detectDir(inv.note_title || ''));
+    text.appendChild(noteName);
+    row.appendChild(text);
+
+    const role = document.createElement('div');
+    role.className = 'invite-role';
+    role.textContent = inv.role === 'viewer'
+      ? tr('collab.asViewer', 'You can read it.')
+      : tr('collab.asEditor', 'You can edit it with them.');
+    row.appendChild(role);
+
+    const actions = document.createElement('div');
+    actions.className = 'invite-actions';
+    const accept = document.createElement('button');
+    accept.className = 'invite-btn invite-btn--accept';
+    accept.textContent = tr('collab.accept', 'Accept');
+    const decline = document.createElement('button');
+    decline.className = 'invite-btn';
+    decline.textContent = tr('collab.decline', 'Decline');
+    accept.addEventListener('click', () => shRespondInvite(inv, true, [accept, decline]));
+    decline.addEventListener('click', () => shRespondInvite(inv, false, [accept, decline]));
+    actions.appendChild(accept);
+    actions.appendChild(decline);
+    row.appendChild(actions);
+
+    shInvitesList.appendChild(row);
+  });
+}
+
+async function shRespondInvite(inv, accept, btns) {
+  btns.forEach((b) => { b.disabled = true; });
+  let noteId = null;
+  try {
+    const { data, error } = await dcClient.rpc('respond_note_invite', { iid: inv.id, accept });
+    if (error) throw error;
+    if (data && data.ok && accept) noteId = data.note_id || inv.note_id;
+  } catch (err) {
+    console.error('invite response failed', err);
+    btns.forEach((b) => { b.disabled = false; });
+    return;
+  }
+  shInvites = shInvites.filter((i) => i.id !== inv.id);
+  shRenderInvites();
+  if (!shInvites.length) shCloseInvitesPanel();
+  if (noteId) await shAdoptNote(noteId);
+}
+
+// Accepting an invite drops the note into the profile you're in right now, as a
+// normal tab carrying a share badge.
+async function shAdoptNote(noteId) {
+  const existing = shTabFor(noteId);
+  if (existing) { switchTab(existing.id); return; }
+
+  let note = null;
+  try {
+    const { data } = await dcClient.rpc('my_shared_notes');
+    note = (data || []).find((n) => n.id === noteId) || null;
+  } catch (err) {
+    console.error('shared note fetch failed', err);
+  }
+  if (!note) { showToast("Couldn't open that note", ''); return; }
+
+  commitMdBlockEdit();
+  syncEditorToState();
+  const tab = {
+    id: uid(),
+    name: (note.title || '').slice(0, 60),
+    custom: !!note.title,
+    content: note.content || '',
+    dir: note.dir || 'auto',
+    align: 'auto',
+    color: null,
+    md: false,
+    shareId: note.id,
+    shareRole: note.role || 'editor',
+    shareOwner: note.owner_username || '',
+    shareBase: note.content || '',
+    shareRev: Number(note.rev) || 0
+  };
+  state.tabs.push(tab);
+  state.activeId = tab.id;
+  showEditorView();
+  setEditorText(tab.content);
+  renderTabs();
+  updateCounts();
+  updatePlaceholderPanel();
+  applyEditorAlign();
+  applyMdView();
+  scheduleSave();
+  shConnect(note.id);
+  shUpdateBar();
+  showToast('Joined', '@' + (note.owner_username || '') + ' · ' + (note.title || ''));
+}
+
+// A new invite row landed for me.
+async function shOnInviteArrived() {
+  const before = new Set(shInvites.map((i) => i.id));
+  await shLoadInvites();
+  const fresh = shInvites.filter((i) => !before.has(i.id));
+  if (!fresh.length) return;
+  const inv = fresh[0];
+  showToast('New invitation from', '@' + (inv.from_username || ''));
+  // The in-app bell is enough when the user is already looking at PromptPad;
+  // a desktop toast is for when they aren't.
+  if (document.hasFocus()) return;
+  try {
+    await window.api.notify({
+      kind: 'invite',
+      title: tr('collab.notifTitle', 'PromptPad — shared note'),
+      body: '@' + (inv.from_username || '') + ' ' +
+        tr('collab.invitedYouTo', 'invited you to') + ' “' + (inv.note_title || '') + '”'
+    });
+  } catch (err) {
+    console.error('notify failed', err);
+  }
+}
+
+function shSubscribeInvites() {
+  if (!shReady() || shInviteChan) return;
+  const uid = shUid();
+  shInviteChan = dcClient.channel('ppinvites:' + uid);
+  shInviteChan.on('postgres_changes',
+    { event: 'INSERT', schema: 'public', table: 'note_invites', filter: 'to_id=eq.' + uid },
+    () => shOnInviteArrived());
+  // Someone added me to a note directly (or an invite of mine was accepted
+  // elsewhere) — refresh the badge either way.
+  shInviteChan.on('postgres_changes',
+    { event: 'INSERT', schema: 'public', table: 'note_members', filter: 'user_id=eq.' + uid },
+    () => shLoadInvites());
+  shInviteChan.subscribe();
+}
+
+function shUnsubscribeInvites() {
+  if (!shInviteChan) return;
+  try { dcClient.removeChannel(shInviteChan); } catch {}
+  shInviteChan = null;
+}
+
+function shOpenInvitesPanel() {
+  if (!shReady()) return;
+  const r = shInvitesBtn.getBoundingClientRect();
+  shInvitesPanel.classList.remove('hidden');
+  const w = shInvitesPanel.offsetWidth;
+  shInvitesPanel.style.top = Math.round(r.bottom + 6) + 'px';
+  shInvitesPanel.style.left = Math.round(Math.max(6, Math.min(r.right - w, window.innerWidth - w - 6))) + 'px';
+  shLoadInvites();
+}
+
+function shCloseInvitesPanel() { shInvitesPanel.classList.add('hidden'); }
+function shInvitesPanelOpen() { return !shInvitesPanel.classList.contains('hidden'); }
+
+// ---------- lifecycle ----------
+// Sign-in, sign-out, and the Settings toggle all land here.
+function shRefresh() {
+  if (!shReady()) {
+    shUnsubscribeInvites();
+    shDisconnectAll();
+    shInvites = [];
+    shCloseInvitesPanel();
+    if (shShareDialogOpen()) shCloseShareDialog();
+    shRenderInvites();
+    shUpdateBar();
+    return;
+  }
+  shSubscribeInvites();
+  shLoadInvites();
+  shSyncChannels();
+}
+
+// ---------- wiring ----------
+if (shInvitesBtn) {
+  shInvitesBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (shInvitesPanelOpen()) shCloseInvitesPanel();
+    else shOpenInvitesPanel();
+  });
+}
+document.addEventListener('click', (e) => {
+  if (shInvitesPanelOpen() && !shInvitesPanel.contains(e.target) && !shInvitesBtn.contains(e.target)) {
+    shCloseInvitesPanel();
+  }
+});
+
+if (shCollabShareBtn) {
+  shCollabShareBtn.addEventListener('click', () => {
+    const t = activeTab();
+    if (t && t.shareId) shOpenShareDialog(t.id);
+  });
+}
+if (shShareClose) shShareClose.addEventListener('click', shCloseShareDialog);
+if (shShareOverlay) {
+  shShareOverlay.addEventListener('click', (e) => {
+    if (e.target === shShareOverlay) shCloseShareDialog();
+  });
+}
+if (shShareInviteBtn) shShareInviteBtn.addEventListener('click', shSendInvite);
+if (shShareUserInput) {
+  shShareUserInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); shSendInvite(); }
+  });
+}
+if (shShareLeaveBtn) shShareLeaveBtn.addEventListener('click', shLeaveOrStop);
+
+// Clicking the desktop toast brings the window forward — land on the invites.
+if (window.api.onNotificationClick) {
+  window.api.onNotificationClick((kind) => {
+    if (kind === 'invite') setTimeout(shOpenInvitesPanel, 120);
+  });
+}
+window.addEventListener('focus', () => {
+  try { window.api.stopFlash(); } catch {}
+});
+
 // ---------- Init ----------
 (async function init() {
   // Platform-specific copy — the setting/shortcut itself already works
@@ -9023,13 +10226,19 @@ document.addEventListener('paste', (e) => {
   } catch { handyGlobalOK = false; }
 
   // Discover (shared prompt gallery) — connect to Supabase in the background.
-  dcInit().then(() => { if (discoverActive()) dcRender(); });
+  // Shared notes ride the same client, so they come up with it.
+  dcInit().then(() => {
+    if (discoverActive()) dcRender();
+    shRefresh();
+  });
   renderTabs(); // so the Discover rail entry shows if configured
 
   // close overlays with Escape (priority: lightbox > ctx menu > find bar > dialogs > overlays)
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
     if (!cmdPalette.classList.contains('hidden')) { closeCommandPalette(); return; }
+    if (shShareDialogOpen()) { shCloseShareDialog(); return; }
+    if (shInvitesPanelOpen()) { shCloseInvitesPanel(); return; }
     if (!profileNameDialog.classList.contains('hidden')) { closeProfileNameDialog(); return; }
     if (!profileDeleteDialog.classList.contains('hidden')) { closeProfileDelete(); return; }
     if (profileMenuOpen()) { closeProfileMenu(); return; }

@@ -37,6 +37,71 @@
     'Moved to': 'منتقل شد به',
     'Copied to': 'کپی شد به',
     "Couldn't move those to that profile.": 'انتقال به آن پروفایل انجام نشد.',
+    // ---- shared notes (live collaboration) ----
+    'Invitations': 'دعوت‌نامه‌ها',
+    'No invitations right now.': 'الان دعوت‌نامه‌ای نداری.',
+    'invited you to': 'تو را دعوت کرد به',
+    'You can edit it with them.': 'می‌توانی همراهشان ویرایش کنی.',
+    'You can read it.': 'فقط می‌توانی بخوانی.',
+    'Accept': 'قبول',
+    'Decline': 'رد',
+    'New invitation from': 'دعوت‌نامه جدید از',
+    'Joined': 'وارد شدی به',
+    "Couldn't open that note": 'باز کردن آن یادداشت انجام نشد',
+    'PromptPad — shared note': 'پرامپت‌پد — یادداشت اشتراکی',
+    'share note': 'یادداشت اشتراکی',
+    'Share note': 'یادداشت اشتراکی',
+    'Share & invite…': 'اشتراک‌گذاری و دعوت…',
+    'Sharing & people…': 'اشتراک‌گذاری و افراد…',
+    'Username': 'نام کاربری',
+    'Can edit': 'می‌تواند ویرایش کند',
+    'Can view': 'فقط می‌بیند',
+    'Invite': 'دعوت',
+    'Sending…': 'در حال ارسال…',
+    'Invitation sent to': 'دعوت‌نامه فرستاده شد برای',
+    'Enter a username.': 'یک نام کاربری وارد کن.',
+    'No user with that username.': 'کاربری با این نام کاربری پیدا نشد.',
+    "That's you.": 'این خودتی.',
+    'They are already in this note.': 'او همین حالا در این یادداشت هست.',
+    'They already have a pending invitation.': 'یک دعوت‌نامه در انتظار برایش فرستاده شده.',
+    'Only the note owner can invite people.': 'فقط صاحب یادداشت می‌تواند کسی را دعوت کند.',
+    'Could not send that invitation.': 'ارسال دعوت‌نامه انجام نشد.',
+    'People': 'افراد',
+    'Loading…': 'در حال بارگذاری…',
+    'owner': 'صاحب',
+    'can edit': 'ویرایشگر',
+    'can view': 'بیننده',
+    'invited': 'دعوت‌شده',
+    'Cancel invitation': 'لغو دعوت‌نامه',
+    'Remove from note': 'حذف از یادداشت',
+    'Everyone here edits the same note live.': 'همه‌ی این افراد همین یادداشت را زنده ویرایش می‌کنند.',
+    'Stop sharing': 'پایان اشتراک‌گذاری',
+    'Leave note': 'خروج از یادداشت',
+    'Stopped sharing': 'اشتراک‌گذاری پایان یافت',
+    'Left the note': 'از یادداشت خارج شدی',
+    'Sharing ended for': 'اشتراک‌گذاری تمام شد برای',
+    'Stop sharing this note? Everyone else loses access — your copy stays.':
+      'اشتراک‌گذاری این یادداشت تمام شود؟ بقیه دسترسی‌شان را از دست می‌دهند — نسخه‌ی تو می‌ماند.',
+    'Leave this note? Your copy of the text stays here.':
+      'از این یادداشت خارج می‌شوی؟ نسخه‌ی متن پیش خودت می‌ماند.',
+    'Shared notes are turned off': 'یادداشت‌های اشتراکی خاموش است',
+    'Sign in on the Discover tab first': 'اول از تب کشف وارد حساب شو',
+    "Couldn't share that note": 'اشتراک‌گذاری آن یادداشت انجام نشد',
+    'Shared note — edited live with others': 'یادداشت اشتراکی — زنده با بقیه ویرایش می‌شود',
+    'Shared note — you can read it': 'یادداشت اشتراکی — فقط می‌توانی بخوانی',
+    'Connected — edits are shared live': 'وصل است — ویرایش‌ها زنده به اشتراک گذاشته می‌شوند',
+    'Offline — your edits are saved and will sync when you reconnect':
+      'آفلاین — ویرایش‌هایت ذخیره می‌شود و بعد از وصل شدن همگام می‌شود',
+    'Connecting…': 'در حال اتصال…',
+    'is typing…': 'در حال نوشتن است…',
+    'people are typing…': 'نفر در حال نوشتن‌اند…',
+    'View only': 'فقط خواندن',
+    'Only you here': 'فقط خودت اینجایی',
+    'here': 'نفر اینجا',
+    'you': 'خودت',
+    'Shared notes': 'یادداشت‌های اشتراکی',
+    'Invite another user to edit one of your notes with you, live':
+      'یک کاربر دیگر را دعوت کن تا یکی از یادداشت‌هایت را زنده با تو ویرایش کند',
     'New profile': 'پروفایل جدید',
     'Profile name': 'نام پروفایل',
     'Rename profile': 'تغییر نام پروفایل',
@@ -384,7 +449,9 @@
   const SKIP_SELECTORS = '#editor, #mdPreview, #tabList, #fsMessages, #aiMessages, ' +
     '.md-block-edit, .dc-card-title, .dc-card-prompt, .dc-mod-title, ' +
     '#profileChipName, .profile-menu-name, #profileDeleteText, ' +
-    '.ctx-profile-list, .toast-name';
+    '.ctx-profile-list, .toast-name, ' +
+    // shared notes: usernames and note titles, which must never be "translated"
+    '.share-person-name, .share-note, .invite-text, .collab-people';
 
   const originals = new WeakMap();   // node/attr key -> original English
   let applying = false;

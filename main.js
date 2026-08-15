@@ -315,7 +315,7 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   app.whenReady().then(() => {
-  const { BrowserWindow, ipcMain, shell, Tray, Menu, dialog, net, globalShortcut, session, screen } = require('electron');
+  const { BrowserWindow, ipcMain, shell, Tray, Menu, dialog, net, globalShortcut, session, screen, Notification } = require('electron');
 
   DATA_FILE = path.join(app.getPath('userData'), 'promptpad-data.json');
 
@@ -739,6 +739,50 @@ if (!app.requestSingleInstanceLock()) {
 
   ipcMain.on('set-close-to-tray', (_e, enabled) => {
     closeToTray = !!enabled;
+  });
+
+  // ---- Desktop notifications (shared-note invites) ----
+  // The renderer only ever asks for one when the window isn't already the thing
+  // the user is looking at — an invite that arrives while PromptPad is focused
+  // just lights up the in-app bell. Clicking the toast brings the window forward.
+  function revealWindow() {
+    if (!mainWindow) return;
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+  }
+
+  ipcMain.handle('notify', (_e, payload) => {
+    const title = String((payload && payload.title) || 'PromptPad').slice(0, 120);
+    const body = String((payload && payload.body) || '').slice(0, 300);
+    // The taskbar flash is the part that survives "notifications off" in Windows
+    // Focus Assist, so do it either way.
+    try { if (mainWindow && !mainWindow.isFocused()) mainWindow.flashFrame(true); } catch {}
+    if (!Notification.isSupported()) return false;
+    try {
+      const n = new Notification({
+        title,
+        body,
+        icon: path.join(__dirname, 'build', process.platform === 'win32' ? 'icon.ico' : 'icon.png'),
+        silent: false
+      });
+      n.on('click', () => {
+        revealWindow();
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('notification-click', payload && payload.kind);
+        }
+      });
+      n.show();
+      return true;
+    } catch (err) {
+      console.error('notify failed', err);
+      return false;
+    }
+  });
+
+  // The renderer clears the taskbar flash once the user actually looks at the app.
+  ipcMain.on('stop-flash', () => {
+    try { if (mainWindow) mainWindow.flashFrame(false); } catch {}
   });
 
   // ---- Images ----
@@ -1490,12 +1534,22 @@ if (!app.requestSingleInstanceLock()) {
       // Snapshots follow a move (same note, new home) but not a copy — the same
       // call duplicateTab has always made.
       const snaps = (!copying && Array.isArray(t.snapshots)) ? t.snapshots.slice(0, 15) : [];
+      // A shared note follows a move — the renderer only sends these on a move,
+      // because two tabs bound to one note would be two buffers for one text.
+      const share = (!copying && typeof t.shareId === 'string') ? {
+        shareId: t.shareId,
+        shareRole: t.shareRole === 'viewer' ? 'viewer' : (t.shareRole === 'owner' ? 'owner' : 'editor'),
+        shareOwner: String(t.shareOwner || ''),
+        shareBase: typeof t.shareBase === 'string' ? t.shareBase : (t.content || ''),
+        shareRev: Number(t.shareRev) || 0
+      } : null;
       return {
         id: t.id, name: t.name || '', custom: !!t.custom, content: t.content || '',
         dir: t.dir || 'auto', align: t.align || 'auto', pinned: !!t.pinned,
         color: t.color || null, groupId: t.groupId || null, md: !!t.md,
         ...(files.length ? { files } : {}),
-        ...(snaps.length ? { snapshots: snaps } : {})
+        ...(snaps.length ? { snapshots: snaps } : {}),
+        ...(share || {})
       };
     });
 

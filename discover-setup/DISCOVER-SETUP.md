@@ -57,6 +57,26 @@ in its security policy.)
 
 ---
 
+## Part D — Shared notes (live collaboration)
+
+Nothing extra to install: the tables, policies and functions for shared notes are at the
+bottom of the same `schema.sql`. If you set Discover up **before** this feature existed,
+just re-run the whole file once (it's idempotent) and shared notes start working.
+
+Two things worth knowing:
+
+- **Realtime must be on** for the project (it is, by default). The last block of `schema.sql`
+  adds `shared_notes`, `note_members` and `note_invites` to the `supabase_realtime`
+  publication — that's what delivers invitations and live edits.
+- **The `shared_notes` row is the source of truth.** Clients write with a compare-and-swap on
+  its `rev` column and rebase their own text onto whatever was accepted, so two people typing
+  at once converge instead of overwriting each other.
+
+Users invite each other by **username** (the one they picked at registration), so tell people
+to choose a username they're happy to share.
+
+---
+
 ### Notes
 - `SUPABASE_ANON_KEY` is a **public** key — meant to ship in client apps. The Row-Level
   Security installed by `schema.sql` is what actually protects the data.

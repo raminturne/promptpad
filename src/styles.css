@@ -3338,3 +3338,264 @@ body {
   gap: 8px;
 }
 #handyDisabledRow .seg { align-self: stretch; }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Shared notes — live collaboration
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ---- invitations bell (title bar) ---- */
+.invites-btn { position: relative; }
+.invites-btn.has-invites { color: var(--accent); }
+
+.invites-badge {
+  position: absolute;
+  top: 2px;
+  right: 3px;
+  min-width: 13px;
+  height: 13px;
+  padding: 0 3px;
+  border-radius: 7px;
+  background: var(--danger);
+  color: var(--bg);
+  font-size: 8.5px;
+  font-weight: 700;
+  line-height: 13px;
+  text-align: center;
+  pointer-events: none;
+}
+
+.invites-panel {
+  min-width: 260px;
+  max-width: 320px;
+  padding: 6px;
+}
+
+.invites-head {
+  padding: 4px 8px 7px;
+  font-size: 10px;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.invites-list { display: flex; flex-direction: column; gap: 5px; }
+
+.invites-empty {
+  padding: 10px 8px 12px;
+  font-size: 11.5px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.invite-row {
+  padding: 8px 9px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.invite-text { font-size: 11.5px; color: var(--text); line-height: 1.55; word-break: break-word; }
+.invite-text b { color: var(--accent); font-weight: 600; }
+.invite-role { font-size: 10px; color: var(--muted); }
+.invite-actions { display: flex; gap: 5px; }
+
+.invite-btn {
+  flex: 1;
+  padding: 4px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--elevated-hi);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.invite-btn:hover { background: var(--elevated); }
+.invite-btn--accept { background: var(--accent-soft); border-color: var(--accent-glow); color: var(--accent); }
+.invite-btn--accept:hover { background: color-mix(in srgb, var(--accent) 24%, transparent); }
+.invite-btn:disabled { opacity: 0.55; cursor: default; }
+
+/* ---- presence bar above the editor ---- */
+.collab-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+  flex-shrink: 0;
+  min-height: 30px;
+}
+
+.collab-state {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--muted);
+  flex-shrink: 0;
+  transition: background 0.2s;
+}
+.collab-state.live { background: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.collab-state.offline { background: var(--danger); }
+
+/* Avatars overlap slightly — the negative margin below does that, not a gap. */
+.collab-people { display: flex; align-items: center; }
+
+.collab-avatar {
+  width: 19px;
+  height: 19px;
+  margin-inline-end: -5px;
+  border-radius: 50%;
+  border: 1.5px solid var(--bg);
+  display: grid;
+  place-items: center;
+  font-size: 9.5px;
+  font-weight: 700;
+  color: var(--bg);
+  text-transform: uppercase;
+  cursor: default;
+}
+.collab-avatar:last-child { margin-inline-end: 0; }
+.collab-avatar.is-me { outline: 1.5px solid var(--accent-glow); outline-offset: -1.5px; }
+
+.collab-typing {
+  flex: 1;
+  min-width: 0;
+  font-size: 10.5px;
+  color: var(--muted-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.collab-btn {
+  flex-shrink: 0;
+  padding: 3px 9px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted-2);
+  font-family: var(--font);
+  font-size: 10.5px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.collab-btn:hover { background: var(--elevated); color: var(--text); }
+
+/* A viewer sees the note live but can't type into it. */
+.editor-area.collab-readonly { opacity: 0.92; caret-color: transparent; }
+
+/* ---- shared badge on the tab ---- */
+.tab-share {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  color: var(--accent);
+  opacity: 0.85;
+}
+.tab-share svg { display: block; }
+
+/* ---- share dialog ---- */
+.share-card { max-width: 400px; }
+
+.share-body {
+  padding: 14px 16px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+}
+
+.share-note {
+  font-size: 12px;
+  color: var(--muted-2);
+  word-break: break-word;
+}
+
+.share-row { display: flex; gap: 6px; }
+.share-user { flex: 1; min-width: 0; }
+
+.share-role {
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  background: var(--elevated);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 11.5px;
+  padding: 0 6px;
+  cursor: pointer;
+  outline: none;
+}
+
+.share-invite { flex-shrink: 0; padding: 0 14px; }
+
+.share-people-head {
+  font-size: 10px;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.share-people { display: flex; flex-direction: column; gap: 4px; }
+
+.share-person {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg);
+}
+
+.share-person-name { flex: 1; min-width: 0; font-size: 12px; color: var(--text); overflow: hidden; text-overflow: ellipsis; }
+.share-person-role { font-size: 10px; color: var(--muted); white-space: nowrap; }
+.share-person.pending .share-person-name { color: var(--muted-2); font-style: italic; }
+
+.share-person-remove {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  transition: background 0.12s, color 0.12s;
+}
+.share-person-remove:hover { background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--danger); }
+
+.share-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 4px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.share-hint { font-size: 10.5px; color: var(--muted); line-height: 1.5; }
+
+.share-danger {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  border: 1px solid color-mix(in srgb, var(--danger) 34%, transparent);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--danger);
+  font-family: var(--font);
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.share-danger:hover { background: color-mix(in srgb, var(--danger) 12%, transparent); }

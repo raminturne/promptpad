@@ -346,3 +346,286 @@ update public.profiles set is_admin = true
 -- Or promote by email:
 -- update public.profiles set is_admin = true
 --   where id = (select id from auth.users where email = 'you@example.com');
+
+-- ────────────────────────────────────────────────────────────────────────────
+-- 7) Shared notes — live collaboration on a single tab.
+--    A user turns one of their tabs into a "shared note", invites someone by
+--    username, and once that invite is accepted both edit the same text live.
+--
+--    This table is the source of truth, and `rev` is what puts every change in
+--    one agreed order. A client writes with "... where id = ? and rev = ?", so
+--    the write only lands if nothing else was accepted in the meantime; on
+--    losing that race it re-reads the row, rebases its own text onto the
+--    accepted revision, and tries again. Realtime only *delivers* revisions
+--    (and presence / typing pings) — it is never the authority.
+-- ────────────────────────────────────────────────────────────────────────────
+create table if not exists public.shared_notes (
+  id         uuid primary key default gen_random_uuid(),
+  owner_id   uuid not null references public.profiles(id) on delete cascade,
+  title      text not null default 'Shared note',
+  content    text not null default '',
+  dir        text not null default 'auto',
+  rev        bigint not null default 1,   -- compare-and-swap target; bumped by the trigger below
+  updated_by uuid references public.profiles(id) on delete set null,
+  updated_at timestamptz not null default now(),
+  created_at timestamptz not null default now()
+);
+create index if not exists shared_notes_owner_idx on public.shared_notes (owner_id);
+
+-- Who is in a note. The owner is added here too (by the trigger below), so every
+-- membership question is a single lookup against this one table.
+create table if not exists public.note_members (
+  note_id   uuid not null references public.shared_notes(id) on delete cascade,
+  user_id   uuid not null references public.profiles(id) on delete cascade,
+  role      text not null default 'editor' check (role in ('editor', 'viewer')),
+  joined_at timestamptz not null default now(),
+  primary key (note_id, user_id)
+);
+create index if not exists note_members_user_idx on public.note_members (user_id);
+
+create table if not exists public.note_invites (
+  id         uuid primary key default gen_random_uuid(),
+  note_id    uuid not null references public.shared_notes(id) on delete cascade,
+  from_id    uuid not null references public.profiles(id) on delete cascade,
+  to_id      uuid not null references public.profiles(id) on delete cascade,
+  role       text not null default 'editor' check (role in ('editor', 'viewer')),
+  status     text not null default 'pending' check (status in ('pending', 'accepted', 'declined')),
+  created_at timestamptz not null default now()
+);
+-- Only one *pending* invite per (note, user) — re-inviting after a decline is fine.
+create unique index if not exists note_invites_pending_uniq
+  on public.note_invites (note_id, to_id) where status = 'pending';
+create index if not exists note_invites_to_idx on public.note_invites (to_id, status);
+
+-- The owner is a member from the moment the note exists.
+create or replace function public.add_note_owner_member()
+returns trigger language plpgsql security definer set search_path = public as $fn$
+begin
+  insert into public.note_members (note_id, user_id, role)
+  values (new.id, new.owner_id, 'editor')
+  on conflict do nothing;
+  return new;
+end;
+$fn$;
+
+drop trigger if exists shared_notes_owner_member on public.shared_notes;
+create trigger shared_notes_owner_member
+  after insert on public.shared_notes
+  for each row execute function public.add_note_owner_member();
+
+-- An editor may rewrite the text but must never take the note over. This is
+-- also where `rev` is bumped: doing it server-side means two clients saving at
+-- the same moment can't hand out the same revision number, so "is this update
+-- older than what I already have?" is answerable on the client.
+create or replace function public.stamp_note_write()
+returns trigger language plpgsql security definer set search_path = public as $fn$
+begin
+  if auth.uid() is not null and new.owner_id is distinct from old.owner_id then
+    new.owner_id := old.owner_id;
+  end if;
+  new.rev := old.rev + 1;
+  new.updated_at := now();
+  return new;
+end;
+$fn$;
+
+drop trigger if exists shared_notes_protect_owner on public.shared_notes;
+drop trigger if exists shared_notes_stamp_write on public.shared_notes;
+create trigger shared_notes_stamp_write
+  before update on public.shared_notes
+  for each row execute function public.stamp_note_write();
+
+-- ---- membership helpers ----------------------------------------------------
+-- security definer, so the policies below can read note_members without RLS
+-- recursing back into the very policy being evaluated.
+create or replace function public.is_note_member(nid uuid)
+returns boolean language sql stable security definer set search_path = public as $fn$
+  select exists (
+    select 1 from public.note_members where note_id = nid and user_id = auth.uid()
+  );
+$fn$;
+
+create or replace function public.is_note_owner(nid uuid)
+returns boolean language sql stable security definer set search_path = public as $fn$
+  select exists (
+    select 1 from public.shared_notes where id = nid and owner_id = auth.uid()
+  );
+$fn$;
+
+create or replace function public.note_role(nid uuid)
+returns text language sql stable security definer set search_path = public as $fn$
+  select role from public.note_members where note_id = nid and user_id = auth.uid();
+$fn$;
+
+-- ---- Row-Level Security ----------------------------------------------------
+alter table public.shared_notes enable row level security;
+alter table public.note_members enable row level security;
+alter table public.note_invites enable row level security;
+
+-- shared_notes: members read; only the owner creates/deletes; owner + editors write.
+drop policy if exists shared_notes_read on public.shared_notes;
+create policy shared_notes_read on public.shared_notes for select
+  using (owner_id = auth.uid() or public.is_note_member(id));
+drop policy if exists shared_notes_insert on public.shared_notes;
+create policy shared_notes_insert on public.shared_notes for insert
+  with check (owner_id = auth.uid());
+drop policy if exists shared_notes_update on public.shared_notes;
+create policy shared_notes_update on public.shared_notes for update
+  using (owner_id = auth.uid() or public.note_role(id) = 'editor')
+  with check (owner_id = auth.uid() or public.note_role(id) = 'editor');
+drop policy if exists shared_notes_delete on public.shared_notes;
+create policy shared_notes_delete on public.shared_notes for delete
+  using (owner_id = auth.uid());
+
+-- note_members: members see the roster; the owner manages it; anyone can leave.
+drop policy if exists note_members_read on public.note_members;
+create policy note_members_read on public.note_members for select
+  using (user_id = auth.uid() or public.is_note_member(note_id));
+drop policy if exists note_members_owner_write on public.note_members;
+create policy note_members_owner_write on public.note_members for insert
+  with check (public.is_note_owner(note_id));
+drop policy if exists note_members_owner_update on public.note_members;
+create policy note_members_owner_update on public.note_members for update
+  using (public.is_note_owner(note_id)) with check (public.is_note_owner(note_id));
+drop policy if exists note_members_delete on public.note_members;
+create policy note_members_delete on public.note_members for delete
+  using (public.is_note_owner(note_id) or user_id = auth.uid());
+
+-- note_invites: you see the ones you sent and the ones addressed to you.
+drop policy if exists note_invites_read on public.note_invites;
+create policy note_invites_read on public.note_invites for select
+  using (to_id = auth.uid() or from_id = auth.uid());
+drop policy if exists note_invites_insert on public.note_invites;
+create policy note_invites_insert on public.note_invites for insert
+  with check (from_id = auth.uid() and public.is_note_owner(note_id));
+drop policy if exists note_invites_delete on public.note_invites;
+create policy note_invites_delete on public.note_invites for delete
+  using (from_id = auth.uid() or to_id = auth.uid());
+
+-- ---- RPCs ------------------------------------------------------------------
+-- Invite by username. The client never has to look a user id up itself (and
+-- couldn't insert the membership row anyway), so both stay behind the policies.
+create or replace function public.invite_to_note(nid uuid, uname text, r text default 'editor')
+returns json language plpgsql security definer set search_path = public as $fn$
+declare target uuid; tname text;
+begin
+  if not public.is_note_owner(nid) then
+    return json_build_object('ok', false, 'error', 'not_owner');
+  end if;
+  if r not in ('editor', 'viewer') then r := 'editor'; end if;
+
+  select id, username into target, tname
+    from public.profiles where lower(username) = lower(trim(uname)) limit 1;
+  if target is null then
+    return json_build_object('ok', false, 'error', 'no_user');
+  end if;
+  if target = auth.uid() then
+    return json_build_object('ok', false, 'error', 'self');
+  end if;
+  if exists (select 1 from public.note_members where note_id = nid and user_id = target) then
+    return json_build_object('ok', false, 'error', 'already_member');
+  end if;
+  if exists (select 1 from public.note_invites
+             where note_id = nid and to_id = target and status = 'pending') then
+    return json_build_object('ok', false, 'error', 'already_invited');
+  end if;
+
+  insert into public.note_invites (note_id, from_id, to_id, role)
+  values (nid, auth.uid(), target, r);
+
+  return json_build_object('ok', true, 'username', tname);
+end;
+$fn$;
+
+-- Accept or decline. Accepting is what creates the membership row.
+create or replace function public.respond_note_invite(iid uuid, accept boolean)
+returns json language plpgsql security definer set search_path = public as $fn$
+declare inv public.note_invites;
+begin
+  select * into inv from public.note_invites where id = iid;
+  if inv.id is null or inv.to_id <> auth.uid() then
+    return json_build_object('ok', false, 'error', 'not_found');
+  end if;
+  if inv.status <> 'pending' then
+    return json_build_object('ok', false, 'error', 'already_handled');
+  end if;
+
+  if accept then
+    insert into public.note_members (note_id, user_id, role)
+    values (inv.note_id, inv.to_id, inv.role)
+    on conflict (note_id, user_id) do update set role = excluded.role;
+    update public.note_invites set status = 'accepted' where id = iid;
+    return json_build_object('ok', true, 'note_id', inv.note_id);
+  end if;
+
+  update public.note_invites set status = 'declined' where id = iid;
+  return json_build_object('ok', true);
+end;
+$fn$;
+
+-- Pending invites for the signed-in user, already joined to the note title and
+-- the inviter's username (one round trip instead of three).
+create or replace function public.my_note_invites()
+returns table (
+  id uuid, note_id uuid, role text, created_at timestamptz,
+  note_title text, from_username text
+)
+language sql stable security definer set search_path = public as $fn$
+  select i.id, i.note_id, i.role, i.created_at, n.title, p.username
+    from public.note_invites i
+    join public.shared_notes n on n.id = i.note_id
+    join public.profiles     p on p.id = i.from_id
+   where i.to_id = auth.uid() and i.status = 'pending'
+   order by i.created_at desc;
+$fn$;
+
+-- Every note the signed-in user can open, with their role in it.
+create or replace function public.my_shared_notes()
+returns table (
+  id uuid, title text, content text, dir text, rev bigint,
+  owner_id uuid, owner_username text, role text, updated_at timestamptz
+)
+language sql stable security definer set search_path = public as $fn$
+  select n.id, n.title, n.content, n.dir, n.rev,
+         n.owner_id, p.username,
+         case when n.owner_id = auth.uid() then 'owner' else m.role end,
+         n.updated_at
+    from public.note_members m
+    join public.shared_notes n on n.id = m.note_id
+    join public.profiles     p on p.id = n.owner_id
+   where m.user_id = auth.uid()
+   order by n.updated_at desc;
+$fn$;
+
+-- Roster for one note, plus anyone invited who hasn't answered yet.
+create or replace function public.note_member_list(nid uuid)
+returns table (user_id uuid, username text, role text, state text)
+language sql stable security definer set search_path = public as $fn$
+  select m.user_id, p.username,
+         case when n.owner_id = m.user_id then 'owner' else m.role end,
+         'member'::text
+    from public.note_members m
+    join public.profiles     p on p.id = m.user_id
+    join public.shared_notes n on n.id = m.note_id
+   where m.note_id = nid and public.is_note_member(nid)
+  union all
+  select i.to_id, p.username, i.role, 'pending'::text
+    from public.note_invites i
+    join public.profiles p on p.id = i.to_id
+   where i.note_id = nid and i.status = 'pending' and public.is_note_member(nid);
+$fn$;
+
+-- Realtime: the app listens for incoming invites and for accepted revisions.
+-- A note on DELETE events: Realtime can only apply RLS to the columns in a
+-- table's replica identity (the primary key, by default). note_members' policy
+-- is written against note_id + user_id, which ARE its primary key, so a client
+-- reliably learns it was removed from a note — including via the cascade when
+-- the owner deletes the note. That's why the app keys "sharing ended" off
+-- note_members rather than off shared_notes.
+do $pub$
+begin
+  begin execute 'alter publication supabase_realtime add table public.note_invites'; exception when duplicate_object then null; end;
+  begin execute 'alter publication supabase_realtime add table public.shared_notes'; exception when duplicate_object then null; end;
+  begin execute 'alter publication supabase_realtime add table public.note_members'; exception when duplicate_object then null; end;
+end
+$pub$;

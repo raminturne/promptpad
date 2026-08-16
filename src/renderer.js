@@ -167,6 +167,8 @@ const appEl = document.querySelector('.app');
 const railEl = document.getElementById('rail');
 const railResizer = document.getElementById('railResizer');
 const discoverBtn = document.getElementById('discoverBtn');
+const dcAdminPostsBtn = document.getElementById('adminPostsBtn');
+const dcAdminPostsBadge = document.getElementById('adminPostsBadge');
 const fastSaveBtn = document.getElementById('fastSaveBtn');
 const aiChatBtn = document.getElementById('aiChatBtn');
 // settings panel
@@ -212,8 +214,7 @@ const ctxPinGroup = document.getElementById('ctxPinGroup');
 const ctxColorRowEl = ctxMenuEl.querySelector('.ctx-color-row');
 const ctxGroupListEl = document.getElementById('ctxGroupList');
 const ctxDirListEl = document.getElementById('ctxDirList');
-const ctxMoveListEl = document.getElementById('ctxMoveList');
-const ctxCopyListEl = document.getElementById('ctxCopyList');
+const ctxProfileRowsEl = document.getElementById('ctxProfileRows');
 // toast
 const toastEl = document.getElementById('toast');
 const toastMsgEl = document.getElementById('toastMsg');
@@ -416,12 +417,10 @@ const tabMultiMenu = document.getElementById('tabMultiMenu');
 const tabMultiHead = document.getElementById('tabMultiHead');
 const multiColorRow = document.getElementById('multiColorRow');
 const multiGroupList = document.getElementById('multiGroupList');
-const multiMoveList = document.getElementById('multiMoveList');
-const multiCopyList = document.getElementById('multiCopyList');
+const multiProfileRowsEl = document.getElementById('multiProfileRows');
 const groupContextMenu = document.getElementById('groupContextMenu');
 const groupColorRow = document.getElementById('groupColorRow');
-const groupMoveList = document.getElementById('groupMoveList');
-const groupCopyList = document.getElementById('groupCopyList');
+const groupProfileRowsEl = document.getElementById('groupProfileRows');
 const multiRenameDialog = document.getElementById('multiRenameDialog');
 const multiRenameInput = document.getElementById('multiRenameInput');
 const multiRenameCancel = document.getElementById('multiRenameCancel');
@@ -1845,7 +1844,7 @@ function closeAllProfileScopedUI() {
   closeLightbox(); closeGallery(); closeFilesPanel(); closeLinkDialog();
   closeSaveTemplateDialog(); closeGroupDialog(); closeHistory(); closeTemplates();
   closeToolbarOverflow(); closeFind(); closeFsSearch();
-  shCloseShareDialog(); shCloseInvitesPanel();
+  shCloseLeaveDialog(); shCloseShareDialog(); shCloseInvitesPanel();
   hideToast(); // names the outgoing profile — must not linger into the new one
   if (multiRenameDialog) multiRenameDialog.classList.add('hidden');
 }
@@ -3044,7 +3043,7 @@ function showCtxMenu(e, tabId) {
 
   buildCtxGroupList(tab);
   buildCtxDirList(tab);
-  wireProfileSections(ctxMenuEl, ctxMoveListEl, ctxCopyListEl, hideCtxMenu, () => [tabId]);
+  wireProfileSections(ctxMenuEl, ctxProfileRowsEl, hideCtxMenu, () => [tabId]);
 
   // Sharing needs the Discover backend and a signed-in account behind it.
   const shareItem = ctxMenuEl.querySelector('.ctx-share-item');
@@ -3239,7 +3238,7 @@ function showTabMultiMenu(e) {
     () => { hideTabMultiMenu(); openMultiGroupDialog(); });
   // Selected tabs travel loose: their group (if any) stays behind. Moving a
   // whole group is what the group header's own menu is for.
-  wireProfileSections(tabMultiMenu, multiMoveList, multiCopyList, hideTabMultiMenu,
+  wireProfileSections(tabMultiMenu, multiProfileRowsEl, hideTabMultiMenu,
     () => [...selectedTabIds]);
   placeMenuAt(tabMultiMenu, e);
 }
@@ -3309,7 +3308,7 @@ function showGroupCtxMenu(e, groupId) {
     renderTabs();
     scheduleSave();
   }, group && group.color);
-  wireProfileSections(groupContextMenu, groupMoveList, groupCopyList, hideGroupCtxMenu,
+  wireProfileSections(groupContextMenu, groupProfileRowsEl, hideGroupCtxMenu,
     () => orderedTabs().filter((t) => t.groupId === groupId).map((t) => t.id),
     () => groupId);
   placeMenuAt(groupContextMenu, e);
@@ -3391,23 +3390,49 @@ function otherProfiles() {
 }
 function profilesTargetable() { return otherProfiles().length > 0; }
 
-// Build a profile picker into `container`; onPick(profileId) per pill.
-function buildProfilePicker(container, onPick) {
+// Build the profile picker into `container`: one row per profile, with a
+// move and a copy button on it. Used to be two full lists (every profile
+// name once under "Move to profile", again under "Copy to profile") — same
+// names stacked twice for no reason, which is most of what made this menu
+// feel so tall.
+function buildProfileRows(container, onMove, onCopy) {
   container.innerHTML = '';
   otherProfiles().forEach((p) => {
-    const b = document.createElement('button');
-    b.className = 'ctx-group-item';
-    b.textContent = p.name;
-    b.setAttribute('dir', detectDir(p.name));
-    b.addEventListener('click', (e) => { e.stopPropagation(); onPick(p.id); });
-    container.appendChild(b);
+    const row = document.createElement('div');
+    row.className = 'ctx-profile-row';
+
+    const name = document.createElement('span');
+    name.className = 'ctx-profile-name';
+    name.textContent = p.name;
+    name.setAttribute('dir', detectDir(p.name));
+    row.appendChild(name);
+
+    const move = document.createElement('button');
+    move.className = 'ctx-profile-act';
+    move.title = tr('profile.moveTo', 'Move to') + ' ' + p.name;
+    move.innerHTML = '<svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true">' +
+      '<line x1="5" y1="12" x2="18" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>' +
+      '<polyline points="12 6 18 12 12 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    move.addEventListener('click', (e) => { e.stopPropagation(); onMove(p.id); });
+    row.appendChild(move);
+
+    const copy = document.createElement('button');
+    copy.className = 'ctx-profile-act';
+    copy.title = tr('profile.copyTo', 'Copy to') + ' ' + p.name;
+    copy.innerHTML = '<svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true">' +
+      '<rect x="8" y="8" width="12" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/>' +
+      '<path d="M5 15V6a1 1 0 0 1 1-1h9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>';
+    copy.addEventListener('click', (e) => { e.stopPropagation(); onCopy(p.id); });
+    row.appendChild(copy);
+
+    container.appendChild(row);
   });
 }
 
-// Show or hide both pickers in one menu, wiring them to the given selection.
-// `getIds`/`getGid` are read at click time so a menu built before the user
-// changed the selection can't send the wrong tabs.
-function wireProfileSections(menuEl, moveEl, copyEl, hide, getIds, getGid) {
+// Show or hide the picker section in one menu, wiring it to the given
+// selection. `getIds`/`getGid` are read at click time so a menu built before
+// the user changed the selection can't send the wrong tabs.
+function wireProfileSections(menuEl, rowsEl, hide, getIds, getGid) {
   const show = profilesTargetable();
   menuEl.querySelectorAll('.ctx-profile-sec').forEach((n) => n.classList.toggle('hidden', !show));
   if (!show) return;
@@ -3417,8 +3442,7 @@ function wireProfileSections(menuEl, moveEl, copyEl, hide, getIds, getGid) {
     hide();
     sendToProfile(pid, mode, ids, gid);
   };
-  buildProfilePicker(moveEl, pick('move'));
-  buildProfilePicker(copyEl, pick('copy'));
+  buildProfileRows(rowsEl, pick('move'), pick('copy'));
 }
 
 // Snapshot a tab for transport, with a fresh id — nothing references a tab id
@@ -5813,9 +5837,18 @@ function applyTheme(name) {
   r.setProperty('--elevated-hi', t.elevatedHi);
   r.setProperty('--accent', t.accent);
   r.setProperty('--danger', t.danger);
-  Object.values(THEMES).forEach(th => { if (th.cssClass) appEl.classList.remove(th.cssClass); });
-  if (t.cssClass) appEl.classList.add(t.cssClass);
-  window.api.setBgColor(t.bg);
+  // cssClass may carry more than one name — the Glass and XP themes are light
+  // designs, so they pair their fx-* class with theme-light.
+  Object.values(THEMES).forEach((th) => {
+    if (th.cssClass) appEl.classList.remove(...th.cssClass.split(/\s+/));
+  });
+  if (t.cssClass) appEl.classList.add(...t.cssClass.split(/\s+/));
+  // Pro themes carry a runtime (refraction maps, scanline roll, glyph rain,
+  // the audio analyser). Swap it after the class, so a runtime that measures
+  // an element reads it with the new layout already applied.
+  if (window.PP_FX) window.PP_FX.apply(t.fx || null);
+  // The native window can't take the rgba backgrounds the effect themes use.
+  window.api.setBgColor(t.winBg || t.bg);
 }
 
 function applyFont(id) {
@@ -6151,16 +6184,26 @@ function buildThemeSwatches() {
       sw.className = 'theme-swatch' + (settings.theme === key ? ' active' : '');
       sw.title = t.label;
       sw.style.background = 'linear-gradient(135deg, ' + t.elevated + ' 0 55%, ' + t.sidebar + ' 55% 100%)';
-      if (t.type === 'light') sw.style.outline = '1px solid rgba(0,0,0,.14)';
+      // Checked on cssClass, not type — a couple of the "Pro" themes are light
+      // too and need the same subtle outline so a near-white swatch doesn't
+      // just disappear against the dark settings panel.
+      if (t.cssClass === 'theme-light') sw.style.outline = '1px solid rgba(0,0,0,.14)';
       const dot = document.createElement('span');
       dot.className = 'sw-dot';
       dot.style.background = t.accent;
       sw.appendChild(dot);
       sw.addEventListener('click', () => {
+        const prev = THEMES[settings.theme];
         settings.theme = key;
         applySettings();
         buildThemeSwatches();
         saveSettingsNow();
+        // Glass is the one theme the renderer can't fully switch on its own —
+        // the window's acrylic material is fixed at creation. Offer the
+        // restart instead of leaving it looking half-applied.
+        const wasGlass = !!(prev && prev.needsRestart);
+        const isGlass = !!t.needsRestart;
+        if (wasGlass !== isGlass) showRestartBanner();
       });
       row.appendChild(sw);
     });
@@ -6169,8 +6212,10 @@ function buildThemeSwatches() {
   };
   const dark = Object.entries(THEMES).filter(([, t]) => t.type === 'dark');
   const light = Object.entries(THEMES).filter(([, t]) => t.type === 'light');
+  const pro = Object.entries(THEMES).filter(([, t]) => t.type === 'pro');
   makeGroup('Dark', dark);
   makeGroup('Light', light);
+  if (pro.length) makeGroup('Pro', pro);
 }
 
 function buildFontPicker() {
@@ -7325,49 +7370,47 @@ const CURRENT_VERSION = document.getElementById('aboutVersion').textContent.repl
 const WHATS_NEW =
   "What's new in v" + CURRENT_VERSION + " ✨\n" +
   '\n' +
-  '• Shared notes. Right-click any tab → "Share & invite…", type someone\'s\n' +
-  '   username, and they get an invitation inside PromptPad (plus a desktop\n' +
-  '   notification if the app isn\'t in front of them). Once they accept, the\n' +
-  '   note opens as a tab for both of you and you edit the same text live —\n' +
-  '   you can see who is in the note and who is typing right now.\n' +
-  '• Two people on different lines both keep their work. On the same line the\n' +
-  '   incoming text wins, unless your cursor is sitting in it — text is never\n' +
-  '   pulled out from under you mid-sentence.\n' +
-  '• Invite people as an editor or as a read-only viewer. The owner can\n' +
-  '   change their mind: remove anyone, cancel an invitation, or stop sharing\n' +
-  '   entirely. Guests can leave whenever they like. However it ends, the\n' +
-  '   text stays in your tab as an ordinary note.\n' +
-  '• A bell in the title bar keeps your pending invitations, and shared tabs\n' +
-  '   carry a small badge so it is never a surprise that someone else can see\n' +
-  '   what you are typing.\n' +
-  '\n' +
-  '   You need a Discover account for this (Discover tab → Register), and it\n' +
-  '   can be turned off completely in Settings → Tabs → Shared notes.\n' +
+  '• Pro themes. Settings → Themes has a new "Pro" row, six of them, each one\n' +
+  '   changes what the app actually does, not just its colors: Old TV (CRT\n' +
+  '   scanlines and a rolling refresh band), Matrix (glyph rain behind the UI),\n' +
+  '   Storm (drifting clouds struck by lightning — ambiently, and again on\n' +
+  '   every keystroke), Windows XP (yes, really), Synesthesia (the accent\n' +
+  '   color follows what you type), and Music — the window pulses and shifts\n' +
+  '   color with whatever is playing on your PC right now, no setup needed.\n' +
+  '• Discover posts now wait for admin approval before anyone else can see\n' +
+  '   them. You will land on "My posts" right after sharing so you can see the\n' +
+  '   pending badge on your own submission; admins get a bell in the title bar\n' +
+  '   the moment a new post arrives, and a "Pending approval" queue at the very\n' +
+  '   top of the Admin screen, with images, so nothing needs opening twice to\n' +
+  '   moderate.\n' +
+  '• The tab right-click menu is more compact. "Move to profile" and "Copy to\n' +
+  '   profile" used to list every profile twice; now each profile is one row\n' +
+  '   with a small move/copy button on it. The menu also finally uses the\n' +
+  '   app\'s own scrollbar instead of the browser default.\n' +
   '\n' +
   'You can close this tab — it won\'t come back until the next update.\n' +
   '\n' +
   '\n' +
   'تازه‌ها در نسخه ' + CURRENT_VERSION + ' ✨\n' +
   '\n' +
-  '• یادداشت اشتراکی. روی هر تب راست‌کلیک کن → «اشتراک‌گذاری و دعوت…»، نام\n' +
-  '   کاربری طرف را بنویس؛ دعوت‌نامه داخل خودِ برنامه برایش می‌آید (و اگر\n' +
-  '   برنامه جلوی چشمش نباشد، یک نوتیفیکیشن ویندوز هم می‌گیرد). با قبول کردن،\n' +
-  '   آن یادداشت برای هر دوی شما به شکل یک تب باز می‌شود و همان متن را زنده\n' +
-  '   با هم ویرایش می‌کنید — می‌بینی چه کسانی داخل یادداشت‌اند و چه کسی همین\n' +
-  '   حالا در حال نوشتن است.\n' +
-  '• اگر دو نفر روی دو خط جدا بنویسند، کار هیچ‌کدام از بین نمی‌رود. روی یک خطِ\n' +
-  '   مشترک، متنِ طرف مقابل اعمال می‌شود مگر اینکه مکان‌نمای تو همان‌جا باشد —\n' +
-  '   یعنی وسط نوشتن، متن از زیر دستت کشیده نمی‌شود.\n' +
-  '• می‌توانی کسی را به‌عنوان ویرایشگر یا فقط‌خواننده دعوت کنی. صاحب یادداشت\n' +
-  '   هر وقت خواست می‌تواند کسی را حذف کند، دعوت‌نامه را لغو کند یا کلاً\n' +
-  '   اشتراک‌گذاری را تمام کند؛ مهمان‌ها هم هر وقت بخواهند خارج می‌شوند. در هر\n' +
-  '   حالت، متن به‌شکل یک یادداشت معمولی توی تبِ خودت باقی می‌ماند.\n' +
-  '• یک زنگوله در نوار عنوان، دعوت‌نامه‌های در انتظارت را نگه می‌دارد، و تب‌های\n' +
-  '   اشتراکی یک نشان کوچک دارند تا هیچ‌وقت غافلگیر نشوی که کس دیگری هم\n' +
-  '   می‌بیند چه می‌نویسی.\n' +
-  '\n' +
-  '   برای این قابلیت به حساب کشف (Discover) نیاز داری (تب کشف ← ثبت‌نام)، و\n' +
-  '   از تنظیمات ← Tabs ← Shared notes می‌شود کاملاً خاموشش کرد.\n' +
+  '• تم‌های حرفه‌ای. تنظیمات ← Themes یک ردیف جدید به اسم «Pro» داره، شش‌تا\n' +
+  '   تم که هرکدوم فقط رنگ عوض نمی‌کنن، رفتار برنامه رو عوض می‌کنن: Old TV\n' +
+  '   (خط‌های تلویزیون قدیمی و یک نوار رفرش که رد می‌شه)، Matrix (بارش حروف\n' +
+  '   پشت رابط کاربری)، Storm (ابرهای در حال حرکت که رعدوبرق می‌زنن — هم\n' +
+  '   خودبه‌خود، هم با هر بار تایپ‌کردنت)، Windows XP (بله، واقعاً)،\n' +
+  '   Synesthesia (رنگ اصلی برنامه با چیزی که تایپ می‌کنی عوض می‌شه)، و Music —\n' +
+  '   پنجره با هر چیزی که همین الان روی سیستمت پخش می‌شه می‌تپه و رنگ عوض\n' +
+  '   می‌کنه، بدون هیچ تنظیمی.\n' +
+  '• پست‌های Discover از این به بعد تا تأیید ادمین منتظر می‌مونن، قبل از\n' +
+  '   اینکه کس دیگه‌ای ببینتشون. درست بعد از اشتراک‌گذاری می‌ری توی «My posts»\n' +
+  '   تا نشان در-انتظار پست خودت رو ببینی؛ ادمین‌ها یک زنگوله توی نوار عنوان\n' +
+  '   می‌گیرن همون لحظه که پست جدید می‌رسه، و توی صفحه‌ی Admin، درست بالای\n' +
+  '   صفحه، صف «Pending approval» با عکس‌ها هست — دیگه لازم نیست چیزی رو\n' +
+  '   دوبار باز کنی تا بررسیش کنی.\n' +
+  '• منوی راست‌کلیک روی تب جمع‌وجورتر شد. «Move to profile» و «Copy to\n' +
+  '   profile» قبلاً هر پروفایل رو دوبار لیست می‌کردن؛ الان هر پروفایل یک\n' +
+  '   ردیفه با یک دکمه‌ی کوچیک move/copy روش. اسکرول این منو هم بالاخره از\n' +
+  '   اسکرول پیش‌فرض مرورگر به اسکرول خودِ برنامه تغییر کرد.\n' +
   '\n' +
   'این تب را می‌توانی ببندی — تا آپدیت بعدی دیگر برنمی‌گردد.';
 
@@ -7435,6 +7478,9 @@ async function runUpdateCheck(silent = false) {
 
 updateBannerCloseEl.addEventListener('click', () => {
   updateBannerEl.classList.add('hidden');
+  // Dismissing counts as having seen it — otherwise the announcement returns
+  // on every launch until it's clicked, which is what makes a banner nagging.
+  markFeatureSeen('proThemes');
 });
 
 // ---- In-app auto-update (electron-updater) with GitHub-API notify fallback ----
@@ -7450,6 +7496,43 @@ function showUpdaterBanner(text, actionLabel, onAction) {
     updateBannerLinkEl.classList.add('hidden');
   }
   updateBannerEl.classList.remove('hidden');
+}
+
+// Updates install silently, so a feature that lives entirely inside Settings
+// would otherwise never be found. Announce the Pro themes once, with a way
+// straight to them, and never mention it again.
+function maybeAnnounceProThemes(hadSaved) {
+  // A brand-new install isn't "new" to anyone — those users meet the themes
+  // as part of the app rather than as a change to it.
+  if (!hadSaved) { markFeatureSeen('proThemes'); return; }
+  if (settings.seenFeatures && settings.seenFeatures.proThemes) return;
+  setTimeout(() => {
+    showUpdaterBanner(
+      tr('theme.announce', 'New in this update: Pro themes — Glass, Matrix, Old TV, Music and more.'),
+      tr('theme.announceCta', 'Take a look'),
+      () => {
+        markFeatureSeen('proThemes');
+        updateBannerEl.classList.add('hidden');
+        openSettings();
+        // Land them on the themes, not the top of a long settings page.
+        setTimeout(() => {
+          if (themeRow && themeRow.scrollIntoView) {
+            themeRow.scrollIntoView({ block: 'center', behavior: 'smooth' });
+          }
+        }, 80);
+      }
+    );
+  }, 1200); // let the window settle before anything slides in
+}
+
+// Glass sets the window's acrylic material, which Windows only accepts when
+// the window is created — so this one theme change lands on the next launch.
+function showRestartBanner() {
+  showUpdaterBanner(
+    tr('theme.restartGlass', 'Restart PromptPad to finish applying this theme.'),
+    tr('theme.restartNow', 'Restart'),
+    () => window.api.relaunchApp()
+  );
 }
 
 if (window.api.onUpdaterEvent) {
@@ -7665,11 +7748,13 @@ async function dcInit() {
       dcLoadProfile().then(() => {
         if (discoverActive()) dcRender();
         shRefresh(); // shared notes need the profile (username) as well as the session
+        dcSyncAdminNotify();
       });
     } else {
       dcProfile = null;
       if (discoverActive()) dcRender();
       shRefresh();
+      dcSyncAdminNotify();
     }
   });
 }
@@ -7696,7 +7781,103 @@ async function dcLogout() {
   dcScreen = 'browse';
   dcRender();
   shRefresh(); // drop the live channels and the invitations bell with the session
+  dcSyncAdminNotify();
 }
+
+// ---- admin: get told the moment a new post lands ----
+// An admin's app listens for every INSERT on posts (RLS already limits that
+// stream to admins, per the note in schema.sql section 8) and raises an
+// in-app toast plus, if PromptPad isn't the focused window, a desktop
+// notification — the same "in-app is enough when you're looking, a toast is
+// for when you're not" split used for shared-note invites.
+let dcAdminChan = null;
+let dcPendingCount = 0;
+
+async function dcOnPostArrived(row) {
+  if (!row) return;
+  let username = '';
+  try {
+    const { data } = await dcClient.from('profiles').select('username').eq('id', row.user_id).maybeSingle();
+    username = (data && data.username) || '';
+  } catch {}
+  const who = username ? '@' + username : tr('admin.someone', 'Someone');
+  showToast(tr('admin.newPost', 'New post from') + ' ' + who, row.title || '');
+  // A new post is always inserted pending (enforce_post_rules forces it), so
+  // the badge can just increment locally instead of a round trip.
+  dcPendingCount += 1;
+  dcUpdatePendingBadge();
+  if (discoverActive() && dcScreen === 'admin') dcRenderAdmin(); // queue is on screen — refresh it
+  if (document.hasFocus()) return;
+  try {
+    await window.api.notify({
+      kind: 'admin-post',
+      title: tr('admin.notifTitle', 'PromptPad — new post to review'),
+      body: who + ' ' + tr('admin.notifBody', 'shared a prompt, pending your approval:') + ' “' + (row.title || '') + '”'
+    });
+  } catch (err) {
+    console.error('notify failed', err);
+  }
+}
+
+function dcSubscribeAdminPosts() {
+  if (!dcClient || !dcSession || !dcProfile || !dcProfile.is_admin || dcAdminChan) return;
+  dcAdminChan = dcClient.channel('ppadminposts:' + dcProfile.id);
+  dcAdminChan.on('postgres_changes',
+    { event: 'INSERT', schema: 'public', table: 'posts' },
+    ({ new: row }) => dcOnPostArrived(row));
+  dcAdminChan.subscribe();
+}
+
+function dcUnsubscribeAdminPosts() {
+  if (!dcAdminChan) return;
+  try { dcClient.removeChannel(dcAdminChan); } catch {}
+  dcAdminChan = null;
+}
+
+// ---- persistent "pending approval" badge (title bar) ----
+// A toast or a desktop notification is only seen if you happen to catch it —
+// this is the "did I miss one?" answer that stays lit until the queue is
+// actually empty, regardless of when you look.
+function dcUpdatePendingBadge() {
+  if (!dcAdminPostsBtn) return;
+  const on = !!(dcProfile && dcProfile.is_admin);
+  dcAdminPostsBtn.classList.toggle('hidden', !on);
+  dcAdminPostsBadge.classList.toggle('hidden', !on || dcPendingCount <= 0);
+  dcAdminPostsBadge.textContent = dcPendingCount > 9 ? '9+' : String(dcPendingCount);
+}
+
+// A real requery rather than local bookkeeping — moderation actions (approve/
+// reject/delete) happen from several places, and re-asking the database is
+// simpler than trying to keep a running count in sync with all of them.
+async function dcRefreshPendingBadge() {
+  if (!dcClient || !dcProfile || !dcProfile.is_admin) { dcPendingCount = 0; dcUpdatePendingBadge(); return; }
+  try {
+    const { count, error } = await dcClient
+      .from('posts').select('id', { count: 'exact', head: true }).eq('status', 'pending');
+    if (error) throw error;
+    dcPendingCount = count || 0;
+  } catch (err) {
+    console.error('pending count failed', err);
+  }
+  dcUpdatePendingBadge();
+}
+
+function dcOpenAdminFromBadge() {
+  if (!dcProfile || !dcProfile.is_admin) return;
+  dcScreen = 'admin';
+  if (discoverActive()) dcRender();
+  else switchToDiscover(); // switchToDiscover() no-ops (and skips the render) if already active
+}
+
+// Called everywhere the session/profile changes (alongside shRefresh —
+// admin status is only known once dcLoadProfile has resolved).
+function dcSyncAdminNotify() {
+  if (dcProfile && dcProfile.is_admin) dcSubscribeAdminPosts();
+  else dcUnsubscribeAdminPosts();
+  dcRefreshPendingBadge();
+}
+
+if (dcAdminPostsBtn) dcAdminPostsBtn.addEventListener('click', dcOpenAdminFromBadge);
 
 // Send selected text (from the right-click menu anywhere in the app) to the
 // Discover Upload form as a ready-to-share prompt.
@@ -7825,6 +8006,7 @@ function dcRenderAuth() {
       dcScreen = dcPrefillPrompt ? 'upload' : 'browse';
       dcRender();
       shRefresh();
+      dcSyncAdminNotify();
     } catch (err) {
       status.classList.add('err');
       status.textContent = (err && err.message) || 'Something went wrong.';
@@ -7841,6 +8023,29 @@ function dcRenderAuth() {
 function dcCatLabel(slug) {
   const c = dcCategories.find((x) => x.slug === slug);
   return c ? c.label : (slug || '');
+}
+
+// Server-side caps (see enforce_post_rules in schema.sql) block this going
+// forward, but a row inserted before that existed — or written straight from
+// the SQL editor — can still carry an oversized title/prompt. Setting a
+// megabyte of text as textContent lays out fine on its own, but combined with
+// -webkit-line-clamp and a scrollable modal pane it's slow enough to feel like
+// the whole tab hung. Clamp what's ever displayed, independent of storage.
+// A little above the Upload form's own limits (DC_TITLE_MAX / DC_PROMPT_MAX
+// below), so a legitimate post from before those existed isn't chopped, while
+// staying nowhere near large enough to be the layout-freezing wall of text
+// that got this whole thing added.
+const DC_TITLE_DISPLAY_MAX = 300;
+const DC_PROMPT_DISPLAY_MAX = 6000;
+const DC_CARD_PROMPT_MAX = 600; // the card only ever shows ~4 clamped lines
+function dcClamp(text, max) {
+  const s = String(text || '');
+  return s.length > max ? s.slice(0, max) + '…' : s;
+}
+function dcStatusLabel(status) {
+  if (status === 'pending') return tr('status.pending', 'pending review');
+  if (status === 'rejected') return tr('status.rejected', 'rejected');
+  return status;
 }
 
 async function dcRenderBrowse() {
@@ -7916,7 +8121,12 @@ async function dcLoadAndRenderFeed(feed) {
       return;
     }
     await dcLoadLikes(data.map((p) => p.id));
-    data.forEach((post) => feed.appendChild(dcCard(post)));
+    // One malformed or oversized post must never take the rest of the feed down
+    // with it — render each card in its own try, and skip only that one on error.
+    data.forEach((post) => {
+      try { feed.appendChild(dcCard(post)); }
+      catch (err) { console.error('dcCard failed for post', post && post.id, err); }
+    });
   } catch (err) {
     feed.innerHTML = '';
     feed.appendChild(dcStatus((err && err.message) || 'Failed to load.', 'err'));
@@ -7969,7 +8179,7 @@ function dcCard(post) {
 
   const body = dcEl('div', 'dc-card-body');
   const top = dcEl('div', 'dc-card-top');
-  const titleEl = dcEl('div', 'dc-card-title', post.title || tr('card.untitled', 'Untitled'));
+  const titleEl = dcEl('div', 'dc-card-title', dcClamp(post.title, DC_TITLE_DISPLAY_MAX) || tr('card.untitled', 'Untitled'));
   titleEl.addEventListener('click', () => dcOpenPost(post));
   top.appendChild(titleEl);
   if (post.category) top.appendChild(dcEl('span', 'dc-card-cat', dcCatLabel(post.category)));
@@ -7977,7 +8187,7 @@ function dcCard(post) {
 
   if (post.audio_url) body.appendChild(dcAudioPlayer(post.audio_url));
 
-  const pr = dcEl('div', 'dc-card-prompt', post.prompt || '');
+  const pr = dcEl('div', 'dc-card-prompt', dcClamp(post.prompt, DC_CARD_PROMPT_MAX));
   pr.addEventListener('click', () => dcOpenPost(post));
   body.appendChild(pr);
 
@@ -7987,7 +8197,9 @@ function dcCard(post) {
   const author = (post.profiles && post.profiles.username) ? '@' + post.profiles.username : 'anonymous';
   left.appendChild(dcEl('span', 'dc-card-author', author));
   if (post.view_count) left.appendChild(dcEl('span', 'dc-card-views', '👁 ' + post.view_count));
-  if (dcMine && post.status && post.status !== 'approved') left.appendChild(dcEl('span', 'dc-card-status', post.status));
+  if (dcMine && post.status && post.status !== 'approved') {
+    left.appendChild(dcEl('span', 'dc-card-status', dcStatusLabel(post.status)));
+  }
   footRow.appendChild(left);
   footRow.appendChild(dcLikeButton(post));
   foot.appendChild(footRow);
@@ -8008,7 +8220,7 @@ function dcCard(post) {
   }
   if (dcProfile && (dcProfile.is_admin || dcProfile.id === post.user_id)) {
     const del = dcEl('button', 'dc-mini-btn dc-mini-danger', 'Delete');
-    del.addEventListener('click', () => dcDeletePost(post, card));
+    del.addEventListener('click', () => { dcDeletePost(post, card); dcRefreshPendingBadge(); });
     actions.appendChild(del);
   }
   foot.appendChild(actions);
@@ -8086,7 +8298,17 @@ async function dcToggleLike(post, btn, countEl) {
 }
 
 // ---- post detail modal (image + full prompt side by side) ----
+// Wrapped end to end: a click handler that throws normally just vanishes into
+// the console, leaving the user staring at nothing with no idea it failed.
 function dcOpenPost(post) {
+  try { dcOpenPostUnsafe(post); }
+  catch (err) {
+    console.error('dcOpenPost failed', post && post.id, err);
+    showToast("Couldn't open that post", '');
+  }
+}
+
+function dcOpenPostUnsafe(post) {
   // count the view (fire-and-forget; can't be set directly by the client)
   try { dcClient.rpc('increment_post_view', { pid: post.id }); } catch {}
   const overlay = dcEl('div', 'dc-modal-overlay');
@@ -8101,12 +8323,12 @@ function dcOpenPost(post) {
 
   const pane = dcEl('div', 'dc-modal-pane');
   const head = dcEl('div', 'dc-modal-head');
-  head.appendChild(dcEl('div', 'dc-modal-title', post.title || tr('card.untitled', 'Untitled')));
+  head.appendChild(dcEl('div', 'dc-modal-title', dcClamp(post.title, DC_TITLE_DISPLAY_MAX) || tr('card.untitled', 'Untitled')));
   if (post.category) head.appendChild(dcEl('span', 'dc-card-cat', dcCatLabel(post.category)));
   pane.appendChild(head);
   pane.appendChild(dcEl('div', 'dc-modal-author',
     (post.profiles && post.profiles.username) ? '@' + post.profiles.username : 'anonymous'));
-  pane.appendChild(dcEl('div', 'dc-modal-prompt', post.prompt || ''));
+  pane.appendChild(dcEl('div', 'dc-modal-prompt', dcClamp(post.prompt, DC_PROMPT_DISPLAY_MAX)));
 
   const acts = dcEl('div', 'dc-modal-actions');
   const useBtn = dcEl('button', 'dc-primary-btn', 'Use this prompt');
@@ -8172,12 +8394,19 @@ async function dcDeletePost(post, cardEl) {
 }
 
 // ---- upload screen ----
+// Hard client-side stop, matching the server-side check in enforce_post_rules —
+// a browser's native `maxlength` refuses to type or paste past the limit, so
+// this is what actually keeps someone from putting a wall of spam in a post.
+const DC_TITLE_MAX = 120;
+const DC_PROMPT_MAX = 4000;
+
 function dcRenderUpload() {
   discoverBodyEl.innerHTML = '';
   const form = dcEl('form', 'dc-form dc-upload');
   form.appendChild(dcEl('label', 'dc-label', 'Title'));
   const title = dcEl('input', 'text-input');
   title.placeholder = 'A short name for this prompt';
+  title.maxLength = DC_TITLE_MAX;
   form.appendChild(title);
 
   form.appendChild(dcEl('label', 'dc-label', 'Category'));
@@ -8187,10 +8416,24 @@ function dcRenderUpload() {
   });
   form.appendChild(cat);
 
-  form.appendChild(dcEl('label', 'dc-label', 'Prompt'));
+  const promptLabelRow = dcEl('div', 'dc-label-row');
+  promptLabelRow.appendChild(dcEl('label', 'dc-label', 'Prompt'));
+  const promptCount = dcEl('span', 'dc-char-count');
+  promptLabelRow.appendChild(promptCount);
+  form.appendChild(promptLabelRow);
   const prompt = dcEl('textarea', 'text-input dc-textarea');
   prompt.rows = 6; prompt.placeholder = 'Paste your prompt here…';
-  if (dcPrefillPrompt) { prompt.value = dcPrefillPrompt; dcPrefillPrompt = ''; } // from "Share to Discover"
+  prompt.maxLength = DC_PROMPT_MAX;
+  // From "Share to Discover" — maxlength only stops typing/pasting, not a
+  // value assigned from JS, so a large selection handed off this way still
+  // needs its own clamp.
+  if (dcPrefillPrompt) { prompt.value = dcPrefillPrompt.slice(0, DC_PROMPT_MAX); dcPrefillPrompt = ''; }
+  const updateCount = () => {
+    promptCount.textContent = prompt.value.length + ' / ' + DC_PROMPT_MAX;
+    promptCount.classList.toggle('warn', prompt.value.length >= DC_PROMPT_MAX);
+  };
+  prompt.addEventListener('input', updateCount);
+  updateCount();
   form.appendChild(prompt);
 
   // Image (optional) — click or drag & drop.
@@ -8238,8 +8481,11 @@ function dcRenderUpload() {
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     status.className = 'dc-form-status'; status.textContent = '';
-    const t = title.value.trim();
-    const p = prompt.value.trim();
+    // .slice() as a last-resort backstop — maxlength covers typing/pasting,
+    // and the prefill path is clamped where it's set, but this is what makes
+    // the limit unconditional regardless of how the field ended up this way.
+    const t = title.value.trim().slice(0, DC_TITLE_MAX);
+    const p = prompt.value.trim().slice(0, DC_PROMPT_MAX);
     if (!t || !p) { status.classList.add('err'); status.textContent = 'Title and prompt are required.'; return; }
     if (dcContentFlag(t + ' ' + p)) {
       status.classList.add('err');
@@ -8256,8 +8502,14 @@ function dcRenderUpload() {
         imageBlob: imgFile, audioBlob: (cat.value === 'music' ? audioFile : null),
         onStatus: (m) => { status.textContent = m; }
       });
+      // A new post is pending until an admin approves it, so it won't show up
+      // in the ordinary feed — land on "My posts" instead, where the pending
+      // badge makes that visible, rather than dropping the user into a Browse
+      // view where their own submission has just silently vanished.
+      dcMine = true;
       dcScreen = 'browse';
       dcRender();
+      showToast('Shared — waiting for admin approval', '');
     } catch (err) {
       status.classList.add('err');
       status.textContent = (err && err.message) || 'Upload failed.';
@@ -8338,6 +8590,41 @@ function dcCompressImage(file) {
 async function dcRenderAdmin() {
   discoverBodyEl.innerHTML = '';
 
+  // Post approval — first thing on the page. Every new post starts pending
+  // (see enforce_post_rules in schema.sql), so this is the queue an admin
+  // actually opens this tab to work through; everything else below it is
+  // occasional bookkeeping (storage, categories, users) that can wait.
+  const modBox = dcEl('div', 'dc-admin-mod');
+  modBox.appendChild(dcEl('div', 'dc-admin-h', 'Pending approval'));
+  const list = dcEl('div', 'dc-mod-list');
+  modBox.appendChild(list);
+  discoverBodyEl.appendChild(modBox);
+
+  list.appendChild(dcStatus('Loading…'));
+  try {
+    const { data, error } = await dcClient
+      .from('posts')
+      .select('id,title,status,category,image_url,image_key,audio_key,user_id,created_at,profiles!posts_user_id_fkey(username,is_blocked)')
+      .order('created_at', { ascending: false })
+      .limit(100);
+    if (error) throw error;
+    list.innerHTML = '';
+    if (!data.length) { list.appendChild(dcStatus('No posts yet.')); return; }
+    // Pending-first: since every new post now starts pending, that's the queue
+    // an admin actually needs to work through, not buried under old approved ones.
+    const rank = { pending: 0, rejected: 1, approved: 2 };
+    data.sort((a, b) => (rank[a.status] ?? 1) - (rank[b.status] ?? 1));
+    // One malformed/oversized row (the exact kind of post an admin most needs
+    // to reach) must never take the whole moderation queue down with it.
+    data.forEach((post) => {
+      try { list.appendChild(dcModRow(post)); }
+      catch (err) { console.error('dcModRow failed for post', post && post.id, err); }
+    });
+  } catch (err) {
+    list.innerHTML = '';
+    list.appendChild(dcStatus((err && err.message) || 'Failed to load.', 'err'));
+  }
+
   // storage meter
   const meter = dcEl('div', 'dc-admin-meter');
   meter.appendChild(dcStatus('Calculating storage…'));
@@ -8395,29 +8682,6 @@ async function dcRenderAdmin() {
   addRow.appendChild(slugI); addRow.appendChild(labelI); addRow.appendChild(addBtn);
   catBox.appendChild(addRow);
   discoverBodyEl.appendChild(catBox);
-
-  // moderation list
-  const modBox = dcEl('div', 'dc-admin-mod');
-  modBox.appendChild(dcEl('div', 'dc-admin-h', 'Recent posts'));
-  const list = dcEl('div', 'dc-mod-list');
-  modBox.appendChild(list);
-  discoverBodyEl.appendChild(modBox);
-
-  list.appendChild(dcStatus('Loading…'));
-  try {
-    const { data, error } = await dcClient
-      .from('posts')
-      .select('id,title,status,category,image_key,audio_key,user_id,created_at,profiles!posts_user_id_fkey(username,is_blocked)')
-      .order('created_at', { ascending: false })
-      .limit(100);
-    if (error) throw error;
-    list.innerHTML = '';
-    if (!data.length) { list.appendChild(dcStatus('No posts yet.')); return; }
-    data.forEach((post) => list.appendChild(dcModRow(post)));
-  } catch (err) {
-    list.innerHTML = '';
-    list.appendChild(dcStatus((err && err.message) || 'Failed to load.', 'err'));
-  }
 }
 
 async function dcRenderStorageMeter(meter) {
@@ -8499,11 +8763,31 @@ function dcFmtBytes(n) {
 
 function dcModRow(post) {
   const row = dcEl('div', 'dc-mod-row');
+  row.classList.add('dc-mod-row--' + (post.status || 'approved'));
+
+  const thumb = dcEl('img', 'dc-mod-thumb' + (post.image_url ? '' : ' is-default'));
+  thumb.loading = 'lazy';
+  thumb.src = post.image_url || dcDefaultImage(post.category);
+  thumb.alt = '';
+  thumb.title = tr('admin.viewFull', 'Click to see the full post');
+  // dcOpenPost needs a prompt to show; the admin list doesn't fetch that
+  // column (title/category/image are enough for the list itself), so pull it
+  // on demand only when the thumbnail is actually clicked.
+  thumb.addEventListener('click', async () => {
+    if (post.prompt != null) { dcOpenPost(post); return; }
+    try {
+      const { data } = await dcClient.from('posts').select('prompt').eq('id', post.id).maybeSingle();
+      post.prompt = (data && data.prompt) || '';
+    } catch { post.prompt = ''; }
+    dcOpenPost(post);
+  });
+  row.appendChild(thumb);
+
   const info = dcEl('div', 'dc-mod-info');
-  info.appendChild(dcEl('span', 'dc-mod-title', post.title || tr('card.untitled', 'Untitled')));
+  info.appendChild(dcEl('span', 'dc-mod-title', dcClamp(post.title, DC_TITLE_DISPLAY_MAX) || tr('card.untitled', 'Untitled')));
   const blocked = !!(post.profiles && post.profiles.is_blocked);
   const meta = dcEl('span', 'dc-mod-meta',
-    `${(post.profiles && post.profiles.username) ? '@' + post.profiles.username : '—'} · ${post.status}`);
+    `${(post.profiles && post.profiles.username) ? '@' + post.profiles.username : '—'} · ${dcStatusLabel(post.status)}`);
   if (blocked) meta.appendChild(dcEl('span', 'dc-mod-blocked', ' · blocked'));
   info.appendChild(meta);
   row.appendChild(info);
@@ -8514,6 +8798,7 @@ function dcModRow(post) {
       if (error) throw error;
       post.status = status;
       dcRenderAdmin();
+      dcRefreshPendingBadge();
     } catch (err) { alert((err && err.message) || 'Update failed.'); }
   };
   if (post.status !== 'approved') {
@@ -8540,7 +8825,7 @@ function dcModRow(post) {
     acts.appendChild(blk);
   }
   const del = dcEl('button', 'dc-mini-btn dc-mini-danger', 'Delete');
-  del.addEventListener('click', async () => { await dcDeletePost(post, null); dcRenderAdmin(); });
+  del.addEventListener('click', async () => { await dcDeletePost(post, null); dcRenderAdmin(); dcRefreshPendingBadge(); });
   acts.appendChild(del);
   row.appendChild(acts);
   return row;
@@ -9095,6 +9380,11 @@ const shShareInviteBtn = document.getElementById('shareInviteBtn');
 const shShareStatus = document.getElementById('shareStatus');
 const shSharePeople = document.getElementById('sharePeople');
 const shShareLeaveBtn = document.getElementById('shareLeaveBtn');
+const shShareLeaveDialog = document.getElementById('shareLeaveDialog');
+const shShareLeaveLabel = document.getElementById('shareLeaveLabel');
+const shShareLeaveText = document.getElementById('shareLeaveText');
+const shShareLeaveCancel = document.getElementById('shareLeaveCancel');
+const shShareLeaveConfirm = document.getElementById('shareLeaveConfirm');
 
 const SH_PUSH_DELAY = 400;    // keystroke → write
 const SH_RETRY_DELAY = 900;   // backoff after a write that errored outright
@@ -9855,16 +10145,35 @@ async function shSendInvite() {
 }
 
 // "Stop sharing" (owner) deletes the note for everyone; "Leave note" (guest)
-// only drops your own membership.
-async function shLeaveOrStop() {
+// only drops your own membership. Confirmed through an in-app dialog rather
+// than window.confirm() — a native dialog can render behind this always-on-top
+// window, and the renderer sits blocked waiting for a click the user can't
+// reach, which looks exactly like the whole app freezing.
+function shOpenLeaveDialog() {
   const tab = state.tabs.find((t) => t.id === shShareTabId);
   if (!tab || !tab.shareId) return;
   const owner = tab.shareRole === 'owner';
-  const msg = owner
+  shShareLeaveLabel.textContent = owner
+    ? tr('collab.stopSharing', 'Stop sharing')
+    : tr('collab.leaveNote', 'Leave note');
+  shShareLeaveText.textContent = owner
     ? tr('collab.confirmStop', 'Stop sharing this note? Everyone else loses access — your copy stays.')
     : tr('collab.confirmLeave', 'Leave this note? Your copy of the text stays here.');
-  if (!confirm(msg)) return;
+  shShareLeaveConfirm.textContent = owner
+    ? tr('collab.stopSharing', 'Stop sharing')
+    : tr('collab.leaveNote', 'Leave note');
+  shShareLeaveDialog.classList.remove('hidden');
+}
 
+function shCloseLeaveDialog() {
+  shShareLeaveDialog.classList.add('hidden');
+}
+
+async function shConfirmLeaveOrStop() {
+  const tab = state.tabs.find((t) => t.id === shShareTabId);
+  shCloseLeaveDialog();
+  if (!tab || !tab.shareId) return;
+  const owner = tab.shareRole === 'owner';
   const noteId = tab.shareId;
   shShareLeaveBtn.disabled = true;
   try {
@@ -10083,6 +10392,7 @@ function shRefresh() {
     shDisconnectAll();
     shInvites = [];
     shCloseInvitesPanel();
+    shCloseLeaveDialog();
     if (shShareDialogOpen()) shCloseShareDialog();
     shRenderInvites();
     shUpdateBar();
@@ -10125,7 +10435,10 @@ if (shShareUserInput) {
     if (e.key === 'Enter') { e.preventDefault(); shSendInvite(); }
   });
 }
-if (shShareLeaveBtn) shShareLeaveBtn.addEventListener('click', shLeaveOrStop);
+if (shShareLeaveBtn) shShareLeaveBtn.addEventListener('click', shOpenLeaveDialog);
+if (shShareLeaveCancel) shShareLeaveCancel.addEventListener('click', shCloseLeaveDialog);
+if (shShareLeaveConfirm) shShareLeaveConfirm.addEventListener('click', shConfirmLeaveOrStop);
+function shLeaveDialogOpen() { return !shShareLeaveDialog.classList.contains('hidden'); }
 
 // Clicking the desktop toast brings the window forward — land on the invites.
 if (window.api.onNotificationClick) {
@@ -10191,6 +10504,7 @@ window.addEventListener('focus', () => {
 
   const hadSaved = await loadState();
   maybeShowWhatsNew(hadSaved);
+  maybeAnnounceProThemes(hadSaved);
   applyActiveView();
   renderProfileChip();
 
@@ -10230,6 +10544,7 @@ window.addEventListener('focus', () => {
   dcInit().then(() => {
     if (discoverActive()) dcRender();
     shRefresh();
+    dcSyncAdminNotify();
   });
   renderTabs(); // so the Discover rail entry shows if configured
 
@@ -10237,6 +10552,7 @@ window.addEventListener('focus', () => {
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
     if (!cmdPalette.classList.contains('hidden')) { closeCommandPalette(); return; }
+    if (shLeaveDialogOpen()) { shCloseLeaveDialog(); return; }
     if (shShareDialogOpen()) { shCloseShareDialog(); return; }
     if (shInvitesPanelOpen()) { shCloseInvitesPanel(); return; }
     if (!profileNameDialog.classList.contains('hidden')) { closeProfileNameDialog(); return; }

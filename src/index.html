@@ -8,6 +8,9 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
+  <!-- Pro-theme effect layers. #fxBack sits behind the whole app (Matrix rain);
+       #fxLayer sits over it (scanlines, film grain). Both are inert. -->
+  <div id="fxBack" class="fx-back" aria-hidden="true"></div>
   <div class="app">
     <div id="zenExitHint" class="zen-exit-hint hidden">Focus mode · press Esc to exit</div>
     <div id="handyHandle" class="handy-handle" title="Hover to open"></div>
@@ -34,6 +37,16 @@
             <path d="M10.2 18a2 2 0 0 0 3.6 0" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
           </svg>
           <span id="invitesBadge" class="invites-badge hidden"></span>
+        </button>
+        <!-- Admins only: posts waiting for approval. Stays lit until they're
+             all handled — a toast/desktop notification alone disappears, this
+             doesn't, so "did I miss one?" always has an answer at a glance. -->
+        <button id="adminPostsBtn" class="win-btn invites-btn hidden" title="Posts pending approval">
+          <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+            <rect x="4" y="4" width="16" height="16" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.7"/>
+            <polyline points="8 12.3 11 15.3 16 9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <span id="adminPostsBadge" class="invites-badge hidden"></span>
         </button>
         <button id="railToggleBtn" class="win-btn" title="Hide tabs (Ctrl+\)">
           <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
@@ -967,7 +980,7 @@
             <div class="about-box">
               <div class="about-brand">
                 <span class="brand-dot"></span>
-                <span>PromptPad <em id="aboutVersion">v3.0.0</em></span>
+                <span>PromptPad <em id="aboutVersion">v3.1.0</em></span>
               </div>
               <p class="about-desc">A compact notepad for writing AI prompts.</p>
               <div class="about-links">
@@ -1032,15 +1045,13 @@
         <span class="ctx-color-label">Direction</span>
         <div class="ctx-group-list" id="ctxDirList"></div>
       </div>
-      <!-- Hidden unless a second profile exists (see profilesTargetable). -->
+      <!-- Hidden unless a second profile exists (see profilesTargetable). One
+           row per profile, with a move and a copy button on it — was two full
+           duplicate profile lists stacked on top of each other. -->
       <div class="ctx-sep ctx-profile-sec"></div>
       <div class="ctx-colors ctx-profile-sec">
-        <span class="ctx-color-label">Move to profile</span>
-        <div class="ctx-group-list ctx-profile-list" id="ctxMoveList"></div>
-      </div>
-      <div class="ctx-colors ctx-profile-sec">
-        <span class="ctx-color-label">Copy to profile</span>
-        <div class="ctx-group-list ctx-profile-list" id="ctxCopyList"></div>
+        <span class="ctx-color-label">Profile</span>
+        <div class="ctx-profile-rows" id="ctxProfileRows"></div>
       </div>
       <div id="ctxPinGroup">
         <div class="ctx-sep"></div>
@@ -1067,12 +1078,8 @@
       </div>
       <div class="ctx-sep ctx-profile-sec"></div>
       <div class="ctx-colors ctx-profile-sec">
-        <span class="ctx-color-label">Move to profile</span>
-        <div class="ctx-group-list ctx-profile-list" id="multiMoveList"></div>
-      </div>
-      <div class="ctx-colors ctx-profile-sec">
-        <span class="ctx-color-label">Copy to profile</span>
-        <div class="ctx-group-list ctx-profile-list" id="multiCopyList"></div>
+        <span class="ctx-color-label">Profile</span>
+        <div class="ctx-profile-rows" id="multiProfileRows"></div>
       </div>
       <div class="ctx-sep"></div>
       <div class="ctx-item ctx-danger" data-multi-action="close">Close selected</div>
@@ -1093,12 +1100,8 @@
       <!-- Carries the group record plus every member tab. -->
       <div class="ctx-sep ctx-profile-sec"></div>
       <div class="ctx-colors ctx-profile-sec">
-        <span class="ctx-color-label">Move to profile</span>
-        <div class="ctx-group-list ctx-profile-list" id="groupMoveList"></div>
-      </div>
-      <div class="ctx-colors ctx-profile-sec">
-        <span class="ctx-color-label">Copy to profile</span>
-        <div class="ctx-group-list ctx-profile-list" id="groupCopyList"></div>
+        <span class="ctx-color-label">Profile</span>
+        <div class="ctx-profile-rows" id="groupProfileRows"></div>
       </div>
       <div class="ctx-sep"></div>
       <div class="ctx-item" data-group-action="pin">Pin group</div>
@@ -1146,6 +1149,18 @@
       <div class="mini-dialog-actions">
         <button id="profileDeleteCancel" class="mini-dialog-cancel">Cancel</button>
         <button id="profileDeleteConfirm" class="mini-dialog-save mini-dialog-danger">Delete</button>
+      </div>
+    </div>
+
+    <!-- Stop sharing / leave note confirm dialog. Not window.confirm(): a native
+         dialog can render behind this always-on-top window and block the whole
+         renderer waiting for a click the user can't reach. -->
+    <div id="shareLeaveDialog" class="mini-dialog hidden">
+      <span class="mini-dialog-label" id="shareLeaveLabel">Stop sharing</span>
+      <p class="mini-dialog-text" id="shareLeaveText"></p>
+      <div class="mini-dialog-actions">
+        <button id="shareLeaveCancel" class="mini-dialog-cancel">Cancel</button>
+        <button id="shareLeaveConfirm" class="mini-dialog-save mini-dialog-danger">Stop sharing</button>
       </div>
     </div>
 
@@ -1415,7 +1430,11 @@
     </div>
   </div>
 
+  <!-- Over-the-app effect layer (scanlines, grain). Inert by design. -->
+  <div id="fxLayer" class="fx-layer" aria-hidden="true"></div>
+
   <script src="themes.js"></script>
+  <script src="fx.js"></script>
   <script src="i18n.js"></script>
   <script src="markdown.js"></script>
   <script src="supabase.js"></script>

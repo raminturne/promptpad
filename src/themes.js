@@ -19,6 +19,58 @@
     latte:    { label: 'Latte',    type: 'light', cssClass: 'theme-light', bg: '#f5ede0', text: '#2a1e10', sidebar: '#ede3d4', elevated: '#fdf6ed', elevatedHi: '#e4d8c8', accent: '#b06030', danger: '#c03030' },
     lavender: { label: 'Lavender', type: 'light', cssClass: 'theme-light', bg: '#f0ecfa', text: '#1e1830', sidebar: '#e6e0f5', elevated: '#f8f5ff', elevatedHi: '#d8d0ee', accent: '#7050c0', danger: '#c02050' },
     snow:     { label: 'Snow',     type: 'light', cssClass: 'theme-light', bg: '#ffffff', text: '#111111', sidebar: '#f5f5f5', elevated: '#ffffff', elevatedHi: '#e8e8e8', accent: '#333333', danger: '#cc0000' },
+
+    // === Pro ===
+    // These aren't palettes. Each one changes what the app *is* — a pane of
+    // refracting glass, a dying CRT, black-and-white film, glyph rain, a
+    // surface that moves with your music. `fx` names the runtime in fx.js and
+    // the CSS class that reshapes the UI; `winBg` is the opaque colour handed
+    // to the native window, which can't take the rgba values used here.
+    synesthesia: {
+      label: 'Synesthesia', type: 'pro', fx: 'keys', cssClass: 'fx-keys',
+      // The app takes its colour from what you type: every letter maps to its
+      // own hue, so a word paints a colour and a sentence drifts through a
+      // range. Near-neutral at rest so the typed colour is the only colour.
+      bg: '#0d0d11', text: '#e9e9f2', sidebar: '#0a0a0e', elevated: '#17171d',
+      elevatedHi: '#22222b', accent: '#6f8cff', danger: '#ff6b81', winBg: '#0d0d11'
+    },
+    crt: {
+      label: 'Old TV', type: 'pro', fx: 'crt', cssClass: 'fx-crt',
+      bg: '#0a0f0a', text: '#8bf5a4', sidebar: '#060b06', elevated: '#0f1a10', elevatedHi: '#17281a',
+      accent: '#4dff88', danger: '#ff6b5b', winBg: '#0a0f0a'
+    },
+    rain: {
+      label: 'Matrix', type: 'pro', fx: 'rain', cssClass: 'fx-rain',
+      // Deliberately low alpha: the rain lives behind these surfaces, so every
+      // point of opacity here is a point of rain you can't see.
+      bg: 'rgba(0,0,0,0.40)', text: '#8bff9e', sidebar: 'rgba(0,0,0,0.62)',
+      elevated: 'rgba(0,26,9,0.72)', elevatedHi: 'rgba(0,48,17,0.80)',
+      accent: '#00ff41', danger: '#ff3b3b', winBg: '#000000'
+    },
+    xp: {
+      label: 'Windows XP', type: 'pro', cssClass: 'fx-xp theme-light',
+      // Luna. #ece9d8 is the exact dialog beige, #0a55d4 the selection blue —
+      // getting those two right is most of why it reads as XP at a glance.
+      bg: '#ece9d8', text: '#0a0a0a', sidebar: '#eef3fd', elevated: '#ffffff',
+      elevatedHi: '#cddef5', accent: '#0a55d4', danger: '#c1272d', winBg: '#ece9d8'
+    },
+    storm: {
+      label: 'Storm', type: 'pro', fx: 'storm', cssClass: 'fx-storm',
+      // Near-black — a night storm, not an overcast afternoon. Cloud cover
+      // behind the UI, struck by lightning ambiently and again on every
+      // keystroke. Surfaces stay translucent so the sky reads through.
+      bg: 'rgba(2,3,6,0.68)', text: '#dfe4f0', sidebar: 'rgba(1,2,4,0.80)',
+      elevated: 'rgba(10,13,20,0.82)', elevatedHi: 'rgba(18,22,32,0.88)',
+      accent: '#8f9ac2', danger: '#ff8f7a', winBg: '#020306'
+    },
+    music: {
+      label: 'Music', type: 'pro', fx: 'music', cssClass: 'fx-music',
+      // Pale blue, and the accent stays put — the beat is shown by how far the
+      // glow swings, not by cycling hue, which just reads as a colour animation
+      // that happens to be running rather than as a response to the audio.
+      bg: '#080b12', text: '#dce9fb', sidebar: '#050810', elevated: '#101825', elevatedHi: '#182338',
+      accent: '#7fc4ff', danger: '#ff7a9c', winBg: '#080b12'
+    },
   };
 
   const FONTS = {

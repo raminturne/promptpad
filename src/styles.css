@@ -336,7 +336,7 @@ body {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
-  padding: 4px 12px 6px;
+  padding: 3px 10px 4px;
   max-width: 210px;
 }
 .ctx-group-item {
@@ -1325,15 +1325,20 @@ body {
   box-shadow: 0 8px 28px rgba(0, 0, 0, .45);
   animation: pop 0.14s cubic-bezier(0.2, 0.8, 0.3, 1);
   /* The tab menu is taller than a small window (colors, groups, direction and
-     the two profile pickers), and the viewport clamp can only push it to the
-     top edge — without this the last items are simply unreachable. */
+     the profile picker), and the viewport clamp can only push it to the top
+     edge — without this the last items are simply unreachable. */
   max-height: calc(100vh - 8px);
   overflow-y: auto;
   overscroll-behavior: contain;
 }
+/* The default scrollbar is a flat gray bar that ignores the theme entirely —
+   give it the same thin, themed thumb every other scrollable panel gets. */
+.ctx-menu::-webkit-scrollbar { width: 7px; }
+.ctx-menu::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 8px; }
+.ctx-menu::-webkit-scrollbar-thumb:hover { background: var(--muted); }
 
 .ctx-item {
-  padding: 6px 10px;
+  padding: 5px 10px;
   border-radius: 5px;
   cursor: pointer;
   font-size: 12.5px;
@@ -1351,7 +1356,7 @@ body {
 .ctx-sep {
   height: 1px;
   background: var(--border);
-  margin: 3px 4px;
+  margin: 2px 4px;
 }
 
 .ctx-label {
@@ -1428,10 +1433,10 @@ body {
 .cmd-empty { padding: 14px; text-align: center; color: var(--muted); font-size: 12px; }
 
 .ctx-colors {
-  padding: 5px 10px 7px;
+  padding: 4px 10px 5px;
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 4px;
 }
 
 .ctx-color-label {
@@ -1440,6 +1445,21 @@ body {
   color: var(--muted);
   text-transform: uppercase;
 }
+
+/* profile picker: one row per profile (name + move/copy), replacing what used
+   to be two full profile lists stacked under separate headings */
+.ctx-profile-rows { display: flex; flex-direction: column; gap: 2px; max-width: 220px; }
+.ctx-profile-row { display: flex; align-items: center; gap: 4px; }
+.ctx-profile-name {
+  flex: 1; min-width: 0; font-size: 11.5px; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ctx-profile-act {
+  width: 20px; height: 20px; flex-shrink: 0; display: grid; place-items: center;
+  border: 1px solid var(--elevated-hi); border-radius: 5px; background: transparent;
+  color: var(--muted-2); cursor: pointer; transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.ctx-profile-act:hover { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
 
 .ctx-color-row {
   display: flex;
@@ -3079,6 +3099,10 @@ body {
 .dc-form { display: flex; flex-direction: column; gap: 10px; }
 .dc-upload { max-width: 520px; margin: 18px auto; padding: 0 18px; }
 .dc-label { font-size: 11px; color: var(--muted); margin-bottom: -4px; }
+.dc-label-row { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: -4px; }
+.dc-label-row .dc-label { margin-bottom: 0; }
+.dc-char-count { font-size: 10px; color: var(--muted); }
+.dc-char-count.warn { color: var(--danger); }
 .dc-textarea { resize: vertical; min-height: 90px; line-height: 1.5; }
 .dc-file { font-size: 11.5px; color: var(--muted-2); }
 .dc-upload-preview { max-height: 180px; border-radius: 8px; border: 1px solid var(--border-strong); object-fit: contain; }
@@ -3277,10 +3301,18 @@ body {
 .dc-cat-add .text-input { flex: 1; }
 .dc-mod-list { display: flex; flex-direction: column; gap: 6px; }
 .dc-mod-row {
-  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  display: flex; align-items: center; gap: 10px;
   padding: 8px 10px; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--elevated);
 }
-.dc-mod-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+/* Every new post starts pending now — make the ones actually waiting on a
+   decision easy to pick out from the approved history sitting below them. */
+.dc-mod-row--pending { border-color: var(--accent-glow); background: var(--accent-soft); }
+.dc-mod-thumb {
+  width: 42px; height: 42px; flex-shrink: 0; border-radius: 6px; object-fit: cover;
+  border: 1px solid var(--border-strong); background: var(--bg); cursor: pointer;
+}
+.dc-mod-thumb.is-default { opacity: 0.85; }
+.dc-mod-info { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .dc-mod-title { font-size: 12px; color: var(--text); word-break: break-word; }
 .dc-mod-meta { font-size: 10px; color: var(--muted); }
 .dc-mod-acts { display: flex; gap: 4px; flex-shrink: 0; }
@@ -3599,3 +3631,316 @@ body {
   transition: background 0.12s;
 }
 .share-danger:hover { background: color-mix(in srgb, var(--danger) 12%, transparent); }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Pro themes — effects, not palettes
+   Each block is scoped to a single .fx-* class set on .app by applyTheme(),
+   so nothing here can leak into an ordinary Dark/Light theme.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* Shared layers. #fxBack sits under the app, #fxLayer over it; both inert. */
+.fx-back, .fx-layer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+}
+.fx-back { z-index: 0; }
+.fx-layer { z-index: 60; }
+/* Only Matrix needs the app to float above a backdrop; every other theme
+   leaves the stacking order exactly as it was. */
+.app.fx-rain { position: relative; z-index: 1; }
+
+/* ── Glass ──────────────────────────────────────────────────────────────
+   The window itself is created with Windows acrylic (see createWindow), so
+   the desktop behind is already blurred by the OS. What's added here is the
+   near half of real glass: refraction at the panel edges, driven by the
+   displacement map fx.js generates, plus a lit rim and inner sheen. */
+/* The window itself must not paint a ground, or the OS acrylic behind it is
+   simply covered up. This is the whole reason Glass needs a restart: the
+   material can only be requested when the window is created. */
+body:has(.app.fx-glass) { background: transparent; }
+.app.fx-glass {
+  background: transparent;
+  border-color: rgba(255, 255, 255, 0.55);
+}
+/* Nothing here moves or resizes anything — the panels keep their normal
+   geometry and simply become frosted. var(--fx-glass-filter) is the refraction
+   map fx.js builds per surface; the blur/saturate still apply on their own
+   before it exists, so a panel is never unstyled while the map is generating. */
+.app.fx-glass .titlebar,
+.app.fx-glass .rail,
+.app.fx-glass .statusbar,
+.app.fx-glass .toolbar {
+  backdrop-filter: var(--fx-glass-filter) blur(26px) saturate(2);
+  -webkit-backdrop-filter: blur(26px) saturate(2);
+  background: rgba(255, 255, 255, 0.16);
+}
+.app.fx-glass .editor-area,
+.app.fx-glass .md-preview,
+.app.fx-glass .editor,
+.app.fx-glass .body { background: transparent; }
+/* Dark text over an unpredictable desktop needs its own contrast, since the
+   backdrop can be anything from a white page to a photo. */
+.app.fx-glass .editor-area,
+.app.fx-glass .tab-name { text-shadow: 0 1px 2px rgba(255, 255, 255, 0.65); }
+.app.fx-glass .ctx-menu,
+.app.fx-glass .mini-dialog,
+.app.fx-glass .templates-card,
+.app.fx-glass .settings-card,
+.app.fx-glass .cmd-box {
+  backdrop-filter: blur(26px) saturate(1.8);
+  -webkit-backdrop-filter: blur(26px) saturate(1.8);
+  background: rgba(255, 255, 255, 0.62);
+}
+
+/* ── Old TV ─────────────────────────────────────────────────────────────
+   Scanlines, a phosphor glow on text, a vignette, and a refresh band that
+   rolls down the screen the way an unsynced tube does. */
+.app.fx-crt {
+  text-shadow: 0 0 2px rgba(77, 255, 136, 0.45);
+  animation: fx-crt-warm 5.5s ease-in-out infinite;
+}
+@keyframes fx-crt-warm {
+  0%, 100% { filter: brightness(1) contrast(1.04); }
+  47%      { filter: brightness(1.045) contrast(1.06); }
+  52%      { filter: brightness(0.985) contrast(1.03); }
+}
+/* Scanlines + vignette ride the overlay so they cover every panel evenly. */
+.app.fx-crt ~ .fx-layer::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0.24) 0px,
+    rgba(0, 0, 0, 0.24) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+}
+.app.fx-crt ~ .fx-layer::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(120% 100% at 50% 50%, transparent 52%, rgba(0, 0, 0, 0.55) 100%);
+}
+.fx-crt-roll {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 16vh;
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    rgba(140, 255, 175, 0.055) 45%,
+    rgba(140, 255, 175, 0.085) 55%,
+    transparent
+  );
+  will-change: transform;
+}
+
+/* ── Matrix ─────────────────────────────────────────────────────────────
+   Glyph rain on a canvas behind the app; the panels above it are already
+   semi-transparent via the palette's rgba values, so it reads through. */
+.fx-rain-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+body:has(.app.fx-rain) { background: #000; }
+.app.fx-rain {
+  border-color: rgba(0, 255, 65, 0.22);
+  text-shadow: 0 0 3px rgba(0, 255, 65, 0.35);
+}
+.app.fx-rain .editor-area,
+.app.fx-rain .md-preview { background: transparent; }
+
+/* ── Music ──────────────────────────────────────────────────────────────
+   --fx-music-level (0–1, bass, auto-ranged so it actually swings low→high
+   rather than hovering) is written every frame by fx.js, on <html>, and read
+   here via var(--fx-music-level, 0) everywhere — deliberately NOT redeclared
+   as a static custom property on .app anywhere in this block. Declaring
+   `--fx-music-level: 0` on .app looks like "a sane default" but is actually a
+   literal, unchanging value that every descendant (.rail, .titlebar, the
+   border) then inherits INSTEAD of the live value fx.js is writing on <html>
+   — which silently pinned every rule below to 0 forever. That was the actual
+   reason the whole theme read as "nothing happening": the JS was correct the
+   entire time; the CSS was reading a permanently frozen zero. */
+
+/* The clearest single light in the app: the brand dot, off-white and dim at
+   rest, a hot, glowing accent at the peak — a literal on/off lamp. Its own
+   colour is also the live music hue (fx.js writes --accent every frame), so
+   this one dot alone shows both "how loud" and "what colour" at a glance. */
+.app.fx-music .brand-dot {
+  background: color-mix(in srgb, var(--accent) calc(var(--fx-music-level, 0) * 70% + 30%), #3a3f46);
+  box-shadow: 0 0 calc(var(--fx-music-level, 0) * 14px + 2px)
+    color-mix(in srgb, var(--accent) calc(var(--fx-music-level, 0) * 90% + 10%), transparent);
+  transform: scale(calc(var(--fx-music-level, 0) * 0.3 + 0.9));
+}
+
+/* Titlebar, rail, toolbar, statusbar: a light wash toward the accent — kept
+   subtle on purpose, the level meter and brand dot below carry the obvious
+   "is it reacting?" signal, this is texture, not the main event. */
+.app.fx-music .titlebar,
+.app.fx-music .rail,
+.app.fx-music .toolbar,
+.app.fx-music .statusbar {
+  /* No CSS transition here — fx.js is already updating this every animation
+     frame with its own easing (attack/release), so a transition on top of
+     that just adds a second, redundant layer of lag between the beat and
+     what's on screen. */
+  background: color-mix(in srgb, var(--accent) calc(var(--fx-music-level, 0) * 10%), var(--sidebar));
+}
+.app.fx-music .editor-body { background: var(--bg); }
+
+.app.fx-music {
+  border-color: color-mix(in srgb, var(--accent) calc(var(--fx-music-level, 0) * 30% + 6%), transparent);
+  box-shadow:
+    0 0 calc(var(--fx-music-level, 0) * 46px + 3px)
+      color-mix(in srgb, var(--accent) calc(var(--fx-music-level, 0) * 26% + 4%), transparent),
+    inset 0 0 calc(var(--fx-music-level, 0) * 70px + 4px)
+      color-mix(in srgb, var(--accent) calc(var(--fx-music-level, 0) * 12%), transparent);
+}
+/* A ring just inside the window edge — the largest, most obvious surface to
+   pulse, and it never sits on top of text. */
+.app.fx-music::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 12px;
+  pointer-events: none;
+  z-index: 5;
+  box-shadow: inset 0 0 calc(var(--fx-music-level, 0) * 55px + 5px)
+    color-mix(in srgb, var(--accent) calc(var(--fx-music-level, 0) * 18%), transparent);
+}
+.app.fx-music .tab.active {
+  background: color-mix(in srgb, var(--accent) calc(var(--fx-music-level, 0) * 14% + 8%), var(--elevated-hi));
+  box-shadow: 0 0 calc(var(--fx-music-level, 0) * 14px + 2px)
+    color-mix(in srgb, var(--accent) calc(var(--fx-music-level, 0) * 26% + 12%), transparent);
+}
+/* A level meter across the bottom edge — width and colour both track the
+   music directly, the single least ambiguous readout in the theme. */
+.app.fx-music .statusbar { position: relative; }
+.app.fx-music .statusbar::after {
+  content: '';
+  position: absolute;
+  left: 0; bottom: 0;
+  width: calc(var(--fx-music-level, 0) * 100%);
+  height: 4px;
+  background: linear-gradient(90deg,
+    color-mix(in srgb, var(--accent) 30%, transparent),
+    var(--accent));
+  box-shadow: 0 0 calc(var(--fx-music-level, 0) * 14px) var(--accent);
+  opacity: calc(var(--fx-music-level, 0) * 0.65 + 0.35);
+}
+
+/* Effects are decoration; anyone who asked the OS to stop animation gets a
+   still version rather than no theme. */
+@media (prefers-reduced-motion: reduce) {
+  .app.fx-crt { animation: none; }
+  .fx-crt-roll { display: none; }
+}
+
+/* ── Windows XP ─────────────────────────────────────────────────────────
+   Luna, rebuilt from its two signature parts: the blue title-bar gradient
+   and the #ece9d8 dialog beige. Everything else follows from those. */
+.app.fx-xp {
+  font-family: Tahoma, "Segoe UI", Verdana, sans-serif;
+  border: 1px solid #0831d9;
+  border-radius: 8px 8px 0 0;
+}
+.app.fx-xp .titlebar {
+  background: linear-gradient(180deg,
+    #0058ee 0%, #3f8cf3 8%, #0058ee 40%, #0054e3 88%, #0244d4 100%);
+  border-bottom: 1px solid #0831d9;
+  border-radius: 7px 7px 0 0;
+}
+.app.fx-xp .brand-name,
+.app.fx-xp .titlebar .win-btn,
+.app.fx-xp .profile-chip-name { color: #fff; }
+.app.fx-xp .brand-name { font-weight: 700; text-shadow: 1px 1px 1px rgba(0,0,0,.45); }
+.app.fx-xp .titlebar .win-btn:hover { background: rgba(255,255,255,.26); }
+.app.fx-xp .win-btn--close:hover { background: #e8674f; }
+.app.fx-xp .brand-dot { background: #ffd24a; }
+.app.fx-xp .rail {
+  background: linear-gradient(180deg, #f4f7fe 0%, #dbe6f9 100%);
+  border-right: 1px solid #a8bfdd;
+}
+/* XP's own list selection: a solid blue fill with white text, no rounding. */
+.app.fx-xp .tab.active {
+  background: linear-gradient(180deg, #3f8cf3, #0a55d4);
+  color: #fff;
+  border-radius: 3px;
+}
+.app.fx-xp .tab.active .tab-name { color: #fff; }
+.app.fx-xp .statusbar {
+  background: linear-gradient(180deg, #f7f6ef, #e6e3d5);
+  border-top: 1px solid #b2af9f;
+}
+.app.fx-xp .toolbar { background: linear-gradient(180deg, #fbfaf5, #ece9d8); }
+/* Beige 3D bevel — the era's button, before flat design. */
+.app.fx-xp .add-btn,
+.app.fx-xp .templates-btn,
+.app.fx-xp .tb-btn,
+.app.fx-xp .mini-dialog-cancel,
+.app.fx-xp .mini-dialog-save {
+  background: linear-gradient(180deg, #fdfdfb, #e2dfd0);
+  border: 1px solid #8f8b7a;
+  border-radius: 3px;
+  box-shadow: inset 1px 1px 0 #fff, inset -1px -1px 0 #c8c4b4;
+}
+.app.fx-xp .add-btn:hover,
+.app.fx-xp .templates-btn:hover,
+.app.fx-xp .tb-btn:hover { background: linear-gradient(180deg, #fff, #dfeaf8); border-color: #4a7fd0; }
+.app.fx-xp .ctx-menu,
+.app.fx-xp .mini-dialog,
+.app.fx-xp .templates-card,
+.app.fx-xp .settings-card {
+  background: #f4f2e9;
+  border: 1px solid #8f8b7a;
+  border-radius: 4px;
+}
+
+/* ── Storm ──────────────────────────────────────────────────────────────
+   Cloud + bolt canvases in #fxBack (stacked in one wrapper so a single strike
+   only repaints the bolt layer, not the clouds under it); surfaces stay
+   translucent so the sky reads through. */
+.fx-storm-wrap { position: absolute; inset: 0; }
+.fx-storm-clouds, .fx-storm-bolts { position: absolute; inset: 0; width: 100%; height: 100%; }
+body:has(.app.fx-storm) { background: #020306; }
+.app.fx-storm {
+  position: relative;
+  z-index: 1;
+  border-color: rgba(200, 210, 235, 0.22);
+}
+.app.fx-storm .editor-area,
+.app.fx-storm .md-preview { background: transparent; }
+.app.fx-storm .rail { border-right: 1px solid rgba(200, 210, 235, 0.16); }
+.app.fx-storm .statusbar { border-top: 1px solid rgba(200, 210, 235, 0.16); }
+
+/* ── Synesthesia ────────────────────────────────────────────────────────
+   --accent is being rewritten every frame by fx.js in response to typing;
+   the CSS below just makes that change visible past the swatches that
+   already read var(--accent) — a quick flash on the active tab and window
+   edge so a keystroke reads as a small burst of colour, not a smooth fade.
+   var(--fx-key-level, 0) is read directly, never redeclared as a static
+   property on .app — see the note above the Music block for why that
+   specific pattern silently freezes every rule that depends on it. */
+.app.fx-keys {
+  transition: border-color 0.18s ease-out;
+  border-color: color-mix(in srgb, var(--accent) calc(var(--fx-key-level, 0) * 65% + 18%), transparent);
+}
+.app.fx-keys::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 12px;
+  pointer-events: none;
+  z-index: 5;
+  transition: box-shadow 0.18s ease-out;
+  box-shadow: inset 0 0 calc(var(--fx-key-level, 0) * 100px + 8px)
+    color-mix(in srgb, var(--accent) calc(var(--fx-key-level, 0) * 42%), transparent);
+}
+.app.fx-keys .tab.active {
+  transition: box-shadow 0.18s ease-out, background 0.18s ease-out;
+  box-shadow: 0 0 calc(var(--fx-key-level, 0) * 24px + 2px)
+    color-mix(in srgb, var(--accent) calc(var(--fx-key-level, 0) * 55% + 15%), transparent);
+}
+.app.fx-keys .placeholder-tag,
+.app.fx-keys .todo-mark { transition: color 0.18s ease-out; }

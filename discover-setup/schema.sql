@@ -66,10 +66,16 @@ create table if not exists public.posts (
   image_url  text,            -- Supabase Storage public URL (nullable: prompt-only)
   image_key  text,            -- Storage path ("<uid>/<uuid>.webp"), used for deletes
   byte_size  int  not null default 0,  -- compressed image size, for the storage meter
-  status     text not null default 'approved'
+  status     text not null default 'pending'
              check (status in ('approved','pending','rejected')),
   created_at timestamptz not null default now()
 );
+-- A post used to go live the moment it was submitted; now every new post waits
+-- for an admin to approve it (see the "force pending" block in
+-- enforce_post_rules below — that's what actually makes this unbypassable, not
+-- this default). This line re-points the column default on a database that
+-- already has the table, since `create table if not exists` above is a no-op there.
+alter table public.posts alter column status set default 'pending';
 
 -- Extra columns (added here so re-running this file upgrades an existing DB).
 alter table public.posts add column if not exists audio_url  text;   -- music posts (audio in Storage)
@@ -248,8 +254,9 @@ insert into public.banned_words (word) values
   ('گایید'),('گاییدم'),('سکس'),('پورن'),('برهنه'),('لخت'),('اورگاسم'),('کوس'),('کوص'),('ساکزدن')
 on conflict (word) do nothing;
 
--- One trigger enforces: not blocked + daily upload cap + content filter. Only runs
--- for real end users (auth.uid() not null); admin / SQL-editor inserts pass through.
+-- One trigger enforces: not blocked + daily upload cap + size caps + content
+-- filter + mandatory pending status. Only runs for real end users (auth.uid()
+-- not null and not an admin); admin / SQL-editor inserts pass through.
 create or replace function public.enforce_post_rules()
 returns trigger
 language plpgsql
@@ -266,12 +273,28 @@ begin
     if cnt >= 15 then
       raise exception 'Daily upload limit reached (15 per day). Please try again tomorrow.';
     end if;
+    -- Length caps. The Upload form already stops typing/pasting past these
+    -- (maxlength), but the API is public — without a server-side cap too, a
+    -- crafted request can still insert a huge title/prompt directly. A single
+    -- very long unbroken run of characters is slow for the browser to wrap,
+    -- badly enough that opening (or even scrolling past) that one card can
+    -- feel like the whole tab froze — that's what got this added.
+    if length(coalesce(new.title, '')) > 120 then
+      raise exception 'Title is too long (max 120 characters).';
+    end if;
+    if length(coalesce(new.prompt, '')) > 4000 then
+      raise exception 'Prompt is too long (max 4,000 characters).';
+    end if;
     select word into hit from public.banned_words
       where lower(coalesce(new.title,'') || ' ' || coalesce(new.prompt,'')) ~* ('\y' || word || '\y')
       limit 1;
     if hit is not null then
       raise exception 'Post blocked by the content filter (no +18 / offensive words).';
     end if;
+    -- Force pending regardless of what the client sent: the RLS insert policy
+    -- only checks user_id, not status, so without this a crafted request could
+    -- set status: 'approved' directly and skip review entirely.
+    new.status := 'pending';
   end if;
   return new;
 end;
@@ -281,6 +304,29 @@ drop trigger if exists posts_enforce_rules on public.posts;
 create trigger posts_enforce_rules
   before insert on public.posts
   for each row execute function public.enforce_post_rules();
+
+-- posts_update_own_or_admin lets an owner update their own row (e.g. to fix a
+-- typo), but "own row" must not mean "own moderation status" — otherwise a user
+-- could approve their own pending post with a plain UPDATE, same trick as
+-- self-promoting to admin. Same shape as protect_privileged_cols on profiles.
+create or replace function public.protect_post_status()
+returns trigger
+language plpgsql
+security definer set search_path = public
+as $$
+begin
+  if auth.uid() is not null and not public.is_admin()
+     and new.status is distinct from old.status then
+    new.status := old.status;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists posts_protect_status on public.posts;
+create trigger posts_protect_status
+  before update on public.posts
+  for each row execute function public.protect_post_status();
 
 -- Blocked users can't like either.
 create or replace function public.enforce_like_rules()
@@ -629,3 +675,17 @@ begin
   begin execute 'alter publication supabase_realtime add table public.note_members'; exception when duplicate_object then null; end;
 end
 $pub$;
+
+-- ────────────────────────────────────────────────────────────────────────────
+-- 8) Admin "new post" notifications. An admin's app subscribes to INSERT on
+--    posts directly (see dcSubscribeAdminPosts in renderer.js); the posts_read
+--    RLS policy already grants an admin visibility into every post regardless
+--    of status, so adding the table to the publication is the only piece
+--    missing — Realtime evaluates that same SELECT policy per connection, so a
+--    non-admin's subscription would only ever see their own / approved posts.
+-- ────────────────────────────────────────────────────────────────────────────
+do $pub2$
+begin
+  begin execute 'alter publication supabase_realtime add table public.posts'; exception when duplicate_object then null; end;
+end
+$pub2$;

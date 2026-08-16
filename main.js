@@ -193,6 +193,13 @@ function createWindow(BrowserWindow) {
   // reveals it as the collapsed dock (see the handy-enter handler).
   const bootHandy = savedSettings.handyEnabled !== false && !!savedSettings.handyMode;
 
+  // The Glass theme needs Windows' own acrylic material, and that can only be
+  // requested when the window is CREATED — calling setBackgroundMaterial later
+  // leaves the window painting opaque black instead of compositing (verified
+  // directly). So the saved theme is read here, and switching into or out of
+  // Glass asks for a restart rather than pretending to apply live.
+  const glassTheme = savedSettings.theme === 'glass' && process.platform === 'win32';
+
   mainWindow = new BrowserWindow({
     width: win.width || 500,
     height: win.height || 440,
@@ -203,7 +210,8 @@ function createWindow(BrowserWindow) {
     show: !bootHandy,
     frame: false,
     transparent: false,
-    backgroundColor: '#1B211A',
+    ...(glassTheme ? { backgroundMaterial: 'acrylic' } : {}),
+    backgroundColor: glassTheme ? '#00000000' : '#1B211A',
     alwaysOnTop: win.alwaysOnTop !== undefined ? win.alwaysOnTop : true,
     skipTaskbar: false,
     resizable: true,
@@ -315,7 +323,7 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   app.whenReady().then(() => {
-  const { BrowserWindow, ipcMain, shell, Tray, Menu, dialog, net, globalShortcut, session, screen, Notification } = require('electron');
+  const { BrowserWindow, ipcMain, shell, Tray, Menu, dialog, net, globalShortcut, session, screen, Notification, desktopCapturer } = require('electron');
 
   DATA_FILE = path.join(app.getPath('userData'), 'promptpad-data.json');
 
@@ -528,6 +536,22 @@ if (!app.requestSingleInstanceLock()) {
   ipcMain.on('set-bg-color', (_e, color) => {
     if (mainWindow && typeof color === 'string') {
       try { mainWindow.setBackgroundColor(color); } catch {}
+    }
+  });
+
+  // The Music theme reads the system mixer. Electron can satisfy a
+  // getDisplayMedia request with audio:'loopback' on Windows, which captures
+  // whatever the speakers are playing with no picker and no per-app
+  // integration. A video source still has to be supplied even though the
+  // renderer drops that track immediately — answering with video:false while
+  // the caller asked for video aborts the whole capture.
+  session.defaultSession.setDisplayMediaRequestHandler(async (_request, callback) => {
+    try {
+      const sources = await desktopCapturer.getSources({ types: ['screen'] });
+      callback({ video: sources[0], audio: 'loopback' });
+    } catch (err) {
+      console.error('display-media request failed', err);
+      callback({});
     }
   });
 

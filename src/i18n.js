@@ -34,6 +34,17 @@
     // ---- move / copy tabs & groups between profiles ----
     'Move to profile': 'انتقال به پروفایل',
     'Copy to profile': 'کپی به پروفایل',
+    'Profile': 'پروفایل',
+    'Move to': 'انتقال به',
+    'Copy to': 'کپی به',
+    // ---- Pro themes ----
+    'Pro': 'حرفه‌ای',
+    'Restart PromptPad to finish applying this theme.':
+      'برای کامل شدن این تم، پرامپت‌پد را یک‌بار ببند و باز کن.',
+    'Restart': 'راه‌اندازی دوباره',
+    'New in this update: Pro themes — Glass, Matrix, Old TV, Music and more.':
+      'تازه در این نسخه: تم‌های حرفه‌ای — شیشه‌ای، ماتریکس، تلویزیون قدیمی، موزیک و بیشتر.',
+    'Take a look': 'ببین',
     'Moved to': 'منتقل شد به',
     'Copied to': 'کپی شد به',
     "Couldn't move those to that profile.": 'انتقال به آن پروفایل انجام نشد.',
@@ -322,7 +333,7 @@
     'Category': 'دسته',
     'New': 'جدیدترین',
     'Top': 'برترین',
-    'Recent posts': 'پست‌های اخیر',
+    'Pending approval': 'در انتظار تأیید',
 
     // ---- cards & actions ----
     'Copy': 'کپی',
@@ -356,6 +367,18 @@
     'Untitled': 'بدون عنوان',
     'item': 'مورد',
     'items': 'مورد',
+    // ---- Discover moderation (posts wait for admin approval) ----
+    'pending review': 'در انتظار تأیید',
+    'rejected': 'رد شده',
+    'Shared — waiting for admin approval': 'اشتراک‌گذاری شد — در انتظار تأیید ادمین',
+    "Couldn't open that post": 'باز کردن این پست انجام نشد',
+    // ---- admin: new-post notifications ----
+    'Someone': 'یک نفر',
+    'New post from': 'پست جدید از',
+    'PromptPad — new post to review': 'پرامپت‌پد — پست جدید برای بررسی',
+    'shared a prompt, pending your approval:': 'یک پرامپت به اشتراک گذاشت، در انتظار تأیید تو:',
+    'Posts pending approval': 'پست‌های در انتظار تأیید',
+    'Click to see the full post': 'برای دیدن کامل پست کلیک کن',
     'Title': 'عنوان',
     'Prompt': 'پرامپت',
     'Loading…': 'در حال بارگذاری…',

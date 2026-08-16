@@ -11,7 +11,8 @@ const pendingRemove = document.getElementById('pendingRemove');
   try {
     const s = (await window.api.loadSettings()) || {};
     const t = window.PP_applyThemeVars(s.theme || 'forest');
-    document.documentElement.classList.toggle('theme-light', t.type === 'light');
+    // Checked on cssClass, not type — some Pro themes are light too.
+    document.documentElement.classList.toggle('theme-light', t.cssClass === 'theme-light');
     const font = (window.PP_FONTS[s.font] || window.PP_FONTS.cascadia).stack;
     document.documentElement.style.setProperty('--font', font);
   } catch (e) { console.error('qc theme failed', e); }

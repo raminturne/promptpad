@@ -1729,6 +1729,274 @@ if (!app.requestSingleInstanceLock()) {
     }
   });
 
+  // ---- Rich export: formats that carry the note's inline images ----
+  //
+  // The plain 'export-note' handler above writes the note string verbatim, so
+  // its ![img](ppimg://x.png) tokens are dead links outside the app. Every
+  // format here either copies the image files out alongside the note, inlines
+  // them as data: URIs, or renders them.
+
+  // Same whitelist the ppimg:// protocol handler uses — nothing outside
+  // IMAGES_DIR can ever be read, whatever the note text claims.
+  function safeImageName(name) {
+    return /^[a-z0-9._-]+$/i.test(name) && !name.includes('..') ? name : null;
+  }
+
+  const IMG_TOKEN_RE = /!\[img\]\(ppimg:\/\/([a-zA-Z0-9._-]+)(?:\|(\d+))?\)/g;
+
+  const MIME_BY_EXT = {
+    '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+    '.gif': 'image/gif', '.webp': 'image/webp', '.svg': 'image/svg+xml'
+  };
+
+  function imageDataUri(file) {
+    const safe = safeImageName(file);
+    if (!safe) return null;
+    const p = path.join(IMAGES_DIR, safe);
+    if (!fs.existsSync(p)) return null;
+    const mime = MIME_BY_EXT[path.extname(safe).toLowerCase()] || 'application/octet-stream';
+    return 'data:' + mime + ';base64,' + fs.readFileSync(p).toString('base64');
+  }
+
+  // Render a payload from the renderer into a standalone HTML document. The
+  // theme's custom properties travel with it, so the export looks like the
+  // preview pane it came from rather than unstyled markup.
+  function buildExportHtml(name, render, inlineImages) {
+    let css = '';
+    try { css = fs.readFileSync(path.join(__dirname, 'src', 'styles.css'), 'utf-8'); } catch {}
+    let body = render.body || '';
+    if (inlineImages) {
+      body = body.replace(/src="ppimg:\/\/([a-zA-Z0-9._-]+)"/g, (m, file) => {
+        const uri = imageDataUri(file);
+        return uri ? 'src="' + uri + '"' : m;
+      });
+    }
+    const esc = (s) => String(s).replace(/[&<>"]/g, (c) =>
+      ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    return '<!doctype html><html lang="en" dir="' + (render.dir === 'rtl' ? 'rtl' : 'ltr') + '">' +
+      '<head><meta charset="utf-8"><title>' + esc(name) + '</title><style>' + css + '</style>' +
+      '<style>:root{' + (render.vars || '') + '}' +
+      // The app stylesheet pins html/body to the viewport and hides the
+      // overflow — right for a desktop pane, fatal for an export: the page
+      // would not scroll, the PDF would stop after page one and the PNG would
+      // crop at the fold. Undo it so the document is as tall as its content.
+      'html,body{height:auto;min-height:0;overflow:visible;user-select:text;}' +
+      'body{margin:0;background:var(--bg,#fff);color:var(--text,#111);}' +
+      // The preview pane is a scrolling flex child in the app; standalone it
+      // just needs page padding and a readable measure.
+      '.md-preview{position:static;flex:none;height:auto;max-height:none;' +
+      'overflow:visible;padding:32px 36px;max-width:820px;margin:0 auto;}' +
+      // Nothing may hide behind a scrollbar in an export — a PDF page and a
+      // PNG have no way to scroll sideways. Code wraps instead of scrolling,
+      // tables lay themselves out, and the language tag moves above the block
+      // now that the copy button it shared the corner with is gone.
+      '.md-preview pre{white-space:pre-wrap;overflow-wrap:anywhere;overflow:visible;' +
+      'padding-top:12px;}' +
+      '.md-preview pre code{white-space:pre-wrap;overflow-wrap:anywhere;}' +
+      '.md-preview table{display:table;max-width:100%;overflow:visible;}' +
+      // break-word, not anywhere: a cell only splits a word when the word
+      // itself cannot fit, so columns keep their natural widths
+      '.md-preview th,.md-preview td{overflow-wrap:break-word;}' +
+      '.md-code-lang{position:static;display:block;margin:0 0 4px 2px;}' +
+      // keep blocks whole across PDF page breaks
+      '@media print{.md-preview pre,.md-preview table,.md-preview blockquote,' +
+      '.md-preview img,.md-preview .md-img{break-inside:avoid;}' +
+      '.md-preview h1,.md-preview h2,.md-preview h3,.md-preview h4{break-after:avoid;}}' +
+      (render.fullSizeImages ? '' : '.md-preview .md-img{max-width:100%;height:auto;}') +
+      '</style></head><body class="' + (render.fullSizeImages ? 'md-img-fullsize' : '') + '">' +
+      '<div class="md-preview" dir="' + (render.dir === 'rtl' ? 'rtl' : 'ltr') + '">' + body + '</div>' +
+      '</body></html>';
+  }
+
+  // Load HTML into an offscreen window so it can be printed or captured. The
+  // window uses the default session, so ppimg:// resolves there too.
+  async function withRenderWindow(html, width, fn) {
+    const win = new BrowserWindow({
+      show: false,
+      width,
+      height: 900,
+      // No preload, no node integration; the document is markdown our own
+      // renderer escaped, so there is nothing script-like in it. JS stays on
+      // only so the PNG path can measure the document height.
+      webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false }
+    });
+    try {
+      await win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
+      // give fonts and ppimg:// images a frame to settle before capturing
+      await new Promise((r) => setTimeout(r, 350));
+      return await fn(win);
+    } finally {
+      if (!win.isDestroyed()) win.destroy();
+    }
+  }
+
+  // Hard ceiling on an exported image, in CSS pixels — past this a PNG is
+  // unusable anyway.
+  const MAX_EXPORT_PX = 20000;
+
+  // Chromium cannot rasterise a layer taller than ~16k DEVICE pixels: ask
+  // capturePage for more and it hands back an empty 0x0 image, which is how a
+  // long note came out cropped. Work out how tall one capture may safely be,
+  // in CSS pixels, at this display's scale factor.
+  function safeCaptureHeight() {
+    let scale = 1;
+    try { scale = screen.getPrimaryDisplay().scaleFactor || 1; } catch {}
+    return Math.max(800, Math.floor(15000 / scale));
+  }
+
+  // Paste the viewport captures back together on a canvas inside the render
+  // window itself — nativeImage has no compositing of its own.
+  async function stitchSlices(win, slices, width, height) {
+    const dataUrl = await win.webContents.executeJavaScript(
+      '(' + function (parts, w, h) {
+        return Promise.all(parts.map((p) => new Promise((res, rej) => {
+          const im = new Image();
+          im.onload = () => res({ im, top: p.top });
+          im.onerror = rej;
+          im.src = p.uri;
+        }))).then((loaded) => {
+          // capturePage works in device pixels; keep that resolution.
+          const scale = loaded.length ? loaded[0].im.naturalWidth / w : 1;
+          const c = document.createElement('canvas');
+          c.width = Math.round(w * scale);
+          c.height = Math.round(h * scale);
+          const ctx = c.getContext('2d');
+          loaded.forEach((l) => ctx.drawImage(l.im, 0, Math.round(l.top * scale)));
+          return c.toDataURL('image/png');
+        });
+      }.toString() + ')(' + JSON.stringify(slices) + ',' + width + ',' + height + ')', true);
+    return nativeImage.createFromDataURL(dataUrl);
+  }
+
+  // Capture the whole document as one image. Anything taller than one safe
+  // capture is taken in viewport-sized slices and stitched back together.
+  async function captureFullPage(html, width) {
+    let truncated = false;
+    const img = await withRenderWindow(html, width, async (win) => {
+      // body's own box, not scrollHeight: the latter never reports less than
+      // the viewport, which padded short notes with dead space.
+      const measured = await win.webContents.executeJavaScript(
+        'Math.ceil(document.body.getBoundingClientRect().height)' +
+        ' || document.documentElement.scrollHeight', true);
+      const total = Math.min(MAX_EXPORT_PX, Math.max(200, Math.ceil(measured)));
+      truncated = Math.ceil(measured) > total;
+      win.setContentSize(width, Math.min(total, safeCaptureHeight()));
+      await new Promise((r) => setTimeout(r, 150));
+      const viewH = win.getContentSize()[1];
+      if (viewH >= total) return win.webContents.capturePage();
+
+      const slices = [];
+      for (let y = 0; y < total; y += viewH) {
+        const top = Math.min(y, total - viewH);
+        await win.webContents.executeJavaScript('window.scrollTo(0,' + top + ');0', true);
+        await new Promise((r) => setTimeout(r, 90));
+        slices.push({ top, uri: (await win.webContents.capturePage()).toDataURL() });
+        if (top + viewH >= total) break;
+      }
+      return stitchSlices(win, slices, width, total);
+    });
+    return { img, truncated };
+  }
+
+  const EXPORT_FILTERS = {
+    'md-assets': [{ name: 'Markdown', extensions: ['md'] }],
+    'md-embed': [{ name: 'Markdown', extensions: ['md'] }],
+    txt: [{ name: 'Text', extensions: ['txt'] }],
+    html: [{ name: 'Web page', extensions: ['html'] }],
+    pdf: [{ name: 'PDF', extensions: ['pdf'] }],
+    png: [{ name: 'PNG image', extensions: ['png'] }]
+  };
+  const EXPORT_EXT = { 'md-assets': 'md', 'md-embed': 'md', txt: 'txt', html: 'html', pdf: 'pdf', png: 'png' };
+
+  ipcMain.handle('export-note-rich', async (_e, payload) => {
+    if (!mainWindow || !payload) return { ok: false };
+    const { format, content, render } = payload;
+    const safeName = String(payload.name || 'note')
+      .replace(/[<>:"/\\|?*\x00-\x1f]/g, '').trim().slice(0, 60) || 'note';
+
+    try {
+      // Copy straight to the clipboard — no save dialog.
+      if (format === 'clipboard-png') {
+        if (!render) return { ok: false };
+        const html = buildExportHtml(safeName, render, false);
+        const shot = await captureFullPage(html, 900);
+        clipboard.writeImage(shot.img);
+        return { ok: true, truncated: shot.truncated };
+      }
+
+      const ext = EXPORT_EXT[format];
+      if (!ext) return { ok: false };
+      const res = await dialog.showSaveDialog(mainWindow, {
+        title: 'Export note',
+        defaultPath: safeName + '.' + ext,
+        filters: EXPORT_FILTERS[format]
+      });
+      if (res.canceled || !res.filePath) return { ok: false, canceled: true };
+      const outPath = res.filePath;
+
+      if (format === 'txt') {
+        // strip the image tokens rather than leave unreadable ppimg:// text
+        fs.writeFileSync(outPath, String(content || '').replace(IMG_TOKEN_RE, '').trimEnd(), 'utf-8');
+        return { ok: true, path: outPath };
+      }
+
+      if (format === 'md-embed') {
+        const out = String(content || '').replace(IMG_TOKEN_RE, (m, file) => {
+          const uri = imageDataUri(file);
+          return uri ? '![](' + uri + ')' : m;
+        });
+        fs.writeFileSync(outPath, out, 'utf-8');
+        return { ok: true, path: outPath };
+      }
+
+      if (format === 'md-assets') {
+        // "<name>-assets/" beside the .md, with relative links — the shape
+        // GitHub, VS Code and Obsidian all render without any extra setup.
+        const base = path.basename(outPath, path.extname(outPath));
+        const dirName = base + '-assets';
+        const assetsDir = path.join(path.dirname(outPath), dirName);
+        let copied = 0;
+        const out = String(content || '').replace(IMG_TOKEN_RE, (m, file) => {
+          const safe = safeImageName(file);
+          const src = safe && path.join(IMAGES_DIR, safe);
+          if (!src || !fs.existsSync(src)) return m;
+          if (!copied) { try { fs.mkdirSync(assetsDir, { recursive: true }); } catch {} }
+          try { fs.copyFileSync(src, path.join(assetsDir, safe)); copied++; } catch { return m; }
+          return '![](' + dirName + '/' + safe + ')';
+        });
+        fs.writeFileSync(outPath, out, 'utf-8');
+        return { ok: true, path: outPath, images: copied };
+      }
+
+      if (!render) return { ok: false };
+
+      if (format === 'html') {
+        fs.writeFileSync(outPath, buildExportHtml(safeName, render, true), 'utf-8');
+        return { ok: true, path: outPath };
+      }
+
+      const html = buildExportHtml(safeName, render, false);
+      if (format === 'pdf') {
+        const buf = await withRenderWindow(html, 900, (win) =>
+          win.webContents.printToPDF({
+            printBackground: true,
+            pageSize: 'A4',
+            margins: { top: 0.4, bottom: 0.4, left: 0.4, right: 0.4 }
+          }));
+        fs.writeFileSync(outPath, buf);
+        return { ok: true, path: outPath };
+      }
+
+      // png — the whole document, however tall it is
+      const shot = await captureFullPage(html, 900);
+      fs.writeFileSync(outPath, shot.img.toPNG());
+      return { ok: true, path: outPath, truncated: shot.truncated };
+    } catch (err) {
+      console.error('export-note-rich failed', err);
+      return { ok: false, error: String(err && err.message) };
+    }
+  });
+
   // ---- Global quick-capture hotkey ----
   // Opens a small, standalone always-on-top box WITHOUT raising the main
   // window. What you type/paste is forwarded to the main window and appended

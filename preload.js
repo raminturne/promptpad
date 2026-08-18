@@ -63,6 +63,8 @@ contextBridge.exposeInMainWorld('api', {
   importData: () => ipcRenderer.invoke('import-data'),
   relaunchApp: () => ipcRenderer.send('relaunch-app'),
   exportNote: (name, content, ext) => ipcRenderer.invoke('export-note', name, content, ext),
+  // { name, content, format, render? } — formats that carry the note's images
+  exportNoteRich: (payload) => ipcRenderer.invoke('export-note-rich', payload),
   setQuickCapture: (enabled) => ipcRenderer.invoke('set-quick-capture', enabled),
   setQuickCaptureShortcut: (accel) => ipcRenderer.invoke('set-quick-capture-accel', accel),
   onQuickCapture: (cb) => ipcRenderer.on('quick-capture', () => cb()),

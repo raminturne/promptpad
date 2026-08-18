@@ -291,6 +291,13 @@
     'Open folder': 'باز کردن پوشه',
     'Backup': 'پشتیبان‌گیری',
     'About': 'درباره',
+    // ---- support / donation ----
+    'Enjoying PromptPad? A small donation keeps it going.':
+      'از پرامپت‌پد راضی هستی؟ یک کمک کوچک باعث ادامه‌ی توسعه‌اش می‌شود.',
+    'Donate': 'حمایت مالی',
+    'Support PromptPad': 'حمایت از پرامپت‌پد',
+    'Updated. If PromptPad is useful to you, you can support its development.':
+      'به‌روزرسانی شد. اگر پرامپت‌پد برایت مفید است، می‌توانی از توسعه‌اش حمایت کنی.',
 
     // ---- command palette ----
     'New tab': 'تب جدید',

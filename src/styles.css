@@ -663,6 +663,25 @@ body {
    collapsed to zero width so they never render — always hidden, cursor or not. */
 .editor-area .md-bold { font-weight: 700; }
 .editor-area .md-mark { font-size: 0; }
+.editor-area .md-strike { text-decoration: line-through; opacity: 0.72; }
+.editor-area .md-hilite {
+  background: color-mix(in srgb, var(--accent) 26%, transparent);
+  border-radius: 3px;
+  padding: 0 1px;
+}
+
+/* Leading block markers ("# ", "1. ", "- ", "> ", "- [ ] ") on an RTL line.
+   These are ASCII runs sitting at the logical start of Persian/Arabic text,
+   and the bidi algorithm happily reorders them into the middle of the line —
+   the classic "1." showing up as ".1" on the wrong side, which made a numbered
+   Persian list look scrambled. Isolating each marker pins it to the start of
+   the line where it belongs. The span keeps the literal text, so
+   getEditorText() still round-trips the raw markdown. */
+.editor-area .md-blockmark,
+.editor-area .todo-mark {
+  unicode-bidi: isolate;
+  direction: ltr;
+}
 /* [label](url) — only the label shows, styled and clickable like a link on a
    web page. The brackets and URL are collapsed to zero size rather than removed
    (font-size:0, same as .md-mark) so the raw markdown still round-trips.
@@ -896,8 +915,68 @@ body {
 .md-preview h3 { font-size: 1.15em; }
 .md-preview h4 { font-size: 1.05em; }
 .md-preview p { margin: 0.4em 0; }
+.md-preview h5 { font-size: 1em; }
+.md-preview h6 { font-size: 0.95em; color: var(--muted); }
 .md-preview ul, .md-preview ol { margin: 0.4em 0; padding-inline-start: 1.5em; }
 .md-preview li { margin: 0.15em 0; }
+/* Nested lists sit inside their parent <li>; no extra top/bottom gap. */
+.md-preview li > ul, .md-preview li > ol { margin: 0.15em 0; }
+
+/* Extended inline syntax */
+.md-preview mark {
+  background: color-mix(in srgb, var(--accent) 30%, transparent);
+  color: inherit;
+  border-radius: 3px;
+  padding: 0 2px;
+}
+.md-preview del { opacity: 0.6; }
+.md-preview sub, .md-preview sup { font-size: 0.72em; line-height: 0; }
+
+/* Tables. The wrapper can't be added by the renderer without breaking the
+   data-line round-trip, so the table scrolls on its own instead. */
+.md-preview table {
+  border-collapse: collapse;
+  margin: 0.6em 0;
+  display: block;
+  overflow-x: auto;
+  max-width: 100%;
+  font-size: 0.95em;
+}
+.md-preview th, .md-preview td {
+  border: 1px solid var(--border);
+  padding: 4px 9px;
+  text-align: start;
+}
+.md-preview th { background: var(--elevated); font-weight: 600; }
+.md-preview tbody tr:nth-child(even) td {
+  background: color-mix(in srgb, var(--elevated) 45%, transparent);
+}
+.md-preview .md-al { text-align: left; }
+.md-preview .md-ac { text-align: center; }
+.md-preview .md-ar { text-align: right; }
+
+/* Definition lists */
+.md-preview dl { margin: 0.4em 0; }
+.md-preview dt { font-weight: 600; margin-top: 0.35em; }
+.md-preview dd { margin: 0.1em 0 0; padding-inline-start: 1.2em; color: var(--text); }
+
+/* Footnotes */
+.md-preview .md-fnref { font-size: 0.75em; }
+.md-preview .md-fnref a, .md-preview .md-fnback { color: var(--accent); text-decoration: none; }
+.md-preview .md-fn-sep { margin-top: 1.4em; }
+.md-preview .md-footnotes { font-size: 0.9em; color: var(--muted); }
+
+/* Language tag on a fenced block — sits opposite the action buttons. */
+.md-code-lang {
+  position: absolute;
+  top: 6px;
+  inset-inline-start: 10px;
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--muted);
+  pointer-events: none;
+}
 .md-preview code {
   background: var(--elevated);
   border: 1px solid var(--elevated-hi);
@@ -1349,6 +1428,34 @@ body {
 .ctx-item--icon { display: flex; align-items: center; gap: 8px; }
 .ctx-item--icon svg { flex-shrink: 0; opacity: 0.85; }
 .ctx-item.disabled { color: var(--muted); cursor: default; pointer-events: none; }
+
+/* Markdown commands flyout: taller than the other menus, so it scrolls, and
+   each row carries its shortcut hint on the trailing edge. */
+.ctx-menu--md { max-height: min(78vh, 620px); overflow-y: auto; min-width: 210px; }
+.ctx-menu--md .ctx-item {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+}
+.ctx-menu--md .ctx-item code {
+  background: var(--elevated);
+  border-radius: 3px;
+  padding: 0 4px;
+  font-size: 0.92em;
+}
+.ctx-menu--md mark {
+  background: color-mix(in srgb, var(--accent) 30%, transparent);
+  color: inherit;
+  border-radius: 3px;
+  padding: 0 3px;
+}
+.ctx-key {
+  font-size: 10.5px;
+  color: var(--muted);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
 
 .ctx-danger { color: var(--danger); }
 .ctx-danger:hover { background: color-mix(in srgb, var(--danger) 12%, transparent); }
@@ -1870,6 +1977,23 @@ body {
 }
 .update-banner-close:hover { opacity: 1; }
 
+/* Support banner — same shelf as the update banner, quieter colours so it
+   reads as an invitation rather than an alert. Stacks above the update
+   banner on the rare launch where both are on screen. */
+.donate-banner {
+  background: var(--elevated-hi);
+  color: var(--text);
+  border-top: 1px solid var(--border-strong);
+}
+.donate-banner svg { color: var(--accent); opacity: 1; }
+.donate-banner .update-banner-link {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg);
+}
+.donate-banner .update-banner-link:hover { filter: brightness(1.1); }
+.donate-banner.stacked { bottom: 78px; }
+
 /* =========================================================
    CHECK FOR UPDATES
    ========================================================= */
@@ -1885,6 +2009,8 @@ body {
 .check-update-btn:hover { opacity: 1; border-color: var(--accent); }
 .check-update-btn.update-available { border-color: var(--accent); color: var(--accent); opacity: 1; }
 .check-update-btn.checking { opacity: .5; cursor: default; }
+.donate-btn { color: var(--accent); border-color: var(--elevated-hi); }
+.donate-btn:hover { border-color: var(--accent); }
 
 /* =========================================================
    SPECIAL THEME VARIANTS

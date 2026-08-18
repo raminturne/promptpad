@@ -780,6 +780,16 @@
                 <span class="slider"></span>
               </label>
             </div>
+            <div class="set-toggle-row">
+              <div class="set-toggle-text">
+                <span>Markdown keyboard shortcuts</span>
+                <small>Ctrl+I italic, Ctrl+Shift+1…6 headings, Ctrl+Shift+H highlight and more. Right-click → Markdown Commands always works.</small>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="toggleMdShortcuts" />
+                <span class="slider"></span>
+              </label>
+            </div>
           </section>
 
           <!-- Toolbar buttons -->
@@ -980,7 +990,7 @@
             <div class="about-box">
               <div class="about-brand">
                 <span class="brand-dot"></span>
-                <span>PromptPad <em id="aboutVersion">v3.1.0</em></span>
+                <span>PromptPad <em id="aboutVersion">v3.2.0</em></span>
               </div>
               <p class="about-desc">A compact notepad for writing AI prompts.</p>
               <div class="about-links">
@@ -993,6 +1003,10 @@
                   t.me/fast_amozesh
                 </a>
               </div>
+              <button id="donateBtn" class="check-update-btn donate-btn">
+                <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M12 21s-7.5-4.6-9.4-9A5.1 5.1 0 0 1 12 6.3 5.1 5.1 0 0 1 21.4 12c-1.9 4.4-9.4 9-9.4 9z" fill="currentColor"/></svg>
+                <span>Support PromptPad</span>
+              </button>
               <button id="checkUpdateBtn" class="check-update-btn">
                 <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><polyline points="23 4 23 10 17 10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
                 <span id="checkUpdateLabel">Check for updates</span>
@@ -1014,6 +1028,16 @@
       <span id="updateBannerText"></span>
       <button id="updateBannerLink" class="update-banner-link">Download</button>
       <button id="updateBannerClose" class="update-banner-close" title="Dismiss">
+        <svg viewBox="0 0 24 24" width="11" height="11" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><line x1="6" y1="6" x2="18" y2="18" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+
+    <!-- Support prompt. Shown once per new version, then it lives in Settings. -->
+    <div id="donateBanner" class="update-banner donate-banner hidden">
+      <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M12 21s-7.5-4.6-9.4-9A5.1 5.1 0 0 1 12 6.3 5.1 5.1 0 0 1 21.4 12c-1.9 4.4-9.4 9-9.4 9z" fill="currentColor"/></svg>
+      <span>Enjoying PromptPad? A small donation keeps it going.</span>
+      <button id="donateBannerLink" class="update-banner-link">Donate</button>
+      <button id="donateBannerClose" class="update-banner-close" title="Dismiss">
         <svg viewBox="0 0 24 24" width="11" height="11" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><line x1="6" y1="6" x2="18" y2="18" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
       </button>
     </div>
@@ -1286,6 +1310,8 @@
       <div class="ctx-sep hidden" id="ctxImproveSep"></div>
       <div class="ctx-item hidden" id="ctxImproveItem" data-text-action="improve">Improve Prompt</div>
       <div class="ctx-item hidden" id="ctxAiMoreItem" data-text-action="ai-more">AI actions&nbsp;&nbsp;›</div>
+      <div class="ctx-sep hidden" id="ctxMdSep"></div>
+      <div class="ctx-item hidden" id="ctxMdItem" data-text-action="md-more">Markdown Commands&nbsp;&nbsp;›</div>
       <div class="ctx-sep hidden" id="ctxShareSep"></div>
       <div class="ctx-item hidden" id="ctxShareItem" data-text-action="share-discover">Share to Discover</div>
     </div>
@@ -1302,6 +1328,56 @@
       <div class="ctx-item" data-ai-action="tone-professional">Make professional</div>
       <div class="ctx-item" data-ai-action="tone-casual">Make casual</div>
       <div class="ctx-item" data-ai-action="tone-concise">Make concise</div>
+    </div>
+
+    <!-- Export format flyout (from "Export as file…" on a tab or group).
+         The first two carry the note's inline images along with it; the last
+         three render the markdown the way the preview pane shows it. -->
+    <div id="exportMenu" class="ctx-menu hidden">
+      <div class="ctx-label">Export</div>
+      <div class="ctx-item" data-export-format="md-assets">Markdown + images folder</div>
+      <div class="ctx-item" data-export-format="md-embed">Markdown, single file</div>
+      <div class="ctx-item" data-export-format="txt">Plain text</div>
+      <div class="ctx-sep"></div>
+      <div class="ctx-item" data-export-format="html">Web page (HTML)</div>
+      <div class="ctx-item" data-export-format="pdf">PDF</div>
+      <div class="ctx-item" data-export-format="png">Image (PNG)</div>
+      <div class="ctx-item" data-export-format="clipboard-png">Copy as image</div>
+    </div>
+
+    <!-- Markdown commands menu (flyout from the editor right-click menu).
+         Every row runs a MD_COMMANDS entry; the <span class="ctx-key"> hints
+         are filled in from the shortcut table and hidden when the shortcut
+         setting is off. -->
+    <div id="mdCommandsMenu" class="ctx-menu ctx-menu--md hidden">
+      <div class="ctx-label">Headings</div>
+      <div class="ctx-item" data-md-action="h1">Heading 1<span class="ctx-key" data-key="h1"></span></div>
+      <div class="ctx-item" data-md-action="h2">Heading 2<span class="ctx-key" data-key="h2"></span></div>
+      <div class="ctx-item" data-md-action="h3">Heading 3<span class="ctx-key" data-key="h3"></span></div>
+      <div class="ctx-item" data-md-action="h4">Heading 4<span class="ctx-key" data-key="h4"></span></div>
+      <div class="ctx-item" data-md-action="h5">Heading 5<span class="ctx-key" data-key="h5"></span></div>
+      <div class="ctx-item" data-md-action="h6">Heading 6<span class="ctx-key" data-key="h6"></span></div>
+      <div class="ctx-item" data-md-action="paragraph">Normal text<span class="ctx-key" data-key="paragraph"></span></div>
+      <div class="ctx-sep"></div>
+      <div class="ctx-label">Text</div>
+      <div class="ctx-item" data-md-action="bold"><strong>Bold</strong><span class="ctx-key" data-key="bold"></span></div>
+      <div class="ctx-item" data-md-action="italic"><em>Italic</em><span class="ctx-key" data-key="italic"></span></div>
+      <div class="ctx-item" data-md-action="strike"><del>Strikethrough</del><span class="ctx-key" data-key="strike"></span></div>
+      <div class="ctx-item" data-md-action="highlight"><mark>Highlight</mark><span class="ctx-key" data-key="highlight"></span></div>
+      <div class="ctx-item" data-md-action="code"><code>Inline code</code><span class="ctx-key" data-key="code"></span></div>
+      <div class="ctx-item" data-md-action="link">Link…<span class="ctx-key" data-key="link"></span></div>
+      <div class="ctx-item" data-md-action="sub">Subscript<span class="ctx-key" data-key="sub"></span></div>
+      <div class="ctx-item" data-md-action="sup">Superscript<span class="ctx-key" data-key="sup"></span></div>
+      <div class="ctx-sep"></div>
+      <div class="ctx-label">Blocks</div>
+      <div class="ctx-item" data-md-action="quote">Blockquote<span class="ctx-key" data-key="quote"></span></div>
+      <div class="ctx-item" data-md-action="ul">Bullet list<span class="ctx-key" data-key="ul"></span></div>
+      <div class="ctx-item" data-md-action="ol">Numbered list<span class="ctx-key" data-key="ol"></span></div>
+      <div class="ctx-item" data-md-action="todo">Task list<span class="ctx-key" data-key="todo"></span></div>
+      <div class="ctx-item" data-md-action="codeblock">Code block<span class="ctx-key" data-key="codeblock"></span></div>
+      <div class="ctx-item" data-md-action="table">Table<span class="ctx-key" data-key="table"></span></div>
+      <div class="ctx-item" data-md-action="hr">Divider<span class="ctx-key" data-key="hr"></span></div>
+      <div class="ctx-item" data-md-action="footnote">Footnote<span class="ctx-key" data-key="footnote"></span></div>
     </div>
 
     <!-- Command palette (Ctrl+P) -->

@@ -94,6 +94,7 @@ const DEFAULT_SETTINGS = {
   aiChatEnabled: true,          // show the AI Chat button in the rail (only when aiEnabled)
   profilesEnabled: true,        // show the profile switcher in the title bar (hiding it keeps every profile)
   quickCaptureEnabled: true,
+  mdShortcuts: false, // Ctrl+I / Ctrl+Shift+… markdown formatting keys — opt-in
   imageResizable: true,
   imageDownloadEnabled: true,
   mdImageFullSize: false, // markdown preview: show images at full size (fit window) instead of the small thumbnail cap
@@ -127,7 +128,8 @@ const DEFAULT_SETTINGS = {
   language: 'en', // 'en' | 'fa' — UI language
   rtlMirror: false, // mirror the whole layout (rail on the right) — only meaningful for 'fa'
   helpLang: 'en', // legacy: language of the Settings help text; migrated into `language` on load
-  lastVersion: null // last version whose "What's new" tab was shown (global, not per-profile)
+  lastVersion: null, // last version whose "What's new" tab was shown (global, not per-profile)
+  donateSeenVersion: null // last version whose support banner was shown
 };
 
 let settings = { ...DEFAULT_SETTINGS };
@@ -259,6 +261,11 @@ const updateBannerEl = document.getElementById('updateBanner');
 const updateBannerTextEl = document.getElementById('updateBannerText');
 const updateBannerLinkEl = document.getElementById('updateBannerLink');
 const updateBannerCloseEl = document.getElementById('updateBannerClose');
+// support / donation
+const donateBannerEl = document.getElementById('donateBanner');
+const donateBannerLinkEl = document.getElementById('donateBannerLink');
+const donateBannerCloseEl = document.getElementById('donateBannerClose');
+const donateBtn = document.getElementById('donateBtn');
 // save-as-template dialog
 const saveTemplateDialog = document.getElementById('saveTemplateDialog');
 const templateNameInput = document.getElementById('templateNameInput');
@@ -365,9 +372,11 @@ const linkSave = document.getElementById('linkSave');
 const imgContextMenu = document.getElementById('imgContextMenu');
 const textContextMenu = document.getElementById('textContextMenu');
 const aiActionsMenu = document.getElementById('aiActionsMenu');
+const mdCommandsMenu = document.getElementById('mdCommandsMenu');
 const toggleImageResizeEl = document.getElementById('toggleImageResize');
 const toggleImageDownloadEl = document.getElementById('toggleImageDownload');
 const toggleMdImageFullSizeEl = document.getElementById('toggleMdImageFullSize');
+const toggleMdShortcutsEl = document.getElementById('toggleMdShortcuts');
 const geminiApiKeyInputEl = document.getElementById('geminiApiKeyInput');
 const hfApiKeyInputEl = document.getElementById('hfApiKeyInput');
 const imageGenProviderSeg = document.getElementById('imageGenProviderSeg');
@@ -471,6 +480,36 @@ const MDLINK_RE = /\[[^\[\]\r\n]+\]\([^)\r\n]*\)/g;
 
 // Inline bold: **text** — shown bold in the editor with dimmed ** markers.
 const MD_BOLD_RE = /\*\*([^*\r\n]+)\*\*/g;
+
+// Other inline spans decorated the same way (marker text kept, styled inner).
+const MD_STRIKE_RE = /~~([^~\r\n]+)~~/g;
+const MD_HILITE_RE = /==([^=\r\n]+)==/g;
+
+// Leading block markers: "# ", "1. ", "- ", "> ". On an RTL line these are
+// ASCII runs at the logical start, and the bidi algorithm reorders them into
+// the middle of the text (the classic "1." rendering as ".1" on the wrong
+// side). Wrapping them in an isolating span pins them where they belong —
+// see .md-blockmark in styles.css. The wrapper keeps the literal text, so
+// textContent still round-trips.
+const MD_BLOCKMARK_RE = /^(\s*)(#{1,6} |[0-9۰-۹٠-٩]+[.)] |[-*+] |> )/;
+
+// A bullet or numbered list marker, split so Enter can rebuild it:
+// 1=indent, 2=bullet char, 3=spaces  |  4=digits, 5=".) " tail
+const MD_LIST_RE = /^(\s*)(?:([-*+])( +)|([0-9۰-۹٠-٩]+)([.)] +))/;
+
+// Increment a list number, keeping the digit system the author was using —
+// a Persian list numbered ۱. continues with ۲., not 2.
+function nextListNumber(digits) {
+  const fa = /[۰-۹]/.test(digits);
+  const ar = /[٠-٩]/.test(digits);
+  const ascii = digits
+    .replace(/[۰-۹]/g, (c) => String(c.charCodeAt(0) - 0x06f0))
+    .replace(/[٠-٩]/g, (c) => String(c.charCodeAt(0) - 0x0660));
+  const next = String((parseInt(ascii, 10) || 0) + 1);
+  if (fa) return next.replace(/[0-9]/g, (d) => String.fromCharCode(0x06f0 + Number(d)));
+  if (ar) return next.replace(/[0-9]/g, (d) => String.fromCharCode(0x0660 + Number(d)));
+  return next;
+}
 
 function findPlaceholderTokens(text) {
   const seen = new Set();
@@ -644,15 +683,21 @@ function highlightLine(el) {
   if (el._hlText === text && el._hlEpoch === hlEpoch) return;
   el._hlText = text;
   el._hlEpoch = hlEpoch;
-  const hadDecor = !!el.querySelector('.placeholder-tag, .todo-mark, .img-token, .pp-img, .md-bold, .md-mark, .md-link-mark');
+  const hadDecor = !!el.querySelector('.placeholder-tag, .todo-mark, .img-token, .pp-img, .md-bold, .md-mark, .md-link-mark, .md-blockmark');
   const phMatches = settings.placeholdersEnabled ? [...text.matchAll(PLACEHOLDER_RE)] : [];
   const todoM = text.match(TODO_RE);
   const imgMatches = [...text.matchAll(IMG_TOKEN_RE)];
   const boldMatches = [...text.matchAll(MD_BOLD_RE)];
+  const strikeMatches = [...text.matchAll(MD_STRIKE_RE)];
+  const hiliteMatches = [...text.matchAll(MD_HILITE_RE)];
   const linkMatches = [...text.matchAll(MDLINK_RE)];
+  // Only isolate the marker when the line actually needs it — an LTR line
+  // reorders correctly on its own, and an extra span there is pure churn.
+  const blockM = detectDir(text) === 'rtl' && !todoM ? text.match(MD_BLOCKMARK_RE) : null;
   el.classList.toggle('todo-done', !!(todoM && todoM[2] === 'x'));
   if (!phMatches.length && !todoM && !imgMatches.length && !boldMatches.length &&
-      !linkMatches.length && !hadDecor) return;
+      !strikeMatches.length && !hiliteMatches.length && !linkMatches.length &&
+      !blockM && !hadDecor) return;
 
   const offset = getCaretOffsetIn(el);
   el.innerHTML = '';
@@ -663,12 +708,21 @@ function highlightLine(el) {
     // (e.g. "[img]" inside an image token, "[ ]" inside a todo prefix).
     const ranges = [];
     if (todoM) ranges.push({ start: 0, end: todoM[0].length, cls: 'todo-mark' });
+    if (blockM) {
+      ranges.push({ start: blockM[1].length, end: blockM[0].length, cls: 'md-blockmark' });
+    }
     for (const m of imgMatches) {
       ranges.push({ start: m.index, end: m.index + m[0].length, cls: 'img-token',
         file: m[1], width: m[2] ? Number(m[2]) : null });
     }
     for (const m of boldMatches) {
       ranges.push({ start: m.index, end: m.index + m[0].length, cls: 'md-bold' });
+    }
+    for (const m of strikeMatches) {
+      ranges.push({ start: m.index, end: m.index + m[0].length, cls: 'md-strike' });
+    }
+    for (const m of hiliteMatches) {
+      ranges.push({ start: m.index, end: m.index + m[0].length, cls: 'md-hilite' });
     }
     // Ranges of markdown-link [text] parts, so they aren't tagged as placeholders.
     const linkRanges = linkMatches.map((m) => [m.index, m.index + m[0].length]);
@@ -698,13 +752,15 @@ function highlightLine(el) {
     for (const r of ranges) {
       if (r.start < last) continue; // overlaps an earlier decoration
       if (r.start > last) el.appendChild(document.createTextNode(text.slice(last, r.start)));
-      if (r.cls === 'md-bold') {
-        // **text** → dimmed "**" marks + bold inner text (all literal, so the
-        // raw "**text**" still round-trips through getEditorText).
+      if (r.cls === 'md-bold' || r.cls === 'md-strike' || r.cls === 'md-hilite') {
+        // **text** / ~~text~~ / ==text== → dimmed 2-char marks + styled inner
+        // text (all literal, so the raw markdown still round-trips through
+        // getEditorText).
+        const mark = text.slice(r.start, r.start + 2);
         const inner = text.slice(r.start + 2, r.end - 2);
-        const mk1 = document.createElement('span'); mk1.className = 'md-mark'; mk1.textContent = '**';
-        const b = document.createElement('span'); b.className = 'md-bold'; b.textContent = inner;
-        const mk2 = document.createElement('span'); mk2.className = 'md-mark'; mk2.textContent = '**';
+        const mk1 = document.createElement('span'); mk1.className = 'md-mark'; mk1.textContent = mark;
+        const b = document.createElement('span'); b.className = r.cls; b.textContent = inner;
+        const mk2 = document.createElement('span'); mk2.className = 'md-mark'; mk2.textContent = mark;
         el.appendChild(mk1); el.appendChild(b); el.appendChild(mk2);
       } else if (r.cls === 'md-link-token') {
         // [label](url) → just the label, styled and clickable like a link on a
@@ -3067,6 +3123,10 @@ ctxMenuEl.addEventListener('click', (e) => {
   if (!item || !ctxTabId) return;
   const id = ctxTabId;
   const action = item.dataset.action;
+  // measured before hiding — a display:none row has a zero-sized rect, and
+  // the export flyout is positioned from it
+  const itemRect = item.getBoundingClientRect();
+  if (action === 'export') e.stopPropagation(); // don't let the document handler close the flyout
   hideCtxMenu();
 
   switch (action) {
@@ -3085,7 +3145,8 @@ ctxMenuEl.addEventListener('click', (e) => {
       const tab = state.tabs.find((t) => t.id === id);
       if (tab) {
         if (tab.id === state.activeId) syncEditorToState();
-        window.api.exportNote(autoName(tab, state.tabs.indexOf(tab)), tab.content, 'md');
+        showExportMenu(itemRect.right + 2, itemRect.top,
+          autoName(tab, state.tabs.indexOf(tab)), tab.content);
       }
       break;
     }
@@ -3348,6 +3409,8 @@ groupContextMenu.addEventListener('click', (e) => {
   const id = groupCtxId;
   const action = item.dataset.groupAction;
   const group = (state.groups || []).find((g) => g.id === id);
+  const itemRect = item.getBoundingClientRect(); // before hiding — see the tab menu
+  if (action === 'export') e.stopPropagation();
   hideGroupCtxMenu();
   switch (action) {
     case 'rename': {
@@ -3363,7 +3426,7 @@ groupContextMenu.addEventListener('click', (e) => {
       break;
     }
     case 'export':
-      if (group) window.api.exportNote(group.name, groupContentJoined(id), 'md');
+      if (group) showExportMenu(itemRect.right + 2, itemRect.top, group.name, groupContentJoined(id));
       break;
     case 'pin':
       if (group) { group.pinned = !group.pinned; renderTabs(); scheduleSave(); }
@@ -3928,12 +3991,27 @@ editorEl.addEventListener('keydown', (e) => {
   const offset = pre.toString().length;
 
   const text = line.textContent;
-  // Continue todo lists: Enter after the "- [ ] " prefix of a non-empty todo
-  // line starts the next line with a fresh unchecked prefix.
+  // Continue lists: Enter after the marker of a non-empty todo / bullet /
+  // numbered line starts the next line with a fresh marker (numbers
+  // auto-increment). Enter on an item that is *only* a marker ends the list
+  // instead, which is what every other editor does — and it's the fastest way
+  // out of a run of "1." lines.
   const todoM = text.match(TODO_RE);
+  const listM = todoM ? null : text.match(MD_LIST_RE);
   let contPrefix = '';
-  if (todoM && offset >= todoM[0].length && text.length > todoM[0].length) {
-    contPrefix = todoM[1] + '- [ ] ';
+  if (todoM || listM) {
+    const markerLen = (todoM || listM)[0].length;
+    if (text.trimEnd().length <= markerLen) {
+      // a marker with nothing after it — clear the line and end the list
+      setLineText(line, '', 0);
+      updateLineDirs();
+      return;
+    }
+    if (offset >= markerLen) {
+      if (todoM) contPrefix = todoM[1] + '- [ ] ';
+      else if (listM[2]) contPrefix = listM[1] + listM[2] + listM[3];      // "- " / "* "
+      else contPrefix = listM[1] + nextListNumber(listM[4]) + listM[5];    // "1. " → "2. "
+    }
   }
   const firstLine = makeLine(text.slice(0, offset));
   const secondLine = makeLine(contPrefix + text.slice(offset));
@@ -4288,6 +4366,13 @@ function showTextContextMenu(e, target, isEditable, hasSelection) {
   document.getElementById('ctxImproveItem').classList.toggle('hidden', !showImprove);
   document.getElementById('ctxAiMoreItem').classList.toggle('hidden', !showImprove);
 
+  // "Markdown Commands" needs the raw editor for the same reason Improve does:
+  // every command writes markdown into the note text, and the appliers bail out
+  // in preview mode.
+  const showMd = editorEl.contains(target) && !mdOn();
+  document.getElementById('ctxMdSep').classList.toggle('hidden', !showMd);
+  document.getElementById('ctxMdItem').classList.toggle('hidden', !showMd);
+
   // "Share to Discover" — any selected text, anywhere, once Discover is set up.
   textCtxSelection = selectedTextFrom(target);
   const showShare = !!window.DISCOVER_CONFIGURED && settings.discoverEnabled && !!dcClient && !!textCtxSelection.trim();
@@ -4344,6 +4429,15 @@ textContextMenu.addEventListener('click', async (e) => {
     const text = textCtxSelection;
     hideTextContextMenu();
     shareTextToDiscover(text);
+    return;
+  }
+  if (action === 'md-more') {
+    // as with ai-more: don't let this click reach the document handler that
+    // would close the flyout we're about to open
+    e.stopPropagation();
+    const r = item.getBoundingClientRect();
+    hideTextContextMenu();
+    showMdCommandsMenu(r.right + 2, r.top);
     return;
   }
   if (action === 'ai-more') {
@@ -4717,6 +4811,152 @@ function surroundSelection(before, after, stub) {
     setLineText(s.line, text.slice(0, s.start) + before + sel + after + text.slice(s.end),
       s.end + before.length + after.length);
   }
+}
+
+// ---------- Markdown commands ----------
+// Block-level formatting, i.e. everything surroundSelection() can't do: it
+// works inside one line by construction, while these rewrite the marker at the
+// start of every selected line.
+
+// Any leading block marker, so applying a new one replaces the old rather
+// than stacking "> - # " prefixes.
+const MD_ANY_MARK_RE = /^(\s*)(?:#{1,6} |> |[-*+] (?:\[[ x]\] )?|[0-9۰-۹٠-٩]+[.)] )?/;
+
+// The .ln lines a command should act on: the selection if there is one,
+// otherwise just the caret line.
+function commandLines() {
+  const sel = selectedLines();
+  if (sel.length) return sel;
+  const line = currentLine();
+  return line ? [line] : [];
+}
+
+// prefix — either a string ("# ", "> ", "- ") or a function(index) for
+// numbered lists. Re-applying the same prefix to every selected line strips it
+// instead, so each command toggles.
+function applyLinePrefix(prefix) {
+  if (mdOn() || fsActive()) return;
+  editorEl.focus();
+  const lines = commandLines();
+  if (!lines.length) return;
+  const at = (n) => (typeof prefix === 'function' ? prefix(n) : prefix);
+  const has = (l, n) => {
+    const m = l.textContent.match(MD_ANY_MARK_RE);
+    return m && m[0].slice(m[1].length) === at(n).trimStart();
+  };
+  const allHave = prefix !== '' && lines.every((l, n) => has(l, n));
+  lines.forEach((l, n) => {
+    const m = l.textContent.match(MD_ANY_MARK_RE);
+    const indent = m ? m[1] : '';
+    const body = l.textContent.slice(m ? m[0].length : 0);
+    l.textContent = indent + (allHave ? '' : at(n).trimStart()) + body;
+    highlightLine(l);
+  });
+  updateLineDirs();
+  const last = lines[lines.length - 1];
+  placeCaretInLine(last, last.textContent.length);
+  handleEditorChanged();
+}
+
+// Insert a multi-line block (table skeleton, code fence) below the caret line.
+function insertBlock(block) {
+  if (mdOn() || fsActive()) return;
+  editorEl.focus();
+  let line = currentLine();
+  if (!line) {
+    const all = editorLines();
+    line = all[all.length - 1];
+    if (!line) { setEditorText(''); line = editorLines()[0]; }
+  }
+  const rows = block.split('\n');
+  // An empty caret line becomes the block's first row rather than leaving a
+  // stray blank line above it.
+  const start = line.textContent.trim() ? null : line;
+  const made = rows.map((r) => makeLine(r));
+  if (start) start.replaceWith(...made);
+  else made.reduce((prev, el) => { prev.after(el); return el; }, line);
+  updateLineDirs();
+  const target = made[Math.min(1, made.length - 1)];
+  placeCaretInLine(target, target.textContent.length);
+  target.scrollIntoView({ block: 'nearest' });
+  handleEditorChanged();
+}
+
+// Every command the right-click menu and the shortcuts share. `run` is called
+// with no arguments; `key` is the data-md-action value.
+const MD_COMMANDS = {
+  h1: () => applyLinePrefix('# '),
+  h2: () => applyLinePrefix('## '),
+  h3: () => applyLinePrefix('### '),
+  h4: () => applyLinePrefix('#### '),
+  h5: () => applyLinePrefix('##### '),
+  h6: () => applyLinePrefix('###### '),
+  paragraph: () => applyLinePrefix(''),
+  bold: () => surroundSelection('**', '**', 'bold'),
+  italic: () => surroundSelection('*', '*', 'italic'),
+  strike: () => surroundSelection('~~', '~~', 'strikethrough'),
+  highlight: () => surroundSelection('==', '==', 'highlight'),
+  code: () => surroundSelection('`', '`', 'code'),
+  sub: () => surroundSelection('~', '~', 'sub'),
+  sup: () => surroundSelection('^', '^', 'sup'),
+  // The live selection is still intact here (the menu suppresses mousedown),
+  // so clear any range the toolbar button may have parked earlier.
+  link: () => { linkSavedRange = null; openLinkDialog(); },
+  quote: () => applyLinePrefix('> '),
+  ul: () => applyLinePrefix('- '),
+  ol: () => applyLinePrefix((n) => n + 1 + '. '),
+  todo: () => applyTodoButton(),
+  codeblock: () => insertBlock('```\n\n```'),
+  table: () => insertBlock('| Column | Column |\n| --- | --- |\n|  |  |'),
+  hr: () => insertBlock('---'),
+  footnote: () => surroundSelection('[^', ']', '1')
+};
+
+function runMdCommand(key) {
+  const fn = MD_COMMANDS[key];
+  if (fn) fn();
+}
+
+// Optional shortcuts (Settings → "Markdown keyboard shortcuts", off by
+// default). Keyed by e.code so they fire on any layout, Persian included.
+// Ctrl+B and Ctrl+K already exist unconditionally and stay out of this table.
+// Nothing here may collide with Ctrl+Shift+F/D/C/Z or Ctrl+Shift+Space.
+const MD_SHORTCUTS = {
+  'KeyI': 'italic',
+  'shift+KeyX': 'strike',
+  'shift+KeyH': 'highlight',
+  'shift+KeyK': 'code',
+  'shift+Digit1': 'h1',
+  'shift+Digit2': 'h2',
+  'shift+Digit3': 'h3',
+  'shift+Digit4': 'h4',
+  'shift+Digit5': 'h5',
+  'shift+Digit6': 'h6',
+  'shift+Digit0': 'paragraph',
+  'shift+KeyQ': 'quote',
+  'shift+Digit8': 'ul',
+  'shift+Digit7': 'ol',
+  'shift+KeyR': 'hr',
+  'shift+KeyT': 'table'
+};
+
+// Human-readable labels for the menu, derived from the table above so the two
+// can't drift apart. Bold/Link are listed by hand — they're always on.
+const MD_SHORTCUT_LABELS = { bold: 'Ctrl+B', link: 'Ctrl+K' };
+for (const [combo, cmd] of Object.entries(MD_SHORTCUTS)) {
+  const shift = combo.startsWith('shift+');
+  const code = shift ? combo.slice(6) : combo;
+  MD_SHORTCUT_LABELS[cmd] = 'Ctrl+' + (shift ? 'Shift+' : '') + code.replace(/^(Key|Digit)/, '');
+}
+
+// Fill the menu's shortcut hints, blanking the optional ones while the
+// setting is off so the menu never advertises a key that does nothing.
+function syncMdShortcutHints() {
+  mdCommandsMenu.querySelectorAll('.ctx-key').forEach((el) => {
+    const cmd = el.dataset.key;
+    const always = cmd === 'bold' || cmd === 'link';
+    el.textContent = (always || settings.mdShortcuts) ? (MD_SHORTCUT_LABELS[cmd] || '') : '';
+  });
 }
 
 // ---------- Emoji picker ----------
@@ -5099,6 +5339,126 @@ improveBtn.addEventListener('contextmenu', (e) => {
 document.addEventListener('click', (e) => {
   if (!aiActionsMenu.classList.contains('hidden') && !aiActionsMenu.contains(e.target)) {
     hideAiActionsMenu();
+  }
+});
+
+// ---------- Export ----------
+// "Export as file…" used to write the raw note string and nothing else, which
+// meant every ![img](ppimg://…) token in it became a dead link the moment the
+// file left the app. Each format below either carries the image files along or
+// renders them into the output.
+const exportMenu = document.getElementById('exportMenu');
+let pendingExport = null; // { name, content }
+
+function showExportMenu(x, y, name, content) {
+  pendingExport = { name, content };
+  exportMenu.style.left = x + 'px';
+  exportMenu.style.top = y + 'px';
+  exportMenu.classList.remove('hidden');
+  requestAnimationFrame(() => {
+    const rect = exportMenu.getBoundingClientRect();
+    const vw = document.documentElement.clientWidth;
+    const vh = document.documentElement.clientHeight;
+    if (rect.right > vw - 4) exportMenu.style.left = Math.max(4, vw - rect.width - 4) + 'px';
+    if (rect.bottom > vh - 4) exportMenu.style.top = Math.max(4, vh - rect.height - 4) + 'px';
+  });
+}
+function hideExportMenu() { exportMenu.classList.add('hidden'); pendingExport = null; }
+
+// The theme is a set of CSS custom properties on :root, so a rendered export
+// only matches the app if they travel with it. Chromium enumerates custom
+// properties in a computed style, which is the only way to get them all
+// without parsing the stylesheet.
+function themeVarsCss() {
+  const cs = getComputedStyle(document.documentElement);
+  const out = [];
+  for (let i = 0; i < cs.length; i++) {
+    const prop = cs[i];
+    if (prop.startsWith('--')) out.push(prop + ':' + cs.getPropertyValue(prop) + ';');
+  }
+  return out.join('');
+}
+
+// HTML/PDF/PNG all render the same document the preview pane shows, so what
+// you export is what you were looking at.
+function exportRenderPayload(content) {
+  const t = activeTab();
+  const forced = t && (t.dir === 'rtl' || t.dir === 'ltr') ? t.dir : null;
+  const holder = document.createElement('div');
+  holder.innerHTML = window.renderMarkdown(content, { ai: false });
+  // Same per-block direction pass the preview does — without it an exported
+  // Persian note comes out left-aligned with its list markers on the wrong side.
+  const SEL = 'p, h1, h2, h3, h4, h5, h6, li, blockquote, ul, ol, dl, dt, dd, table, th, td';
+  holder.querySelectorAll(SEL).forEach((el) => {
+    el.setAttribute('dir', forced || detectDir(el.textContent));
+  });
+  // The preview's buttons are app chrome, not content.
+  holder.querySelectorAll('.md-code-copy, .md-code-improve, .md-code-genimg').forEach((b) => b.remove());
+  return {
+    body: holder.innerHTML,
+    dir: forced || detectDir(content),
+    vars: themeVarsCss(),
+    fullSizeImages: !!settings.mdImageFullSize
+  };
+}
+
+exportMenu.addEventListener('click', async (e) => {
+  const item = e.target.closest('[data-export-format]');
+  if (!item || !pendingExport) return;
+  const format = item.dataset.exportFormat;
+  const { name, content } = pendingExport;
+  hideExportMenu();
+  const payload = { name, content, format };
+  if (format === 'html' || format === 'pdf' || format === 'png' || format === 'clipboard-png') {
+    payload.render = exportRenderPayload(content);
+  }
+  try {
+    const res = await window.api.exportNoteRich(payload);
+    if (res && res.ok && format === 'clipboard-png') showToast('Copied as image');
+    // an image has a hard height limit; say so rather than silently trimming
+    if (res && res.ok && res.truncated) showToast('Note too long — the image was cut short');
+  } catch (err) {
+    console.error('export failed', err);
+  }
+});
+
+document.addEventListener('click', (e) => {
+  if (!exportMenu.classList.contains('hidden') && !exportMenu.contains(e.target)) hideExportMenu();
+});
+
+// ---------- Markdown commands menu ----------
+// Same flyout shape as the AI actions menu above: opened from a row of the
+// text context menu, positioned to that row's right edge, closed by a click
+// anywhere else or by Escape.
+function showMdCommandsMenu(x, y) {
+  if (mdOn() || fsActive() || !activeTab()) return;
+  hideTextContextMenu();
+  syncMdShortcutHints();
+  mdCommandsMenu.style.left = x + 'px';
+  mdCommandsMenu.style.top = y + 'px';
+  mdCommandsMenu.classList.remove('hidden');
+  requestAnimationFrame(() => {
+    const rect = mdCommandsMenu.getBoundingClientRect();
+    const vw = document.documentElement.clientWidth;
+    const vh = document.documentElement.clientHeight;
+    if (rect.right > vw - 4) mdCommandsMenu.style.left = Math.max(4, vw - rect.width - 4) + 'px';
+    if (rect.bottom > vh - 4) mdCommandsMenu.style.top = Math.max(4, vh - rect.height - 4) + 'px';
+  });
+}
+function hideMdCommandsMenu() { mdCommandsMenu.classList.add('hidden'); }
+
+// keep selection/focus in the editor when clicking a menu item
+mdCommandsMenu.addEventListener('mousedown', (e) => e.preventDefault());
+mdCommandsMenu.addEventListener('click', (e) => {
+  const item = e.target.closest('[data-md-action]');
+  if (!item) return;
+  hideMdCommandsMenu();
+  runMdCommand(item.dataset.mdAction);
+});
+
+document.addEventListener('click', (e) => {
+  if (!mdCommandsMenu.classList.contains('hidden') && !mdCommandsMenu.contains(e.target)) {
+    hideMdCommandsMenu();
   }
 });
 
@@ -5717,6 +6077,13 @@ document.addEventListener('keydown', (e) => {
   if (!e.shiftKey && e.code === 'KeyP') { e.preventDefault(); openCommandPalette(); return; }
   // editor-only shortcuts are meaningless while the Fast Save chat is shown
   if (fsActive() && (e.code === 'KeyF' || e.code === 'KeyH' || e.code === 'KeyM')) return;
+  // Markdown shortcuts — opt-in (Settings → Editor), and only in the raw
+  // editor. Checked before the chain below because Ctrl+Shift+0 would
+  // otherwise be swallowed by the Ctrl+0 font-size reset.
+  if (settings.mdShortcuts && !fsActive() && !mdOn()) {
+    const cmd = MD_SHORTCUTS[(e.shiftKey ? 'shift+' : '') + e.code];
+    if (cmd) { e.preventDefault(); runMdCommand(cmd); return; }
+  }
   if (!e.shiftKey && e.code === 'KeyT') {
     e.preventDefault();
     addTab();
@@ -6297,6 +6664,7 @@ function syncSettingsUI() {
   toggleImageResizeEl.checked = !!settings.imageResizable;
   toggleImageDownloadEl.checked = !!settings.imageDownloadEnabled;
   toggleMdImageFullSizeEl.checked = !!settings.mdImageFullSize;
+  toggleMdShortcutsEl.checked = !!settings.mdShortcuts;
   geminiApiKeyInputEl.value = (settings.imageGen && settings.imageGen.geminiApiKey) || '';
   hfApiKeyInputEl.value = (settings.imageGen && settings.imageGen.hfApiKey) || '';
   const genProvider = (settings.imageGen && settings.imageGen.provider) || 'pollinations';
@@ -6677,6 +7045,11 @@ toggleMdImageFullSizeEl.addEventListener('change', () => {
   saveSettingsNow();
 });
 
+toggleMdShortcutsEl.addEventListener('change', () => {
+  settings.mdShortcuts = toggleMdShortcutsEl.checked;
+  saveSettingsNow();
+});
+
 geminiApiKeyInputEl.addEventListener('change', () => {
   settings.imageGen = { ...settings.imageGen, geminiApiKey: geminiApiKeyInputEl.value.trim() };
   saveSettingsNow();
@@ -7002,7 +7375,13 @@ function renderMdPreview() {
   const forced = t && (t.dir === 'rtl' || t.dir === 'ltr') ? t.dir : null;
   if (forced) mdPreviewEl.setAttribute('dir', forced);
   else mdPreviewEl.removeAttribute('dir');
-  mdPreviewEl.querySelectorAll('p, h1, h2, h3, h4, li, blockquote').forEach((el) => {
+  // ul/ol/table/dl are in this list for a reason: the list marker and the cell
+  // order are laid out by the CONTAINER's direction, not the item's. Without a
+  // dir here an auto-detected Persian list inherited ltr from <html> and drew
+  // its numbers on the left of right-aligned text — the "1. / 2. breaks in
+  // markdown mode" bug.
+  const SEL = 'p, h1, h2, h3, h4, h5, h6, li, blockquote, ul, ol, dl, dt, dd, table, th, td';
+  mdPreviewEl.querySelectorAll(SEL).forEach((el) => {
     el.setAttribute('dir', forced || detectDir(el.textContent));
   });
 }
@@ -7367,50 +7746,67 @@ replaceAllEl.addEventListener('click', doReplaceAll);
 const CURRENT_VERSION = document.getElementById('aboutVersion').textContent.replace('v', '');
 
 // ---------- "What's new" tab (shown once after each update) ----------
+// The tab is created on dir 'auto', not 'ltr': that way every line picks its
+// own side, so the English half stays left-aligned and the Persian half
+// right-aligned instead of both being flattened to one direction.
 const WHATS_NEW =
   "What's new in v" + CURRENT_VERSION + " ✨\n" +
   '\n' +
-  '• Pro themes. Settings → Themes has a new "Pro" row, six of them, each one\n' +
-  '   changes what the app actually does, not just its colors: Old TV (CRT\n' +
-  '   scanlines and a rolling refresh band), Matrix (glyph rain behind the UI),\n' +
-  '   Storm (drifting clouds struck by lightning — ambiently, and again on\n' +
-  '   every keystroke), Windows XP (yes, really), Synesthesia (the accent\n' +
-  '   color follows what you type), and Music — the window pulses and shifts\n' +
-  '   color with whatever is playing on your PC right now, no setup needed.\n' +
-  '• Discover posts now wait for admin approval before anyone else can see\n' +
-  '   them. You will land on "My posts" right after sharing so you can see the\n' +
-  '   pending badge on your own submission; admins get a bell in the title bar\n' +
-  '   the moment a new post arrives, and a "Pending approval" queue at the very\n' +
-  '   top of the Admin screen, with images, so nothing needs opening twice to\n' +
-  '   moderate.\n' +
-  '• The tab right-click menu is more compact. "Move to profile" and "Copy to\n' +
-  '   profile" used to list every profile twice; now each profile is one row\n' +
-  '   with a small move/copy button on it. The menu also finally uses the\n' +
-  '   app\'s own scrollbar instead of the browser default.\n' +
+  '• Markdown got a lot bigger. Tables, ==highlight==, ~~strikethrough~~,\n' +
+  '   sub~script~ and super^script^, footnotes, definition lists, nested lists,\n' +
+  '   headings down to h6, backslash escapes and automatic links all render now.\n' +
+  '• Right-click inside the editor → "Markdown Commands". Select some text,\n' +
+  '   pick Heading 2, Blockquote, Highlight, Table — it writes the markdown for\n' +
+  '   you, across every line you selected. Optional keyboard shortcuts for the\n' +
+  '   same commands can be switched on in Settings (they are off by default).\n' +
+  '• Fixed: writing "1." or "2." on a Persian line and switching to markdown\n' +
+  '   scrambled the text. Numbers and bullets now stay on the correct side of\n' +
+  // No Persian glyph on an English line: each line picks its own direction
+  // from its own text, so one Persian digit here would flip the whole line.
+  '   the line, in the editor and in the preview, and Persian-Indic digits are\n' +
+  '   recognised as a numbered list too. Enter continues a list and\n' +
+  '   auto-increments the number.\n' +
+  '• Export now takes your images with it. "Export as file…" asks for a\n' +
+  '   format: Markdown with an images folder beside it, a single self-contained\n' +
+  '   Markdown file, plain text, a web page, a PDF, a PNG — or straight to the\n' +
+  '   clipboard as an image.\n' +
+  '• Fixed: exports stopped at the fold. The exported web page scrolls, a PDF\n' +
+  '   runs over as many pages as the note needs, and a PNG is the whole note\n' +
+  '   rather than the first screen of it. Code blocks and tables wrap into the\n' +
+  '   page as well, so nothing stays hidden behind a scrollbar that a printed\n' +
+  '   page or an image does not have.\n' +
+  '• PromptPad is free and written by one person. If it has earned a place in\n' +
+  '   your day, there is now a "Support PromptPad" link in Settings → About.\n' +
   '\n' +
   'You can close this tab — it won\'t come back until the next update.\n' +
   '\n' +
   '\n' +
   'تازه‌ها در نسخه ' + CURRENT_VERSION + ' ✨\n' +
   '\n' +
-  '• تم‌های حرفه‌ای. تنظیمات ← Themes یک ردیف جدید به اسم «Pro» داره، شش‌تا\n' +
-  '   تم که هرکدوم فقط رنگ عوض نمی‌کنن، رفتار برنامه رو عوض می‌کنن: Old TV\n' +
-  '   (خط‌های تلویزیون قدیمی و یک نوار رفرش که رد می‌شه)، Matrix (بارش حروف\n' +
-  '   پشت رابط کاربری)، Storm (ابرهای در حال حرکت که رعدوبرق می‌زنن — هم\n' +
-  '   خودبه‌خود، هم با هر بار تایپ‌کردنت)، Windows XP (بله، واقعاً)،\n' +
-  '   Synesthesia (رنگ اصلی برنامه با چیزی که تایپ می‌کنی عوض می‌شه)، و Music —\n' +
-  '   پنجره با هر چیزی که همین الان روی سیستمت پخش می‌شه می‌تپه و رنگ عوض\n' +
-  '   می‌کنه، بدون هیچ تنظیمی.\n' +
-  '• پست‌های Discover از این به بعد تا تأیید ادمین منتظر می‌مونن، قبل از\n' +
-  '   اینکه کس دیگه‌ای ببینتشون. درست بعد از اشتراک‌گذاری می‌ری توی «My posts»\n' +
-  '   تا نشان در-انتظار پست خودت رو ببینی؛ ادمین‌ها یک زنگوله توی نوار عنوان\n' +
-  '   می‌گیرن همون لحظه که پست جدید می‌رسه، و توی صفحه‌ی Admin، درست بالای\n' +
-  '   صفحه، صف «Pending approval» با عکس‌ها هست — دیگه لازم نیست چیزی رو\n' +
-  '   دوبار باز کنی تا بررسیش کنی.\n' +
-  '• منوی راست‌کلیک روی تب جمع‌وجورتر شد. «Move to profile» و «Copy to\n' +
-  '   profile» قبلاً هر پروفایل رو دوبار لیست می‌کردن؛ الان هر پروفایل یک\n' +
-  '   ردیفه با یک دکمه‌ی کوچیک move/copy روش. اسکرول این منو هم بالاخره از\n' +
-  '   اسکرول پیش‌فرض مرورگر به اسکرول خودِ برنامه تغییر کرد.\n' +
+  '• مارک‌داون خیلی کامل‌تر شد. جدول، ==هایلایت==، ~~خط‌خورده~~،\n' +
+  '   زیرنویس و بالانویس، پاورقی، لیست تعریف، لیست تودرتو،\n' +
+  '   عنوان تا h6، کاراکتر فرار با \\ و لینک خودکار همه رندر می‌شن.\n' +
+  '• داخل ویرایشگر راست‌کلیک کن ← «Markdown Commands». یک متن را\n' +
+  '   انتخاب کن و Heading 2 یا Blockquote یا Highlight یا Table را بزن —\n' +
+  '   خودش مارک‌داونش را می‌نویسد، روی همه‌ی خط‌هایی که انتخاب\n' +
+  '   کردی. کلیدهای ترکیبی همین دستورها در تنظیمات قابل فعال‌شدنه\n' +
+  '   (پیش‌فرض خاموشن).\n' +
+  '• رفع ایراد: نوشتن «۱.» یا «2.» روی یک خط فارسی و رفتن به حالت\n' +
+  '   مارک‌داون، متن را به‌هم می‌ریخت. حالا شماره‌ها و نقطه‌ها هم در\n' +
+  '   ویرایشگر و هم در پیش‌نمایش سمت درست خط می‌مانند، و ارقام\n' +
+  '   فارسی مثل «۱.» هم لیست شماره‌دار حساب می‌شوند. Enter لیست را\n' +
+  '   ادامه می‌دهد و شماره را خودکار جلو می‌برد.\n' +
+  '• خروجی حالا عکس‌هایت را هم با خودش می‌برد. «Export as file…» اول\n' +
+  '   فرمت را می‌پرسد: مارک‌داون به همراه پوشه‌ی عکس‌ها، یک فایل\n' +
+  '   مارک‌داون یکپارچه، متن ساده، صفحه‌ی وب، PDF، PNG — یا مستقیم\n' +
+  '   کپی به کلیپ‌بورد به‌صورت عکس.\n' +
+  '• رفع ایراد: خروجی‌ها از وسط بریده می‌شدند. حالا صفحه‌ی وب اسکرول\n' +
+  '   می‌شود، پی‌دی‌اف به هر تعداد صفحه‌ای که نوت لازم دارد ادامه پیدا\n' +
+  '   می‌کند، و عکس خروجی تمام نوت است نه فقط بخش قابل دیدن. بلوک‌های\n' +
+  '   کد و جدول‌ها هم داخل صفحه می‌پیچند، پس چیزی پشت اسکرولی که در\n' +
+  '   عکس و پی‌دی‌اف وجود ندارد پنهان نمی‌ماند.\n' +
+  '• پرامپت‌پد رایگان است و یک نفر آن را می‌نویسد. اگر جایی در روزت باز\n' +
+  '   کرده، حالا در تنظیمات ← درباره یک گزینه‌ی حمایت اضافه شده.\n' +
   '\n' +
   'این تب را می‌توانی ببندی — تا آپدیت بعدی دیگر برنمی‌گردد.';
 
@@ -7424,7 +7820,7 @@ function maybeShowWhatsNew(hadSaved) {
   if (hadSaved) {
     const tab = {
       id: uid(), name: "What's new ✨", custom: true,
-      content: WHATS_NEW, dir: 'ltr', align: 'auto', color: null
+      content: WHATS_NEW, dir: 'auto', align: 'auto', color: null
     };
     state.tabs.push(tab);
     state.activeId = tab.id;
@@ -7524,6 +7920,47 @@ function maybeAnnounceProThemes(hadSaved) {
     );
   }, 1200); // let the window settle before anything slides in
 }
+
+// ---------- Support the app ----------
+const DONATE_URL = 'https://donofa.ir/raminturne';
+
+function openDonatePage() {
+  try { window.api.openExternal(DONATE_URL); } catch (e) { console.error(e); }
+}
+function hideDonateBanner() { donateBannerEl.classList.add('hidden'); }
+
+// Asked once per new version and never again: an update installs silently, so
+// the launch right after it is the only natural moment to ask. Clicking or
+// dismissing both close it for good — Settings → About keeps a permanent link
+// for whenever the user feels like it.
+function maybeShowDonatePrompt(hadSaved) {
+  const seen = settings.donateSeenVersion === CURRENT_VERSION;
+  // A fresh install has not been given anything yet; just record the version.
+  if (!hadSaved || seen) {
+    if (!seen) { settings.donateSeenVersion = CURRENT_VERSION; saveSettingsNow(); }
+    return;
+  }
+  settings.donateSeenVersion = CURRENT_VERSION;
+  saveSettingsNow();
+  setTimeout(() => {
+    // the update banner owns the shelf above the status bar; sit above it
+    donateBannerEl.classList.toggle('stacked', !updateBannerEl.classList.contains('hidden'));
+    donateBannerEl.classList.remove('hidden');
+    // If they are not looking at PromptPad, a desktop toast carries the ask
+    // instead of it going unseen behind another window.
+    if (!document.hasFocus()) {
+      Promise.resolve(window.api.notify({
+        title: 'PromptPad v' + CURRENT_VERSION,
+        body: tr('donate.notify', 'Updated. If PromptPad is useful to you, you can support its development.'),
+        kind: 'donate'
+      })).catch(() => {});
+    }
+  }, 2600); // let "What's new" and any update banner settle first
+}
+
+donateBannerLinkEl.addEventListener('click', () => { openDonatePage(); hideDonateBanner(); });
+donateBannerCloseEl.addEventListener('click', hideDonateBanner);
+donateBtn.addEventListener('click', openDonatePage);
 
 // Glass sets the window's acrylic material, which Windows only accepts when
 // the window is created — so this one theme change lands on the next launch.
@@ -10444,6 +10881,8 @@ function shLeaveDialogOpen() { return !shShareLeaveDialog.classList.contains('hi
 if (window.api.onNotificationClick) {
   window.api.onNotificationClick((kind) => {
     if (kind === 'invite') setTimeout(shOpenInvitesPanel, 120);
+    // the toast only brings the window forward — the banner does the asking
+    if (kind === 'donate') donateBannerEl.classList.remove('hidden');
   });
 }
 window.addEventListener('focus', () => {
@@ -10505,6 +10944,7 @@ window.addEventListener('focus', () => {
   const hadSaved = await loadState();
   maybeShowWhatsNew(hadSaved);
   maybeAnnounceProThemes(hadSaved);
+  maybeShowDonatePrompt(hadSaved);
   applyActiveView();
   renderProfileChip();
 
@@ -10559,6 +10999,7 @@ window.addEventListener('focus', () => {
     if (!profileDeleteDialog.classList.contains('hidden')) { closeProfileDelete(); return; }
     if (profileMenuOpen()) { closeProfileMenu(); return; }
     if (!aiActionsMenu.classList.contains('hidden')) { hideAiActionsMenu(); return; }
+    if (!mdCommandsMenu.classList.contains('hidden')) { hideMdCommandsMenu(); return; }
     if (settings.zenMode) { toggleZen(false); return; }
     if (!emojiPanel.classList.contains('hidden')) { hideEmojiPanel(); return; }
     if (!imgContextMenu.classList.contains('hidden')) { hideImgContextMenu(); return; }

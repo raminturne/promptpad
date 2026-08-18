@@ -7752,61 +7752,24 @@ const CURRENT_VERSION = document.getElementById('aboutVersion').textContent.repl
 const WHATS_NEW =
   "What's new in v" + CURRENT_VERSION + " ✨\n" +
   '\n' +
-  '• Markdown got a lot bigger. Tables, ==highlight==, ~~strikethrough~~,\n' +
-  '   sub~script~ and super^script^, footnotes, definition lists, nested lists,\n' +
-  '   headings down to h6, backslash escapes and automatic links all render now.\n' +
-  '• Right-click inside the editor → "Markdown Commands". Select some text,\n' +
-  '   pick Heading 2, Blockquote, Highlight, Table — it writes the markdown for\n' +
-  '   you, across every line you selected. Optional keyboard shortcuts for the\n' +
-  '   same commands can be switched on in Settings (they are off by default).\n' +
-  '• Fixed: writing "1." or "2." on a Persian line and switching to markdown\n' +
-  '   scrambled the text. Numbers and bullets now stay on the correct side of\n' +
-  // No Persian glyph on an English line: each line picks its own direction
-  // from its own text, so one Persian digit here would flip the whole line.
-  '   the line, in the editor and in the preview, and Persian-Indic digits are\n' +
-  '   recognised as a numbered list too. Enter continues a list and\n' +
-  '   auto-increments the number.\n' +
-  '• Export now takes your images with it. "Export as file…" asks for a\n' +
-  '   format: Markdown with an images folder beside it, a single self-contained\n' +
-  '   Markdown file, plain text, a web page, a PDF, a PNG — or straight to the\n' +
-  '   clipboard as an image.\n' +
-  '• Fixed: exports stopped at the fold. The exported web page scrolls, a PDF\n' +
-  '   runs over as many pages as the note needs, and a PNG is the whole note\n' +
-  '   rather than the first screen of it. Code blocks and tables wrap into the\n' +
-  '   page as well, so nothing stays hidden behind a scrollbar that a printed\n' +
-  '   page or an image does not have.\n' +
-  '• PromptPad is free and written by one person. If it has earned a place in\n' +
-  '   your day, there is now a "Support PromptPad" link in Settings → About.\n' +
+  '• Discover sign-ups now confirm by email. A code lands in your inbox —\n' +
+  '   type it into the app to finish creating your account (or click the link\n' +
+  '   in the same email instead). This also closes off scripted mass sign-ups\n' +
+  '   that could spam the review queue.\n' +
+  '• Added "Forgot password?" on the Discover sign-in screen. Request a code\n' +
+  '   by email, enter it, then pick a new password — without leaving the app.\n' +
   '\n' +
   'You can close this tab — it won\'t come back until the next update.\n' +
   '\n' +
   '\n' +
   'تازه‌ها در نسخه ' + CURRENT_VERSION + ' ✨\n' +
   '\n' +
-  '• مارک‌داون خیلی کامل‌تر شد. جدول، ==هایلایت==، ~~خط‌خورده~~،\n' +
-  '   زیرنویس و بالانویس، پاورقی، لیست تعریف، لیست تودرتو،\n' +
-  '   عنوان تا h6، کاراکتر فرار با \\ و لینک خودکار همه رندر می‌شن.\n' +
-  '• داخل ویرایشگر راست‌کلیک کن ← «Markdown Commands». یک متن را\n' +
-  '   انتخاب کن و Heading 2 یا Blockquote یا Highlight یا Table را بزن —\n' +
-  '   خودش مارک‌داونش را می‌نویسد، روی همه‌ی خط‌هایی که انتخاب\n' +
-  '   کردی. کلیدهای ترکیبی همین دستورها در تنظیمات قابل فعال‌شدنه\n' +
-  '   (پیش‌فرض خاموشن).\n' +
-  '• رفع ایراد: نوشتن «۱.» یا «2.» روی یک خط فارسی و رفتن به حالت\n' +
-  '   مارک‌داون، متن را به‌هم می‌ریخت. حالا شماره‌ها و نقطه‌ها هم در\n' +
-  '   ویرایشگر و هم در پیش‌نمایش سمت درست خط می‌مانند، و ارقام\n' +
-  '   فارسی مثل «۱.» هم لیست شماره‌دار حساب می‌شوند. Enter لیست را\n' +
-  '   ادامه می‌دهد و شماره را خودکار جلو می‌برد.\n' +
-  '• خروجی حالا عکس‌هایت را هم با خودش می‌برد. «Export as file…» اول\n' +
-  '   فرمت را می‌پرسد: مارک‌داون به همراه پوشه‌ی عکس‌ها، یک فایل\n' +
-  '   مارک‌داون یکپارچه، متن ساده، صفحه‌ی وب، PDF، PNG — یا مستقیم\n' +
-  '   کپی به کلیپ‌بورد به‌صورت عکس.\n' +
-  '• رفع ایراد: خروجی‌ها از وسط بریده می‌شدند. حالا صفحه‌ی وب اسکرول\n' +
-  '   می‌شود، پی‌دی‌اف به هر تعداد صفحه‌ای که نوت لازم دارد ادامه پیدا\n' +
-  '   می‌کند، و عکس خروجی تمام نوت است نه فقط بخش قابل دیدن. بلوک‌های\n' +
-  '   کد و جدول‌ها هم داخل صفحه می‌پیچند، پس چیزی پشت اسکرولی که در\n' +
-  '   عکس و پی‌دی‌اف وجود ندارد پنهان نمی‌ماند.\n' +
-  '• پرامپت‌پد رایگان است و یک نفر آن را می‌نویسد. اگر جایی در روزت باز\n' +
-  '   کرده، حالا در تنظیمات ← درباره یک گزینه‌ی حمایت اضافه شده.\n' +
+  '• ثبت‌نام توی Discover حالا با تأیید ایمیل انجام می‌شود. یک کد به ایمیلت\n' +
+  '   می‌رسد — توی اپ واردش کن تا ثبت‌نامت کامل شود (یا روی لینک همان ایمیل\n' +
+  '   بزن). این جلوی ثبت‌نام‌های انبوه و اسکریپتی که صف تأیید را اسپم\n' +
+  '   می‌کردند را هم می‌گیرد.\n' +
+  '• دکمه‌ی «رمز را فراموش کردی؟» به صفحه‌ی ورود Discover اضافه شد. یک کد\n' +
+  '   بخواه، واردش کن، رمز جدید بگذار — همه بدون بیرون رفتن از اپ.\n' +
   '\n' +
   'این تب را می‌توانی ببندی — تا آپدیت بعدی دیگر برنمی‌گردد.';
 
@@ -8110,6 +8073,9 @@ let dcSearch = '';
 let dcSort = 'new';               // 'new' (recent) | 'top' (most liked)
 let dcMine = false;               // "My posts" filter (own submissions, any status)
 let dcAuthMode = 'login';         // 'login' | 'register'
+let dcPendingVerifyEmail = '';    // set after a signUp that needs email confirmation; '' otherwise
+let dcResetStage = '';            // '' | 'email' | 'code' | 'newpass' — forgot-password flow
+let dcResetEmail = '';            // email the reset code was sent to
 let dcPrefillPrompt = '';         // text handed off from "Share to Discover" to prefill Upload
 let dcCurrentAudio = null;        // the one audio element allowed to play at a time
 const DC_BUCKET = (window.DISCOVER_CONFIG && window.DISCOVER_CONFIG.IMAGE_BUCKET) || 'discover-images';
@@ -8343,6 +8309,10 @@ function dcRender() {
   if (!discoverBodyEl) return;
   if (discoverHintEl) discoverHintEl.classList.toggle('hidden', !!settings.discoverHintDismissed);
   if (!window.DISCOVER_CONFIGURED || !dcClient) { dcRenderNotice(); return; }
+  // verifyOtp(type:'recovery') hands back a real session before the user has
+  // picked a new password — without this, dcSession being truthy would send
+  // them straight past the "choose a new password" screen into the app.
+  if (dcResetStage === 'newpass') { discoverNavEl.innerHTML = ''; dcRenderReset(); return; }
   dcRenderNav();
   if (!dcSession) { dcRenderAuth(); return; }
   if (dcScreen === 'upload') dcRenderUpload();
@@ -8380,6 +8350,8 @@ function dcRenderNav() {
 // ---- auth screen ----
 function dcRenderAuth() {
   discoverBodyEl.innerHTML = '';
+  if (dcPendingVerifyEmail) { dcRenderVerify(); return; }
+  if (dcResetStage) { dcRenderReset(); return; }
   const wrap = dcEl('div', 'dc-auth');
   const tabs = dcEl('div', 'dc-auth-tabs');
   const loginTab = dcEl('button', 'dc-auth-tab' + (dcAuthMode === 'login' ? ' active' : ''), 'Sign in');
@@ -8408,6 +8380,19 @@ function dcRenderAuth() {
   const status = dcEl('div', 'dc-form-status');
   form.appendChild(status);
 
+  if (dcAuthMode === 'login') {
+    const forgot = dcEl('button', 'dc-form-link', 'Forgot password?');
+    forgot.type = 'button';
+    forgot.addEventListener('click', () => {
+      dcResetEmail = emailInput.value.trim();
+      dcResetStage = 'email';
+      dcRender();
+    });
+    const links = dcEl('div', 'dc-form-links');
+    links.appendChild(forgot);
+    form.appendChild(links);
+  }
+
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     status.className = 'dc-form-status';
@@ -8425,10 +8410,8 @@ function dcRenderAuth() {
         });
         if (error) throw error;
         if (!data.session) {
-          status.classList.add('ok');
-          status.textContent = 'Account created — check your email to confirm, then sign in.';
-          dcAuthMode = 'login';
-          submit.disabled = false;
+          dcPendingVerifyEmail = email;
+          dcRender();
           return;
         }
       } else {
@@ -8453,6 +8436,224 @@ function dcRenderAuth() {
   });
 
   wrap.appendChild(form);
+  discoverBodyEl.appendChild(wrap);
+}
+
+// A signUp that comes back without a session means Supabase requires email
+// confirmation before login works — this is what actually stops a scripted
+// signup flood from ever getting a usable account (it can create rows, but
+// never a session to post/invite/approve with). The account confirms itself
+// the same way most sites do it: a numeric code by email, entered here,
+// which both confirms the account and logs it in via verifyOtp. Supabase's
+// token length isn't guaranteed to be 6 digits (this project's is 8), so the
+// input must not cap length at 6 — that silently truncated every code typed.
+function dcRenderVerify() {
+  discoverBodyEl.innerHTML = '';
+  const wrap = dcEl('div', 'dc-auth');
+  wrap.appendChild(dcEl('div', 'dc-form-note', 'Enter the code sent to ' + dcPendingVerifyEmail));
+
+  const form = dcEl('form', 'dc-form');
+  const codeInput = dcEl('input', 'text-input');
+  codeInput.type = 'text'; codeInput.inputMode = 'numeric'; codeInput.maxLength = 12;
+  codeInput.placeholder = 'Confirmation code'; codeInput.autocomplete = 'off';
+  form.appendChild(codeInput);
+
+  const submit = dcEl('button', 'dc-primary-btn', 'Confirm');
+  submit.type = 'submit';
+  form.appendChild(submit);
+  const status = dcEl('div', 'dc-form-status');
+  form.appendChild(status);
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const token = codeInput.value.trim();
+    if (!token) {
+      status.className = 'dc-form-status err';
+      status.textContent = 'Enter the code from your email.';
+      return;
+    }
+    submit.disabled = true;
+    submit.textContent = 'Please wait…';
+    try {
+      const { data, error } = await dcClient.auth.verifyOtp({
+        email: dcPendingVerifyEmail, token, type: 'signup'
+      });
+      if (error) throw error;
+      dcPendingVerifyEmail = '';
+      dcSession = data && data.session;
+      await dcLoadProfile();
+      dcScreen = dcPrefillPrompt ? 'upload' : 'browse';
+      dcRender();
+      shRefresh();
+      dcSyncAdminNotify();
+    } catch (err) {
+      status.className = 'dc-form-status err';
+      status.textContent = (err && err.message) || 'Invalid or expired code.';
+      submit.disabled = false;
+      submit.textContent = 'Confirm';
+    }
+  });
+  wrap.appendChild(form);
+
+  const links = dcEl('div', 'dc-form-links');
+  const resend = dcEl('button', 'dc-form-link', 'Resend code');
+  resend.type = 'button';
+  resend.addEventListener('click', async () => {
+    resend.disabled = true;
+    try {
+      const { error } = await dcClient.auth.resend({ type: 'signup', email: dcPendingVerifyEmail });
+      if (error) throw error;
+      status.className = 'dc-form-status ok';
+      status.textContent = 'Code resent.';
+    } catch (err) {
+      status.className = 'dc-form-status err';
+      status.textContent = (err && err.message) || 'Could not resend the code.';
+    } finally {
+      resend.disabled = false;
+    }
+  });
+  const back = dcEl('button', 'dc-form-link', 'Use a different email');
+  back.type = 'button';
+  back.addEventListener('click', () => { dcPendingVerifyEmail = ''; dcAuthMode = 'register'; dcRender(); });
+  links.appendChild(resend); links.appendChild(back);
+  wrap.appendChild(links);
+
+  discoverBodyEl.appendChild(wrap);
+}
+
+function dcResetCancel() {
+  dcResetStage = ''; dcResetEmail = ''; dcAuthMode = 'login'; dcRender();
+}
+
+// Forgot-password flow: email -> code (verifyOtp type 'recovery', which both
+// confirms the code and hands back a real session) -> set a new password on
+// that session via updateUser. Mirrors dcRenderVerify's shape/state machine.
+function dcRenderReset() {
+  discoverBodyEl.innerHTML = '';
+  const wrap = dcEl('div', 'dc-auth');
+  const form = dcEl('form', 'dc-form');
+  const status = dcEl('div', 'dc-form-status');
+  const links = dcEl('div', 'dc-form-links');
+  const back = dcEl('button', 'dc-form-link', 'Back to sign in');
+  back.type = 'button';
+  back.addEventListener('click', dcResetCancel);
+
+  if (dcResetStage === 'email') {
+    wrap.appendChild(dcEl('div', 'dc-form-note', 'Enter your account email — we’ll send a reset code.'));
+    const emailInput = dcEl('input', 'text-input');
+    emailInput.type = 'email'; emailInput.placeholder = 'Email'; emailInput.autocomplete = 'off';
+    emailInput.value = dcResetEmail;
+    form.appendChild(emailInput);
+    const submit = dcEl('button', 'dc-primary-btn', 'Send code');
+    submit.type = 'submit';
+    form.appendChild(submit);
+    form.appendChild(status);
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = emailInput.value.trim();
+      if (!email) { status.className = 'dc-form-status err'; status.textContent = 'Enter your email.'; return; }
+      submit.disabled = true;
+      submit.textContent = 'Please wait…';
+      try {
+        const { error } = await dcClient.auth.resetPasswordForEmail(email);
+        if (error) throw error;
+        dcResetEmail = email;
+        dcResetStage = 'code';
+        dcRender();
+      } catch (err) {
+        status.className = 'dc-form-status err';
+        status.textContent = (err && err.message) || 'Could not send the reset code.';
+        submit.disabled = false;
+        submit.textContent = 'Send code';
+      }
+    });
+    links.appendChild(back);
+  } else if (dcResetStage === 'code') {
+    wrap.appendChild(dcEl('div', 'dc-form-note', 'Enter the code sent to ' + dcResetEmail));
+    const codeInput = dcEl('input', 'text-input');
+    codeInput.type = 'text'; codeInput.inputMode = 'numeric'; codeInput.maxLength = 12;
+    codeInput.placeholder = 'Reset code'; codeInput.autocomplete = 'off';
+    form.appendChild(codeInput);
+    const submit = dcEl('button', 'dc-primary-btn', 'Verify');
+    submit.type = 'submit';
+    form.appendChild(submit);
+    form.appendChild(status);
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const token = codeInput.value.trim();
+      if (!token) { status.className = 'dc-form-status err'; status.textContent = 'Enter the code from your email.'; return; }
+      submit.disabled = true;
+      submit.textContent = 'Please wait…';
+      try {
+        const { data, error } = await dcClient.auth.verifyOtp({
+          email: dcResetEmail, token, type: 'recovery'
+        });
+        if (error) throw error;
+        dcSession = data && data.session;
+        dcResetStage = 'newpass';
+        dcRender();
+      } catch (err) {
+        status.className = 'dc-form-status err';
+        status.textContent = (err && err.message) || 'Invalid or expired code.';
+        submit.disabled = false;
+        submit.textContent = 'Verify';
+      }
+    });
+    const resend = dcEl('button', 'dc-form-link', 'Resend code');
+    resend.type = 'button';
+    resend.addEventListener('click', async () => {
+      resend.disabled = true;
+      try {
+        const { error } = await dcClient.auth.resetPasswordForEmail(dcResetEmail);
+        if (error) throw error;
+        status.className = 'dc-form-status ok';
+        status.textContent = 'Code resent.';
+      } catch (err) {
+        status.className = 'dc-form-status err';
+        status.textContent = (err && err.message) || 'Could not resend the code.';
+      } finally {
+        resend.disabled = false;
+      }
+    });
+    links.appendChild(resend); links.appendChild(back);
+  } else if (dcResetStage === 'newpass') {
+    wrap.appendChild(dcEl('div', 'dc-form-note', 'Choose a new password.'));
+    const passInput = dcEl('input', 'text-input');
+    passInput.type = 'password'; passInput.placeholder = 'New password (min 6 chars)'; passInput.autocomplete = 'off';
+    form.appendChild(passInput);
+    const submit = dcEl('button', 'dc-primary-btn', 'Save password');
+    submit.type = 'submit';
+    form.appendChild(submit);
+    form.appendChild(status);
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const pass = passInput.value;
+      if (pass.length < 6) { status.className = 'dc-form-status err'; status.textContent = 'Password needs 6+ characters.'; return; }
+      submit.disabled = true;
+      submit.textContent = 'Please wait…';
+      try {
+        const { error } = await dcClient.auth.updateUser({ password: pass });
+        if (error) throw error;
+        dcResetStage = ''; dcResetEmail = '';
+        await dcLoadProfile();
+        dcScreen = dcPrefillPrompt ? 'upload' : 'browse';
+        dcRender();
+        shRefresh();
+        dcSyncAdminNotify();
+      } catch (err) {
+        status.className = 'dc-form-status err';
+        status.textContent = (err && err.message) || 'Could not update the password.';
+        submit.disabled = false;
+        submit.textContent = 'Save password';
+      }
+    });
+  }
+
+  wrap.appendChild(form);
+  if (dcResetStage !== 'newpass') wrap.appendChild(links);
   discoverBodyEl.appendChild(wrap);
 }
 

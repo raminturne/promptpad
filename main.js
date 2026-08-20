@@ -1176,32 +1176,53 @@ if (!app.requestSingleInstanceLock()) {
     }
   });
 
-  // Chat completion via the user's own free OpenRouter key (each user brings
-  // their own key — Settings → AI). OpenRouter is OpenAI-compatible and works
-  // from regions where Groq/OpenAI are geo-blocked, since the client only talks
-  // to OpenRouter's proxy. Backs Improve, the AI actions menu, and AI Chat.
-  // A short list of solid free instruct models (verified working from the
-  // user's region). We DON'T use `openrouter/free` — its auto-router sometimes
-  // picks non-chat models (e.g. a content-safety classifier). fetchAiChat tries
-  // them in order and falls through to the next only when one is rate-limited.
-  const OPENROUTER_MODELS = [
-    'google/gemma-4-26b-a4b-it:free',
-    'nvidia/nemotron-3-super-120b-a12b:free',
-    'nvidia/nemotron-3-ultra-550b-a55b:free'
-  ];
-  async function fetchAiChat(messages, apiKey) {
+  // Chat completion via the user's own API key (Settings → AI). Supports
+  // OpenRouter (free models; works from regions where OpenAI is geo-blocked)
+  // and OpenAI directly. Backs Improve, the AI actions menu, and AI Chat.
+  // OpenRouter: a short list of solid free instruct models. We DON'T use
+  // `openrouter/free` — its auto-router sometimes picks non-chat models
+  // (e.g. a content-safety classifier). fetchAiChat tries them in order and
+  // falls through to the next only when one is rate-limited.
+  // OpenAI: gpt-4o-mini (fast/cheap).
+  const AI_PROVIDERS = {
+    openrouter: {
+      url: 'https://openrouter.ai/api/v1/chat/completions',
+      models: [
+        'google/gemma-4-26b-a4b-it:free',
+        'nvidia/nemotron-3-super-120b-a12b:free',
+        'nvidia/nemotron-3-ultra-550b-a55b:free'
+      ],
+      needsKeyMsg: 'Add a free OpenRouter key in Settings → AI.',
+      extraHeaders: {
+        'HTTP-Referer': 'https://github.com/raminturne/promptpad',
+        'X-Title': 'PromptPad'
+      }
+    },
+    openai: {
+      url: 'https://api.openai.com/v1/chat/completions',
+      models: ['gpt-4o-mini'],
+      needsKeyMsg: 'Add an OpenAI API key in Settings → AI.',
+      extraHeaders: {}
+    }
+  };
+  function resolveAiProvider(provider) {
+    const id = provider === 'openai' ? 'openai' : 'openrouter';
+    return { id, ...AI_PROVIDERS[id] };
+  }
+  async function fetchAiChat(messages, apiKey, provider) {
     apiKey = String(apiKey || '').trim();
-    if (!apiKey) return { ok: false, needsKey: true, error: 'Add a free OpenRouter key in Settings → AI.' };
+    const cfg = resolveAiProvider(provider);
+    if (!apiKey) return { ok: false, needsKey: true, error: cfg.needsKeyMsg };
     let last = { ok: false, error: 'The AI is busy right now — wait a moment and try again.' };
-    for (const model of OPENROUTER_MODELS) {
-      const res = await fetchAiChatOnce(messages, apiKey, model);
+    for (const model of cfg.models) {
+      const res = await fetchAiChatOnce(messages, apiKey, model, cfg);
       if (res.ok) return res;
       last = res;
       if (!res.rateLimited) return res; // a real error (bad key, network) — stop here
     }
     return last; // every model was rate-limited
   }
-  function fetchAiChatOnce(messages, apiKey, model) {
+  function fetchAiChatOnce(messages, apiKey, model, cfg) {
     return new Promise((resolve) => {
       let settled = false;
       let timer;
@@ -1216,12 +1237,11 @@ if (!app.requestSingleInstanceLock()) {
       try {
         req = net.request({
           method: 'POST',
-          url: 'https://openrouter.ai/api/v1/chat/completions',
+          url: cfg.url,
           headers: {
             'Content-Type': 'application/json',
             Authorization: 'Bearer ' + apiKey,
-            'HTTP-Referer': 'https://github.com/raminturne/promptpad',
-            'X-Title': 'PromptPad'
+            ...cfg.extraHeaders
           }
         });
       } catch (err) {
@@ -1305,7 +1325,7 @@ if (!app.requestSingleInstanceLock()) {
     ' Output ONLY the resulting text — no explanations, no preamble, no markdown code fences, and no ' +
     'surrounding quotation marks.';
 
-  function runAiAction(action, text, apiKey) {
+  function runAiAction(action, text, apiKey, provider) {
     const sys = AI_ACTION_PROMPTS[action];
     if (!sys) return Promise.resolve({ ok: false, error: 'Unknown action.' });
     text = String(text || '').trim().slice(0, 8000);
@@ -1313,27 +1333,30 @@ if (!app.requestSingleInstanceLock()) {
     return fetchAiChat([
       { role: 'system', content: sys + AI_OUTPUT_RULE },
       { role: 'user', content: text }
-    ], apiKey);
+    ], apiKey, provider);
   }
 
   ipcMain.handle('ai-transform', async (_e, payload) => {
     const action = payload && payload.action;
     const text = payload && payload.text;
     const apiKey = payload && payload.apiKey;
-    return runAiAction(action, text, apiKey);
+    const provider = payload && payload.provider;
+    return runAiAction(action, text, apiKey, provider);
   });
 
   // Kept for back-compat with the existing improvePrompt bridge.
   ipcMain.handle('improve-prompt', async (_e, payload) => {
-    // payload is { text, apiKey } (new) — tolerate a bare string too.
+    // payload is { text, apiKey, provider } (new) — tolerate a bare string too.
     const text = typeof payload === 'string' ? payload : (payload && payload.text);
     const apiKey = payload && typeof payload === 'object' ? payload.apiKey : '';
-    return runAiAction('improve', text, apiKey);
+    const provider = payload && typeof payload === 'object' ? payload.provider : '';
+    return runAiAction('improve', text, apiKey, provider);
   });
 
   ipcMain.handle('chat-message', async (_e, payload) => {
     const history = payload && payload.history;
     const apiKey = payload && payload.apiKey;
+    const provider = payload && payload.provider;
     if (!Array.isArray(history)) return { ok: false, error: 'Invalid message history.' };
     // Cap both turn count and per-message size so a long-running conversation
     // can't grow into an unbounded request.
@@ -1349,7 +1372,7 @@ if (!app.requestSingleInstanceLock()) {
           'prompts. Keep replies concise and to the point.'
       },
       ...turns
-    ], apiKey);
+    ], apiKey, provider);
   });
 
   // Free (rate-limited) speech-to-text via Hugging Face's hosted Whisper —

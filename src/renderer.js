@@ -111,7 +111,7 @@ const DEFAULT_SETTINGS = {
   imageGen: { provider: 'pollinations', geminiApiKey: '', hfApiKey: '' },
   seenFeatures: {}, // { improve: true, aiChat: true, ... } — clears each button's "New" badge once used
   voice: { hfApiKey: '' }, // Hugging Face token for speech-to-text (Whisper)
-  ai: { openrouterKey: '' }, // each user's own free OpenRouter key for Chat / Improve / AI actions
+  ai: { provider: 'openrouter', openrouterKey: '', openaiKey: '' }, // OpenRouter (free) or OpenAI — user's own key
   toolbarOrder: [], // full left-to-right key order — filled in from TOOLBAR_BUTTONS on first render
   toolbarCollapsed: [], // subset of toolbarOrder currently tucked behind the overflow chevron
   toolbarNudged: false, // true once the one-time "some icons start collapsed" nudge has run
@@ -360,6 +360,10 @@ const improveBtn = document.getElementById('improveBtn');
 const voiceBtn = document.getElementById('voiceBtn');
 const voiceHfApiKeyInputEl = document.getElementById('voiceHfApiKeyInput');
 const aiApiKeyInputEl = document.getElementById('aiApiKeyInput');
+const aiOpenaiKeyInputEl = document.getElementById('aiOpenaiKeyInput');
+const aiProviderSeg = document.getElementById('aiProviderSeg');
+const aiOpenrouterFieldsEl = document.getElementById('aiOpenrouterFields');
+const aiOpenaiFieldsEl = document.getElementById('aiOpenaiFields');
 const toolbarMainEl = document.getElementById('toolbarMain');
 const toolbarOverflowBtnEl = document.getElementById('toolbarOverflowBtn');
 const toolbarOverflowPanelEl = document.getElementById('toolbarOverflowPanel');
@@ -2742,37 +2746,72 @@ function hideAiError() {
 // entrance animation, instead of the whole list re-animating on every render.
 const aiShownMsgIds = new Set();
 
-// Each user's own free OpenRouter key (Settings → AI Chat & actions).
-function aiKey() { return (settings.ai && settings.ai.openrouterKey) || ''; }
+// Active AI provider + the matching API key (Settings → AI Chat & actions).
+function aiProvider() {
+  return (settings.ai && settings.ai.provider) === 'openai' ? 'openai' : 'openrouter';
+}
+function aiKey() {
+  if (aiProvider() === 'openai') return (settings.ai && settings.ai.openaiKey) || '';
+  return (settings.ai && settings.ai.openrouterKey) || '';
+}
+function aiKeyInputEl() {
+  return aiProvider() === 'openai' ? aiOpenaiKeyInputEl : aiApiKeyInputEl;
+}
 
 // Bilingual (English + Persian) onboarding card shown in AI Chat when there's
-// no key yet — explains how to grab a free OpenRouter key and where to paste it.
+// no key yet — explains how to grab a key and where to paste it.
 function buildAiOnboardCard() {
   const card = document.createElement('div');
   card.className = 'ai-onboard';
-  card.innerHTML =
-    '<div class="ai-onboard-title">✨ Set up the free AI  ·  فعال‌سازی هوش مصنوعی رایگان</div>' +
-    '<div class="ai-onboard-body">' +
-      '<p>AI Chat, <b>Improve</b> and the AI actions run on <b>your own free OpenRouter key</b>, so you get your own limits. Takes ~1 minute:</p>' +
-      '<ol>' +
-        '<li>Tap <b>Get free key</b> → sign in (Google/GitHub) → create a key.</li>' +
-        '<li>Copy it (starts with <code>sk-or-v1-</code>).</li>' +
-        '<li>Tap <b>Open Settings</b> and paste it under “AI Chat &amp; actions”.</li>' +
-      '</ol>' +
-      '<hr class="ai-onboard-sep">' +
-      '<p dir="rtl">چت هوش مصنوعی، <b>Improve</b> و اکشن‌های AI با <b>کلیدِ رایگانِ خودت</b> کار می‌کنن تا لیمیتِ خودتو داشته باشی. حدود ۱ دقیقه:</p>' +
-      '<ol dir="rtl">' +
-        '<li>روی <b>دریافت کلید رایگان</b> بزن → وارد شو (گوگل/گیت‌هاب) → یه کلید بساز.</li>' +
-        '<li>کپیش کن (با <code>sk-or-v1-</code> شروع می‌شه).</li>' +
-        '<li>روی <b>باز کردن تنظیمات</b> بزن و زیر «AI Chat &amp; actions» بذارش.</li>' +
-      '</ol>' +
-    '</div>' +
-    '<div class="ai-onboard-actions">' +
-      '<button type="button" class="ai-onboard-btn primary js-get">Get free key · دریافت کلید</button>' +
-      '<button type="button" class="ai-onboard-btn js-settings">Open Settings · تنظیمات</button>' +
-    '</div>';
-  card.querySelector('.js-get').addEventListener('click', () => window.api.openExternal('https://openrouter.ai/keys'));
-  card.querySelector('.js-settings').addEventListener('click', () => { openSettings(); setTimeout(() => aiApiKeyInputEl.focus(), 60); });
+  const isOpenAI = aiProvider() === 'openai';
+  if (isOpenAI) {
+    card.innerHTML =
+      '<div class="ai-onboard-title">✨ Set up OpenAI  ·  فعال‌سازی OpenAI</div>' +
+      '<div class="ai-onboard-body">' +
+        '<p>AI Chat, <b>Improve</b> and the AI actions run on <b>your own OpenAI key</b>. Takes ~1 minute:</p>' +
+        '<ol>' +
+          '<li>Tap <b>Get API key</b> → sign in → create a key.</li>' +
+          '<li>Copy it (starts with <code>sk-</code>).</li>' +
+          '<li>Tap <b>Open Settings</b> and paste it under “AI Chat &amp; actions” (OpenAI selected).</li>' +
+        '</ol>' +
+        '<hr class="ai-onboard-sep">' +
+        '<p dir="rtl">چت هوش مصنوعی، <b>Improve</b> و اکشن‌های AI با <b>کلیدِ OpenAI خودت</b> کار می‌کنن. حدود ۱ دقیقه:</p>' +
+        '<ol dir="rtl">' +
+          '<li>روی <b>دریافت کلید</b> بزن → وارد شو → یه کلید بساز.</li>' +
+          '<li>کپیش کن (با <code>sk-</code> شروع می‌شه).</li>' +
+          '<li>روی <b>باز کردن تنظیمات</b> بزن و زیر «AI Chat &amp; actions» (با OpenAI انتخاب‌شده) بذارش.</li>' +
+        '</ol>' +
+      '</div>' +
+      '<div class="ai-onboard-actions">' +
+        '<button type="button" class="ai-onboard-btn primary js-get">Get API key · دریافت کلید</button>' +
+        '<button type="button" class="ai-onboard-btn js-settings">Open Settings · تنظیمات</button>' +
+      '</div>';
+    card.querySelector('.js-get').addEventListener('click', () => window.api.openExternal('https://platform.openai.com/api-keys'));
+  } else {
+    card.innerHTML =
+      '<div class="ai-onboard-title">✨ Set up the free AI  ·  فعال‌سازی هوش مصنوعی رایگان</div>' +
+      '<div class="ai-onboard-body">' +
+        '<p>AI Chat, <b>Improve</b> and the AI actions run on <b>your own free OpenRouter key</b>, so you get your own limits. Takes ~1 minute:</p>' +
+        '<ol>' +
+          '<li>Tap <b>Get free key</b> → sign in (Google/GitHub) → create a key.</li>' +
+          '<li>Copy it (starts with <code>sk-or-v1-</code>).</li>' +
+          '<li>Tap <b>Open Settings</b> and paste it under “AI Chat &amp; actions”.</li>' +
+        '</ol>' +
+        '<hr class="ai-onboard-sep">' +
+        '<p dir="rtl">چت هوش مصنوعی، <b>Improve</b> و اکشن‌های AI با <b>کلیدِ رایگانِ خودت</b> کار می‌کنن تا لیمیتِ خودتو داشته باشی. حدود ۱ دقیقه:</p>' +
+        '<ol dir="rtl">' +
+          '<li>روی <b>دریافت کلید رایگان</b> بزن → وارد شو (گوگل/گیت‌هاب) → یه کلید بساز.</li>' +
+          '<li>کپیش کن (با <code>sk-or-v1-</code> شروع می‌شه).</li>' +
+          '<li>روی <b>باز کردن تنظیمات</b> بزن و زیر «AI Chat &amp; actions» بذارش.</li>' +
+        '</ol>' +
+      '</div>' +
+      '<div class="ai-onboard-actions">' +
+        '<button type="button" class="ai-onboard-btn primary js-get">Get free key · دریافت کلید</button>' +
+        '<button type="button" class="ai-onboard-btn js-settings">Open Settings · تنظیمات</button>' +
+      '</div>';
+    card.querySelector('.js-get').addEventListener('click', () => window.api.openExternal('https://openrouter.ai/keys'));
+  }
+  card.querySelector('.js-settings').addEventListener('click', () => { openSettings(); setTimeout(() => aiKeyInputEl().focus(), 60); });
   return card;
 }
 
@@ -2816,7 +2855,7 @@ let aiSending = false;
 async function sendAiMessage() {
   const text = aiInputEl.value.trim();
   if (!text || aiSending) return;
-  if (!aiKey()) { renderAiMessages(); openSettings(); aiApiKeyInputEl.focus(); return; }
+  if (!aiKey()) { renderAiMessages(); openSettings(); aiKeyInputEl().focus(); return; }
   hideAiError();
   aiInputEl.value = '';
   aiAutoGrow();
@@ -2839,7 +2878,7 @@ async function sendAiMessage() {
 
   try {
     const history = aiMessages().map((m) => ({ role: m.role, content: m.text }));
-    const res = await window.api.chatMessage(history, aiKey());
+    const res = await window.api.chatMessage(history, aiKey(), aiProvider());
     thinking.remove();
     if (res && res.ok && res.text) {
       aiMessages().push({ id: uid(), ts: Date.now(), role: 'assistant', text: res.text });
@@ -5214,8 +5253,8 @@ const AI_ACTION_TITLES = {
 // code-block replace, …).
 async function runAiTransform(btnEl, sourceText, action, applyFn) {
   if (!sourceText.trim()) return;
-  // no key yet → send the user to Settings to add their free OpenRouter key
-  if (!aiKey()) { openSettings(); aiApiKeyInputEl.focus(); return; }
+  // no key yet → send the user to Settings to add their API key
+  if (!aiKey()) { openSettings(); aiKeyInputEl().focus(); return; }
   const defaultTitle = btnEl.title;
   // applyFn closes over the tab/selection this ran against; if the workspace
   // was swapped meanwhile, dropping the result beats writing it somewhere else.
@@ -6676,7 +6715,14 @@ function syncSettingsUI() {
   providerHintPollinationsEl.classList.toggle('hidden', genProvider !== 'pollinations');
 
   voiceHfApiKeyInputEl.value = (settings.voice && settings.voice.hfApiKey) || '';
+  const aiProv = (settings.ai && settings.ai.provider) === 'openai' ? 'openai' : 'openrouter';
+  aiProviderSeg.querySelectorAll('.seg-btn').forEach((b) => {
+    b.classList.toggle('active', b.dataset.provider === aiProv);
+  });
+  aiOpenrouterFieldsEl.classList.toggle('hidden', aiProv !== 'openrouter');
+  aiOpenaiFieldsEl.classList.toggle('hidden', aiProv !== 'openai');
   aiApiKeyInputEl.value = (settings.ai && settings.ai.openrouterKey) || '';
+  aiOpenaiKeyInputEl.value = (settings.ai && settings.ai.openaiKey) || '';
   togglePlaceholdersEl.checked = settings.placeholdersEnabled;
   resizeRow.classList.remove('disabled');
   placeholderPositionSeg.querySelectorAll('.seg-btn').forEach((b) => {
@@ -7077,6 +7123,21 @@ aiApiKeyInputEl.addEventListener('change', () => {
   settings.ai = { ...settings.ai, openrouterKey: aiApiKeyInputEl.value.trim() };
   saveSettingsNow();
   if (aiChatActive()) renderAiMessages(); // reflect the new key in the onboarding/empty state
+});
+
+aiOpenaiKeyInputEl.addEventListener('change', () => {
+  settings.ai = { ...settings.ai, openaiKey: aiOpenaiKeyInputEl.value.trim() };
+  saveSettingsNow();
+  if (aiChatActive()) renderAiMessages();
+});
+
+aiProviderSeg.addEventListener('click', (e) => {
+  const btn = e.target.closest('.seg-btn');
+  if (!btn) return;
+  settings.ai = { ...settings.ai, provider: btn.dataset.provider };
+  syncSettingsUI();
+  saveSettingsNow();
+  if (aiChatActive()) renderAiMessages();
 });
 
 // ---------- Storage location ----------

@@ -198,7 +198,7 @@
             </div>
             <div id="editor" class="editor-area" contenteditable="plaintext-only"
               spellcheck="false" data-placeholder="Write your prompt here…"></div>
-            <div id="mdPreview" class="md-preview hidden"></div>
+            <div id="mdPreview" class="md-preview hidden" tabindex="0"></div>
           </div>
         </div>
         <!-- Fast Save: chat-style quick notes (replaces the editor when active) -->
@@ -990,7 +990,7 @@
             <div class="about-box">
               <div class="about-brand">
                 <span class="brand-dot"></span>
-                <span>PromptPad <em id="aboutVersion">v3.3.0</em></span>
+                <span>PromptPad <em id="aboutVersion">v3.4.0</em></span>
               </div>
               <p class="about-desc">A compact notepad for writing AI prompts.</p>
               <div class="about-links">
@@ -1337,6 +1337,7 @@
       <div class="ctx-label">Export</div>
       <div class="ctx-item" data-export-format="md-assets">Markdown + images folder</div>
       <div class="ctx-item" data-export-format="md-embed">Markdown, single file</div>
+      <div class="ctx-item" data-export-format="md-text">Markdown, text only</div>
       <div class="ctx-item" data-export-format="txt">Plain text</div>
       <div class="ctx-sep"></div>
       <div class="ctx-item" data-export-format="html">Web page (HTML)</div>

@@ -63,6 +63,71 @@
       elevated: 'rgba(10,13,20,0.82)', elevatedHi: 'rgba(18,22,32,0.88)',
       accent: '#8f9ac2', danger: '#ff8f7a', winBg: '#020306'
     },
+    wound: {
+      label: 'Wounds', type: 'pro', fx: 'wound', cssClass: 'fx-wound',
+      // Near-black with the red already in it, so a fresh cut reads as part
+      // of the app rather than as something drawn on top of it. Every
+      // keystroke opens a slash where the caret is; it bleeds, then fades.
+      bg: '#0c0708', text: '#e6d8d8', sidebar: '#080405', elevated: '#160d0f', elevatedHi: '#201315',
+      accent: '#c2202b', danger: '#ff5a4d', winBg: '#0c0708'
+    },
+    ghost: {
+      label: 'Ghosts', type: 'pro', fx: 'ghost', cssClass: 'fx-ghost',
+      // Everything you delete lingers a few seconds where it stood. Colourless
+      // on purpose — the only thing with a hue here is the accent, so a ghost
+      // in the note's own grey is unmistakably a leftover of your own text.
+      bg: '#0e0f11', text: '#dfe2e6', sidebar: '#0a0b0d', elevated: '#171a1d', elevatedHi: '#212528',
+      accent: '#9fb3c8', danger: '#e0798a', winBg: '#0e0f11'
+    },
+    ink: {
+      label: 'Ink', type: 'pro', fx: 'ink', cssClass: 'fx-ink theme-light',
+      // Paper. Ink soaks in under the words on every keystroke, so the page
+      // surfaces are translucent — every point of opacity here is a blot you
+      // would not see.
+      bg: 'rgba(244,241,233,0.44)', text: '#1b1a17', sidebar: 'rgba(233,228,216,0.68)',
+      elevated: 'rgba(252,250,245,0.78)', elevatedHi: 'rgba(226,220,206,0.84)',
+      accent: '#2b3a67', danger: '#a8321f', winBg: '#f4f1e9'
+    },
+    embers: {
+      label: 'Embers', type: 'pro', fx: 'embers', cssClass: 'fx-embers',
+      // Charcoal, with the fire kept at the bottom edge where the sparks come
+      // from. The accent is the ember colour so the UI agrees with the flame.
+      bg: '#120e0b', text: '#eadfd3', sidebar: '#0c0908', elevated: '#1d1613', elevatedHi: '#281e19',
+      accent: '#ff8c32', danger: '#ff5a3c', winBg: '#120e0b'
+    },
+    circuit: {
+      label: 'Circuit', type: 'pro', fx: 'circuit', cssClass: 'fx-circuit',
+      // Board green under translucent panels, with current running out from
+      // the caret on every keystroke.
+      bg: 'rgba(6,15,13,0.56)', text: '#cfe9df', sidebar: 'rgba(4,11,10,0.74)',
+      elevated: 'rgba(10,24,21,0.74)', elevatedHi: 'rgba(15,34,29,0.80)',
+      accent: '#3ff0b0', danger: '#ff7a6b', winBg: '#040b09'
+    },
+    aurora: {
+      label: 'Aurora', type: 'pro', fx: 'aurora', cssClass: 'fx-aurora',
+      // A polar night: the ribbons are behind everything, so the surfaces are
+      // translucent and the accent stays a cold white-blue rather than
+      // competing with the light show.
+      bg: 'rgba(6,10,20,0.58)', text: '#dbe6f5', sidebar: 'rgba(4,7,15,0.74)',
+      elevated: 'rgba(12,18,32,0.74)', elevatedHi: 'rgba(18,26,44,0.82)',
+      accent: '#9fe8d4', danger: '#ff8fa3', winBg: '#060a14'
+    },
+    zen: {
+      label: 'Zen Garden', type: 'pro', fx: 'zen', cssClass: 'fx-zen theme-light',
+      // Sand and stone. Typing rakes the garden and quiet smooths it back, so
+      // the panels are translucent enough to show the furrows underneath.
+      bg: 'rgba(238,231,215,0.42)', text: '#2a251c', sidebar: 'rgba(228,219,199,0.66)',
+      elevated: 'rgba(248,243,232,0.76)', elevatedHi: 'rgba(222,212,190,0.84)',
+      accent: '#6b7a5e', danger: '#a8503a', winBg: '#eee7d7'
+    },
+    blackout: {
+      label: 'Blackout', type: 'pro', fx: 'blackout', cssClass: 'fx-blackout',
+      // Candlelight: warm, and dimmer the longer you leave it. The palette is
+      // deliberately a little brighter than it looks — the effect layer takes
+      // light *away*, so the theme underneath has to have some to give.
+      bg: '#14100c', text: '#f0e2cd', sidebar: '#0e0b08', elevated: '#211a13', elevatedHi: '#2d241a',
+      accent: '#ffb347', danger: '#ff7a5c', winBg: '#14100c'
+    },
     music: {
       label: 'Music', type: 'pro', fx: 'music', cssClass: 'fx-music',
       // Pale blue, and the accent stays put — the beat is shown by how far the

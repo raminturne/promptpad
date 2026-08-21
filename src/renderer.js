@@ -461,6 +461,29 @@ function detectDir(text) {
   return RTL_RE.test(text || '') ? 'rtl' : 'ltr';
 }
 
+// Strong left-to-right letters. Digits, punctuation and spaces are NOT in here
+// on purpose: a line that holds only "1." or "—" has no direction of its own,
+// and forcing it to ltr is what used to throw the caret to the left edge in
+// the middle of a Persian note.
+const LTR_STRONG_RE = /[A-Za-z\u00C0-\u02AF\u0370-\u04FF\u1E00-\u1FFF\u2C60-\u2C7F\uA720-\uA7FF]/;
+
+// The direction of one line, given what came before it. An empty or purely
+// neutral line inherits `fallback` — the direction of the nearest line above
+// that did have letters — so the caret stays on the side you were typing on
+// instead of snapping back to the left on every Enter.
+function lineDirFor(text, fallback) {
+  const t = text || '';
+  if (RTL_RE.test(t)) return 'rtl';
+  if (LTR_STRONG_RE.test(t)) return 'ltr';
+  return fallback === 'rtl' ? 'rtl' : 'ltr';
+}
+
+// Where a note with nothing directional in it starts: follow the UI language,
+// so a Persian install opens a blank note with the caret on the right.
+function uiDefaultDir() {
+  return (settings && settings.language === 'fa') ? 'rtl' : 'ltr';
+}
+
 // Prompt-template blanks like [topic] or {name} — single line only.
 const PLACEHOLDER_RE = /\[[^\[\]\r\n]+\]|\{[^{}\r\n]+\}/g;
 
@@ -875,9 +898,21 @@ function updateLineDirs() {
   const align = editorAlign(); // resolved once — this runs on every keystroke
   const activeLine = currentLine();
   let changed = false;
+  // Carries the last decided direction downward so blank / digits-only lines
+  // keep the side you were typing on. Seeded from the first line that does
+  // have letters, so a leading blank line above Persian text is RTL too.
+  let carry = null;
+  if (!forced) {
+    for (const d of editorLines()) {
+      const txt = d.textContent;
+      if (RTL_RE.test(txt)) { carry = 'rtl'; break; }
+      if (LTR_STRONG_RE.test(txt)) { carry = 'ltr'; break; }
+    }
+    if (!carry) carry = uiDefaultDir();
+  }
   editorLines().forEach((d) => {
     if (!d.classList.contains('ln')) d.classList.add('ln');
-    const want = forced || detectDir(d.textContent);
+    const want = forced || (carry = lineDirFor(d.textContent, carry));
     if (d.getAttribute('dir') !== want) {
       d.setAttribute('dir', want);
       d.style.direction = want;
@@ -3962,6 +3997,65 @@ function handleEditorChanged() {
 
 editorEl.addEventListener('input', handleEditorChanged);
 
+// Tab indents inside the note instead of moving focus out of the editor.
+// Two spaces, because that is what markdown nesting (lists, code) expects; a
+// real 	 would collapse differently in pre-wrap and break list detection.
+// Shift+Tab removes one level from the start of the line.
+const INDENT = '  ';
+
+function indentLines(lines, out) {
+  let changed = false;
+  for (const line of lines) {
+    const text = line.textContent;
+    if (out) {
+      const m = text.match(/^[ \t]{1,2}/);
+      if (!m) continue;
+      line.textContent = text.slice(m[0].length);
+    } else {
+      line.textContent = INDENT + text;
+    }
+    highlightLine(line);
+    changed = true;
+  }
+  return changed;
+}
+
+editorEl.addEventListener('keydown', (e) => {
+  if (e.key !== 'Tab' || e.isComposing || e.ctrlKey || e.altKey || e.metaKey) return;
+  e.preventDefault();
+  const sel = window.getSelection();
+  if (!sel || !sel.rangeCount) return;
+  normalizeStrayNodes();
+
+  // A selection covering more than one line indents the whole block, the way
+  // every editor does it — otherwise Tab would wipe the selected text.
+  const range = sel.getRangeAt(0);
+  const all = editorLines();
+  const touched = all.filter((l) => range.intersectsNode(l));
+  if (!range.collapsed && touched.length > 1) {
+    if (indentLines(touched, e.shiftKey)) {
+      const r = document.createRange();
+      r.setStart(touched[0], 0);
+      r.setEnd(touched[touched.length - 1], touched[touched.length - 1].childNodes.length);
+      sel.removeAllRanges();
+      sel.addRange(r);
+      handleEditorChanged();
+    }
+    return;
+  }
+
+  const s = currentLineSelection();
+  if (!s) return;
+  const text = s.line.textContent;
+  if (e.shiftKey) {
+    const m = text.match(/^[ \t]{1,2}/);
+    if (!m) return;
+    setLineText(s.line, text.slice(m[0].length), Math.max(0, s.start - m[0].length));
+    return;
+  }
+  setLineText(s.line, text.slice(0, s.start) + INDENT + text.slice(s.end), s.start + INDENT.length);
+});
+
 // Take full control of Enter. Left to Blink, a plaintext-only + pre-wrap
 // contenteditable inserts *two* "\n" per Enter (so the caret can sit on a
 // visible empty row), which our line-splitter then turns into an extra blank
@@ -5388,10 +5482,7 @@ function exportRenderPayload(content) {
   holder.innerHTML = window.renderMarkdown(content, { ai: false });
   // Same per-block direction pass the preview does — without it an exported
   // Persian note comes out left-aligned with its list markers on the wrong side.
-  const SEL = 'p, h1, h2, h3, h4, h5, h6, li, blockquote, ul, ol, dl, dt, dd, table, th, td';
-  holder.querySelectorAll(SEL).forEach((el) => {
-    el.setAttribute('dir', forced || detectDir(el.textContent));
-  });
+  applyBlockDirs(holder, forced, content);
   // The preview's buttons are app chrome, not content.
   holder.querySelectorAll('.md-code-copy, .md-code-improve, .md-code-genimg').forEach((b) => b.remove());
   return {
@@ -7366,6 +7457,10 @@ function mdOn() {
 
 function renderMdPreview() {
   const t = activeTab();
+  // Re-rendering replaces the whole subtree, which resets the scroll to the
+  // top. Put the reader back where they were — otherwise every AI action or
+  // block edit throws them to the first line of a long note.
+  const keepScroll = mdPreviewEl.scrollTop;
   mdPreviewEl.innerHTML = window.renderMarkdown(t ? t.content : '', { ai: aiOn() });
   // Mirror updateLineDirs()'s `forced` rule: a manual per-tab direction wins over
   // per-block auto-detection, exactly as it does in the raw editor. The dir on the
@@ -7380,9 +7475,23 @@ function renderMdPreview() {
   // dir here an auto-detected Persian list inherited ltr from <html> and drew
   // its numbers on the left of right-aligned text — the "1. / 2. breaks in
   // markdown mode" bug.
-  const SEL = 'p, h1, h2, h3, h4, h5, h6, li, blockquote, ul, ol, dl, dt, dd, table, th, td';
-  mdPreviewEl.querySelectorAll(SEL).forEach((el) => {
-    el.setAttribute('dir', forced || detectDir(el.textContent));
+  applyBlockDirs(mdPreviewEl, forced, t ? t.content : '');
+  if (keepScroll) mdPreviewEl.scrollTop = keepScroll;
+}
+
+// Per-block direction for rendered markdown. Same carry rule as the editor: a
+// block with no letters of its own (a lone number, a divider, a code caption)
+// takes the direction of the block above it rather than defaulting to ltr.
+const MD_DIR_SEL = 'p, h1, h2, h3, h4, h5, h6, li, blockquote, ul, ol, dl, dt, dd, table, th, td';
+function applyBlockDirs(root, forced, content) {
+  if (forced) {
+    root.querySelectorAll(MD_DIR_SEL).forEach((el) => el.setAttribute('dir', forced));
+    return;
+  }
+  let carry = lineDirFor(content || '', uiDefaultDir());
+  root.querySelectorAll(MD_DIR_SEL).forEach((el) => {
+    carry = lineDirFor(el.textContent, carry);
+    el.setAttribute('dir', carry);
   });
 }
 
@@ -7400,7 +7509,11 @@ function setMdPreview(on) {
     setEditorText(t.content);
   }
   applyMdView();
-  if (!on) editorEl.focus();
+  // Focus follows the pane you're now looking at. Without this the preview is
+  // never the focused element, so PageDown / arrows / space scroll nothing —
+  // the "can't scroll the preview from the keyboard" bug.
+  if (on) mdPreviewEl.focus();
+  else editorEl.focus();
   scheduleSave();
 }
 
@@ -7414,6 +7527,11 @@ function applyMdView() {
   // Buttons that edit the raw text bail out in preview mode; dim them so the
   // click isn't a silent no-op (Link and Todo especially looked broken).
   appEl.classList.toggle('md-mode', on);
+  // Hand the preview the focus the editor would have had, so the keyboard can
+  // scroll it. Only when nothing else is claiming focus — never yank it out of
+  // the find box or a dialog.
+  const act = document.activeElement;
+  if (on && (!act || act === document.body || act === editorEl)) mdPreviewEl.focus();
 }
 
 mdBtn.addEventListener('click', () => setMdPreview(!mdOn()));
@@ -7752,24 +7870,49 @@ const CURRENT_VERSION = document.getElementById('aboutVersion').textContent.repl
 const WHATS_NEW =
   "What's new in v" + CURRENT_VERSION + " ✨\n" +
   '\n' +
-  '• Discover sign-ups now confirm by email. A code lands in your inbox —\n' +
-  '   type it into the app to finish creating your account (or click the link\n' +
-  '   in the same email instead). This also closes off scripted mass sign-ups\n' +
-  '   that could spam the review queue.\n' +
-  '• Added "Forgot password?" on the Discover sign-in screen. Request a code\n' +
-  '   by email, enter it, then pick a new password — without leaving the app.\n' +
+  '• Seven new Pro themes, each one reacting to something different:\n' +
+  '   Ghosts — words you delete stay a moment where they were, and words\n' +
+  '   still in the note surface at random. Ink — every keystroke soaks a\n' +
+  '   blot into the paper. Embers — the bottom edge smoulders and each\n' +
+  '   letter lifts a spark. Circuit — a pulse of current runs out from the\n' +
+  '   caret. Aurora — ribbons that read the rhythm of your typing. Zen\n' +
+  '   Garden — typing rakes the sand, quiet smooths it back. Blackout —\n' +
+  '   a candle flame stands over the last word you wrote.\n' +
+  '• Wounds: smaller cuts, placed clear of your text, and a fade that is\n' +
+  '   never cut short mid-way.\n' +
+  '• Auto direction now keeps the caret on the side you were typing on.\n' +
+  '   A blank line, or a line holding only a number, follows the line\n' +
+  '   above instead of jumping to the left.\n' +
+  '• Tab indents inside the note (Shift+Tab outdents, and a multi-line\n' +
+  '   selection indents as a block).\n' +
+  '• Export → "Markdown, text only": the note as written, without images.\n' +
+  '• Markdown preview scrolls from the keyboard, keeps its place when the\n' +
+  '   note re-renders, and has a visible scrollbar.\n' +
+  '• Storm is markedly lighter on the machine while you type.\n' +
   '\n' +
   'You can close this tab — it won\'t come back until the next update.\n' +
   '\n' +
   '\n' +
   'تازه‌ها در نسخه ' + CURRENT_VERSION + ' ✨\n' +
   '\n' +
-  '• ثبت‌نام توی Discover حالا با تأیید ایمیل انجام می‌شود. یک کد به ایمیلت\n' +
-  '   می‌رسد — توی اپ واردش کن تا ثبت‌نامت کامل شود (یا روی لینک همان ایمیل\n' +
-  '   بزن). این جلوی ثبت‌نام‌های انبوه و اسکریپتی که صف تأیید را اسپم\n' +
-  '   می‌کردند را هم می‌گیرد.\n' +
-  '• دکمه‌ی «رمز را فراموش کردی؟» به صفحه‌ی ورود Discover اضافه شد. یک کد\n' +
-  '   بخواه، واردش کن، رمز جدید بگذار — همه بدون بیرون رفتن از اپ.\n' +
+  '• هفت تم Pro تازه، هرکدام به یک چیز واکنش نشان می‌دهند:\n' +
+  '   Ghosts — کلمه‌هایی که پاک می‌کنی لحظه‌ای سر جایشان می‌مانند، و\n' +
+  '   کلمه‌های داخل یادداشت به‌صورت تصادفی بالا می‌آیند. Ink — هر کلید یک\n' +
+  '   لکه‌ی جوهر در کاغذ پخش می‌کند. Embers — لبه‌ی پایین می‌سوزد و هر حرف\n' +
+  '   یک جرقه بلند می‌کند. Circuit — با هر کلید جریان از مکان‌نما در\n' +
+  '   مدار می‌دود. Aurora — نوارهای نوری که ریتم تایپت را می‌خوانند.\n' +
+  '   Zen Garden — تایپ شن را شیار می‌اندازد و سکوت صافش می‌کند.\n' +
+  '   Blackout — یک شعله‌ی شمع بالای آخرین کلمه‌ای که نوشتی می‌ایستد.\n' +
+  '• تم Wounds: زخم‌های کوچک‌تر، دور از متن، و محو شدنی که دیگر وسط کار\n' +
+  '   قطع نمی‌شود.\n' +
+  '• جهت خودکار حالا مکان‌نما را همان سمتی نگه می‌دارد که تایپ می‌کردی.\n' +
+  '   خط خالی یا خطی که فقط عدد دارد، جهت خط بالایی را می‌گیرد.\n' +
+  '• کلید Tab داخل متن تورفتگی می‌سازد (با Shift+Tab برمی‌گردد، و چند خط\n' +
+  '   انتخاب‌شده با هم تورفته می‌شوند).\n' +
+  '• خروجی تازه: Markdown, text only — متن یادداشت بدون عکس‌ها.\n' +
+  '• پیش‌نمایش مارک‌داون با کیبورد اسکرول می‌شود، جای خواندنت را نگه\n' +
+  '   می‌دارد و اسکرول‌بارش دیده می‌شود.\n' +
+  '• تم Storm موقع تایپ خیلی سبک‌تر شده.\n' +
   '\n' +
   'این تب را می‌توانی ببندی — تا آپدیت بعدی دیگر برنمی‌گردد.';
 

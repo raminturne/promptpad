@@ -1744,6 +1744,19 @@ if (!app.requestSingleInstanceLock()) {
 
   const IMG_TOKEN_RE = /!\[img\]\(ppimg:\/\/([a-zA-Z0-9._-]+)(?:\|(\d+))?\)/g;
 
+  // Take the images out of a note and leave clean text behind: a line that was
+  // nothing but an image disappears entirely rather than becoming a blank one.
+  function stripImageTokens(text) {
+    return String(text || '')
+      .split('\n')
+      .map((line) => ({ line, rest: line.replace(IMG_TOKEN_RE, '') }))
+      .filter(({ line, rest }) => rest.trim() || line === rest)
+      .map(({ rest }) => rest.replace(/[ \t]+$/, ''))
+      .join('\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trimEnd();
+  }
+
   const MIME_BY_EXT = {
     '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
     '.gif': 'image/gif', '.webp': 'image/webp', '.svg': 'image/svg+xml'
@@ -1901,12 +1914,13 @@ if (!app.requestSingleInstanceLock()) {
   const EXPORT_FILTERS = {
     'md-assets': [{ name: 'Markdown', extensions: ['md'] }],
     'md-embed': [{ name: 'Markdown', extensions: ['md'] }],
+    'md-text': [{ name: 'Markdown', extensions: ['md'] }],
     txt: [{ name: 'Text', extensions: ['txt'] }],
     html: [{ name: 'Web page', extensions: ['html'] }],
     pdf: [{ name: 'PDF', extensions: ['pdf'] }],
     png: [{ name: 'PNG image', extensions: ['png'] }]
   };
-  const EXPORT_EXT = { 'md-assets': 'md', 'md-embed': 'md', txt: 'txt', html: 'html', pdf: 'pdf', png: 'png' };
+  const EXPORT_EXT = { 'md-assets': 'md', 'md-embed': 'md', 'md-text': 'md', txt: 'txt', html: 'html', pdf: 'pdf', png: 'png' };
 
   ipcMain.handle('export-note-rich', async (_e, payload) => {
     if (!mainWindow || !payload) return { ok: false };
@@ -1936,7 +1950,15 @@ if (!app.requestSingleInstanceLock()) {
 
       if (format === 'txt') {
         // strip the image tokens rather than leave unreadable ppimg:// text
-        fs.writeFileSync(outPath, String(content || '').replace(IMG_TOKEN_RE, '').trimEnd(), 'utf-8');
+        fs.writeFileSync(outPath, stripImageTokens(content), 'utf-8');
+        return { ok: true, path: outPath };
+      }
+
+      // Markdown, text only — the note as written, minus the image tokens.
+      // Nothing is embedded and nothing is copied alongside it, so the file
+      // stays small and readable anywhere.
+      if (format === 'md-text') {
+        fs.writeFileSync(outPath, stripImageTokens(String(content || '')), 'utf-8');
         return { ok: true, path: outPath };
       }
 

@@ -7870,49 +7870,26 @@ const CURRENT_VERSION = document.getElementById('aboutVersion').textContent.repl
 const WHATS_NEW =
   "What's new in v" + CURRENT_VERSION + " ✨\n" +
   '\n' +
-  '• Seven new Pro themes, each one reacting to something different:\n' +
-  '   Ghosts — words you delete stay a moment where they were, and words\n' +
-  '   still in the note surface at random. Ink — every keystroke soaks a\n' +
-  '   blot into the paper. Embers — the bottom edge smoulders and each\n' +
-  '   letter lifts a spark. Circuit — a pulse of current runs out from the\n' +
-  '   caret. Aurora — ribbons that read the rhythm of your typing. Zen\n' +
-  '   Garden — typing rakes the sand, quiet smooths it back. Blackout —\n' +
-  '   a candle flame stands over the last word you wrote.\n' +
-  '• Wounds: smaller cuts, placed clear of your text, and a fade that is\n' +
-  '   never cut short mid-way.\n' +
-  '• Auto direction now keeps the caret on the side you were typing on.\n' +
-  '   A blank line, or a line holding only a number, follows the line\n' +
-  '   above instead of jumping to the left.\n' +
-  '• Tab indents inside the note (Shift+Tab outdents, and a multi-line\n' +
-  '   selection indents as a block).\n' +
-  '• Export → "Markdown, text only": the note as written, without images.\n' +
-  '• Markdown preview scrolls from the keyboard, keeps its place when the\n' +
-  '   note re-renders, and has a visible scrollbar.\n' +
-  '• Storm is markedly lighter on the machine while you type.\n' +
+  '• The Blackout candle holds its light steady now. It used to flare up on\n' +
+  '   every keystroke and sink while you paused; the room brightening under\n' +
+  '   your hands was the opposite of what that theme is for. Only the flame\n' +
+  '   moves, following the word you are writing.\n' +
+  '• And it looks like a flame: built from a shape that is widest a third of\n' +
+  '   the way up, rippling as it burns, drawn in four soft layers from the\n' +
+  '   hot air around it down to the blue at the wick.\n' +
   '\n' +
   'You can close this tab — it won\'t come back until the next update.\n' +
   '\n' +
   '\n' +
   'تازه‌ها در نسخه ' + CURRENT_VERSION + ' ✨\n' +
   '\n' +
-  '• هفت تم Pro تازه، هرکدام به یک چیز واکنش نشان می‌دهند:\n' +
-  '   Ghosts — کلمه‌هایی که پاک می‌کنی لحظه‌ای سر جایشان می‌مانند، و\n' +
-  '   کلمه‌های داخل یادداشت به‌صورت تصادفی بالا می‌آیند. Ink — هر کلید یک\n' +
-  '   لکه‌ی جوهر در کاغذ پخش می‌کند. Embers — لبه‌ی پایین می‌سوزد و هر حرف\n' +
-  '   یک جرقه بلند می‌کند. Circuit — با هر کلید جریان از مکان‌نما در\n' +
-  '   مدار می‌دود. Aurora — نوارهای نوری که ریتم تایپت را می‌خوانند.\n' +
-  '   Zen Garden — تایپ شن را شیار می‌اندازد و سکوت صافش می‌کند.\n' +
-  '   Blackout — یک شعله‌ی شمع بالای آخرین کلمه‌ای که نوشتی می‌ایستد.\n' +
-  '• تم Wounds: زخم‌های کوچک‌تر، دور از متن، و محو شدنی که دیگر وسط کار\n' +
-  '   قطع نمی‌شود.\n' +
-  '• جهت خودکار حالا مکان‌نما را همان سمتی نگه می‌دارد که تایپ می‌کردی.\n' +
-  '   خط خالی یا خطی که فقط عدد دارد، جهت خط بالایی را می‌گیرد.\n' +
-  '• کلید Tab داخل متن تورفتگی می‌سازد (با Shift+Tab برمی‌گردد، و چند خط\n' +
-  '   انتخاب‌شده با هم تورفته می‌شوند).\n' +
-  '• خروجی تازه: Markdown, text only — متن یادداشت بدون عکس‌ها.\n' +
-  '• پیش‌نمایش مارک‌داون با کیبورد اسکرول می‌شود، جای خواندنت را نگه\n' +
-  '   می‌دارد و اسکرول‌بارش دیده می‌شود.\n' +
-  '• تم Storm موقع تایپ خیلی سبک‌تر شده.\n' +
+  '• شمعِ تم Blackout حالا نورش ثابت است. قبلاً با هر کلید شعله‌ور می‌شد و\n' +
+  '   موقع مکث پایین می‌آمد — روشن شدن اتاق زیر دست‌هایت، درست خلاف کاری\n' +
+  '   بود که این تم برایش ساخته شده. فقط خودِ شعله حرکت می‌کند و دنبال\n' +
+  '   کلمه‌ای می‌رود که می‌نویسی.\n' +
+  '• و حالا شبیه شعله است: شکلی که یک‌سومِ بالا پهن‌ترین جایش است، موقع\n' +
+  '   سوختن موج می‌خورد، و در چهار لایه‌ی نرم کشیده می‌شود — از هوای داغِ\n' +
+  '   دورش تا آبیِ محل فتیله.\n' +
   '\n' +
   'این تب را می‌توانی ببندی — تا آپدیت بعدی دیگر برنمی‌گردد.';
 

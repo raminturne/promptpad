@@ -20,7 +20,7 @@
   "build": {
     "appId": "com.raminturne.promptpad",
     "productName": "PromptPad",
-    "copyright": "Copyright © 2026 PromptPad",
+    "copyright": "Copyright \u00a9 2026 PromptPad",
     "publish": [
       {
         "provider": "github",
@@ -93,5 +93,8 @@
       "icon": "build/icon-1024.png",
       "category": "public.app-category.productivity"
     }
+  },
+  "overrides": {
+    "js-yaml": "4.3.1"
   }
 }

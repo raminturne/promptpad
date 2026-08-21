@@ -1574,15 +1574,18 @@
       window.addEventListener('resize', resize);
       this._resize = resize;
 
-      const FLOOR = 0.30;      // the least light the room is ever allowed
-      let power = 1;           // 0..1
+      const FLOOR = 0.30;      // how much light the room is given, always
+      // Deliberately not a variable: an earlier version had the candle flare
+      // up on every keystroke and sink while you paused, and the flicker of
+      // the room brightening under your hands was the opposite of what this
+      // theme is for. The light is steady; only the flame moves.
+      const power = 0;
       let flick = 0;
       let at = null;           // where the light is now
       let goal = null;         // where the caret is
 
       const onKey = (e) => {
         if (!e.key || (e.key.length !== 1 && e.key !== 'Enter' && e.key !== 'Backspace')) return;
-        power = Math.min(1, power + 0.14);
         goal = caretRect() || goal;
       };
       document.addEventListener('keydown', onKey, true);
@@ -1593,7 +1596,6 @@
       const tick = (now) => {
         const dt = Math.min((now - last) / 1000, 0.05);
         last = now;
-        power = Math.max(0, power - dt * 0.055);   // ~20s from full to guttering
         flick += dt * 9;
 
         // The flame chases the caret rather than teleporting to it, but it
@@ -1638,6 +1640,37 @@
           // it. Two sines of different periods so it never repeats visibly.
           const lean = (Math.sin(flick * 1.3) + Math.sin(flick * 2.9) * 0.5) * wd * 0.34;
 
+          // The silhouette, sampled rather than drawn with fixed curves: width
+          // is a sine of height (widest about a third of the way up, closing to
+          // a point at the tip), the centre line leans further the higher it
+          // goes, and two out-of-phase sines ripple the edge so the shape is
+          // never the same twice.
+          const flamePath = (fh, fw, tipLean, phase) => {
+            const N = 20;
+            ctx.beginPath();
+            // up the left edge, back down the right
+            for (let i = 0; i <= N; i++) {
+              const t = i / N;
+              const half = fw * Math.sin(Math.pow(t, 0.6) * Math.PI) * (1 - t * 0.1);
+              const ripple = (Math.sin(t * 6.1 + phase * 3.1) * 0.05 +
+                Math.sin(t * 11.3 - phase * 2.2) * 0.03) * fw;
+              const x = p.x + tipLean * Math.pow(t, 1.8) + ripple;
+              const y = baseY - fh * t;
+              if (i === 0) ctx.moveTo(x - half, y);
+              else ctx.lineTo(x - half, y);
+            }
+            for (let i = N; i >= 0; i--) {
+              const t = i / N;
+              const half = fw * Math.sin(Math.pow(t, 0.6) * Math.PI) * (1 - t * 0.1);
+              const ripple = (Math.sin(t * 6.1 + phase * 3.1) * 0.05 +
+                Math.sin(t * 11.3 - phase * 2.2) * 0.03) * fw;
+              const x = p.x + tipLean * Math.pow(t, 1.8) + ripple;
+              const y = baseY - fh * t;
+              ctx.lineTo(x + half, y);
+            }
+            ctx.closePath();
+          };
+
           // The light it throws: cut the dark away around the flame, brightest
           // right under it, so the words beside it can be read.
           ctx.globalCompositeOperation = 'destination-out';
@@ -1661,42 +1694,46 @@
           ctx.arc(p.x, baseY - h * 0.5, h * 4, 0, Math.PI * 2);
           ctx.fill();
 
-          // The teardrop: wide and round at the bottom, drawn to a point at
-          // the top, with the tip carried off to one side by the draught.
-          const body = ctx.createLinearGradient(p.x, baseY, p.x, baseY - h);
-          body.addColorStop(0, 'rgba(255,120,20,0.92)');
-          body.addColorStop(0.45, 'rgba(255,176,52,0.95)');
-          body.addColorStop(1, 'rgba(255,232,150,0.5)');
+          // Four layers, soft outside to hard inside — the way a flame reads
+          // in a photograph. The blur is what does most of the work: a flame
+          // has no edge, and a crisp outline is what made the old one look
+          // like a sticker.
+          const blur = (px) => { ctx.filter = px ? 'blur(' + px.toFixed(2) + 'px)' : 'none'; };
+
+          // 1. The envelope of hot air: barely there, wider and taller.
+          blur(h * 0.16);
+          ctx.fillStyle = 'rgba(255,108,18,0.26)';
+          flamePath(h * 1.12, wd * 1.22, lean * 1.1, flick);
+          ctx.fill();
+
+          // 2. The body.
+          blur(h * 0.07);
+          const body = ctx.createLinearGradient(p.x, baseY + h * 0.1, p.x, baseY - h);
+          body.addColorStop(0, 'rgba(255,96,10,0.85)');
+          body.addColorStop(0.3, 'rgba(255,150,32,0.95)');
+          body.addColorStop(0.72, 'rgba(255,205,92,0.92)');
+          body.addColorStop(1, 'rgba(255,238,178,0.35)');
           ctx.fillStyle = body;
-          ctx.beginPath();
-          ctx.moveTo(p.x - wd, baseY);
-          ctx.bezierCurveTo(p.x - wd * 1.25, baseY - h * 0.42,
-            p.x + lean - wd * 0.3, baseY - h * 0.78, p.x + lean, baseY - h);
-          ctx.bezierCurveTo(p.x + lean + wd * 0.3, baseY - h * 0.78,
-            p.x + wd * 1.25, baseY - h * 0.42, p.x + wd, baseY);
-          ctx.bezierCurveTo(p.x + wd * 0.6, baseY + h * 0.16,
-            p.x - wd * 0.6, baseY + h * 0.16, p.x - wd, baseY);
+          flamePath(h, wd, lean, flick + 1.3);
           ctx.fill();
 
-          // The hot core, and the blue where the wick burns.
-          const core = ctx.createLinearGradient(p.x, baseY, p.x, baseY - h * 0.6);
-          core.addColorStop(0, 'rgba(255,214,140,0.75)');
-          core.addColorStop(1, 'rgba(255,255,240,0.95)');
+          // 3. The core — small, low, and nearly white.
+          blur(h * 0.045);
+          const core = ctx.createLinearGradient(p.x, baseY, p.x, baseY - h * 0.62);
+          core.addColorStop(0, 'rgba(255,226,164,0.9)');
+          core.addColorStop(0.6, 'rgba(255,248,220,0.96)');
+          core.addColorStop(1, 'rgba(255,255,246,0.35)');
           ctx.fillStyle = core;
-          ctx.beginPath();
-          ctx.moveTo(p.x - wd * 0.42, baseY - h * 0.04);
-          ctx.bezierCurveTo(p.x - wd * 0.5, baseY - h * 0.3,
-            p.x + lean * 0.5 - wd * 0.12, baseY - h * 0.45, p.x + lean * 0.5, baseY - h * 0.62);
-          ctx.bezierCurveTo(p.x + lean * 0.5 + wd * 0.12, baseY - h * 0.45,
-            p.x + wd * 0.5, baseY - h * 0.3, p.x + wd * 0.42, baseY - h * 0.04);
-          ctx.bezierCurveTo(p.x + wd * 0.25, baseY + h * 0.08,
-            p.x - wd * 0.25, baseY + h * 0.08, p.x - wd * 0.42, baseY - h * 0.04);
+          flamePath(h * 0.62, wd * 0.5, lean * 0.45, flick + 2.7);
           ctx.fill();
 
-          ctx.fillStyle = 'rgba(105,160,255,0.30)';
+          // 4. The blue at the wick, where the flame is coldest and cleanest.
+          blur(h * 0.06);
+          ctx.fillStyle = 'rgba(96,150,255,0.34)';
           ctx.beginPath();
-          ctx.ellipse(p.x, baseY + h * 0.02, wd * 0.5, h * 0.13, 0, 0, Math.PI * 2);
+          ctx.ellipse(p.x, baseY - h * 0.02, wd * 0.46, h * 0.15, 0, 0, Math.PI * 2);
           ctx.fill();
+          blur(0);
         }
         rafId = requestAnimationFrame(tick);
       };

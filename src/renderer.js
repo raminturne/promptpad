@@ -111,7 +111,22 @@ const DEFAULT_SETTINGS = {
   imageGen: { provider: 'pollinations', geminiApiKey: '', hfApiKey: '' },
   seenFeatures: {}, // { improve: true, aiChat: true, ... } — clears each button's "New" badge once used
   voice: { hfApiKey: '' }, // Hugging Face token for speech-to-text (Whisper)
-  ai: { openrouterKey: '' }, // each user's own free OpenRouter key for Chat / Improve / AI actions
+  // Each user brings their own key for Chat / Improve / AI actions. The
+  // `openrouterKey` name is unchanged from when OpenRouter was the only
+  // backend, so existing saves keep working with no migration step.
+  ai: {
+    provider: 'openrouter', // openrouter | openai | google | anthropic | custom
+    model: 'auto',          // 'auto' walks the provider's list; anything else pins one model
+    openrouterKey: '',
+    openaiKey: '',
+    googleKey: '',
+    anthropicKey: '',
+    customUrl: '',          // any OpenAI-compatible endpoint (Groq, Ollama, LM Studio…)
+    customKey: '',
+    customModels: ''        // comma-separated, as typed
+  },
+  customAiActions: [], // { id, name, prompt } — user-written actions in the AI menu
+  recentAiPrompts: [], // last few one-shot custom instructions, most recent first
   toolbarOrder: [], // full left-to-right key order — filled in from TOOLBAR_BUTTONS on first render
   toolbarCollapsed: [], // subset of toolbarOrder currently tucked behind the overflow chevron
   toolbarNudged: false, // true once the one-time "some icons start collapsed" nudge has run
@@ -360,6 +375,32 @@ const improveBtn = document.getElementById('improveBtn');
 const voiceBtn = document.getElementById('voiceBtn');
 const voiceHfApiKeyInputEl = document.getElementById('voiceHfApiKeyInput');
 const aiApiKeyInputEl = document.getElementById('aiApiKeyInput');
+// AI provider / model pickers and the per-provider key fields
+const aiProviderSelectEl = document.getElementById('aiProviderSelect');
+const aiModelSelectEl = document.getElementById('aiModelSelect');
+const aiOpenaiKeyInputEl = document.getElementById('aiOpenaiKeyInput');
+const aiGoogleKeyInputEl = document.getElementById('aiGoogleKeyInput');
+const aiAnthropicKeyInputEl = document.getElementById('aiAnthropicKeyInput');
+const aiCustomUrlInputEl = document.getElementById('aiCustomUrlInput');
+const aiCustomKeyInputEl = document.getElementById('aiCustomKeyInput');
+const aiCustomModelsInputEl = document.getElementById('aiCustomModelsInput');
+const aiModelRefreshBtn = document.getElementById('aiModelRefresh');
+const aiModelStatusEl = document.getElementById('aiModelStatus');
+const AI_PROVIDER_FIELD_IDS = {
+  openrouter: 'aiOpenrouterFields', openai: 'aiOpenaiFields', google: 'aiGoogleFields',
+  anthropic: 'aiAnthropicFields', custom: 'aiCustomFields'
+};
+// Custom AI actions (settings list + the instruction dialog)
+const customActionsListEl = document.getElementById('customActionsList');
+const customActionAddBtn = document.getElementById('customActionAdd');
+const aiCustomDialog = document.getElementById('aiCustomDialog');
+const aiCustomInput = document.getElementById('aiCustomInput');
+const aiCustomScope = document.getElementById('aiCustomScope');
+const aiCustomSaveChk = document.getElementById('aiCustomSave');
+const aiCustomNameRow = document.getElementById('aiCustomNameRow');
+const aiCustomName = document.getElementById('aiCustomName');
+const aiCustomCancel = document.getElementById('aiCustomCancel');
+const aiCustomRun = document.getElementById('aiCustomRun');
 const toolbarMainEl = document.getElementById('toolbarMain');
 const toolbarOverflowBtnEl = document.getElementById('toolbarOverflowBtn');
 const toolbarOverflowPanelEl = document.getElementById('toolbarOverflowPanel');
@@ -578,6 +619,10 @@ function setEditorText(text) {
   for (const line of lines) editorEl.appendChild(makeLine(line));
   updateLineDirs();
   updateEmptyState();
+  // The whole note was replaced — a tab switch, an undo, a whole-tab AI action.
+  // Never fires on ordinary typing, which makes it the signal a theme effect
+  // needs to re-read the note it's decorating (see the Ghosts theme in fx.js).
+  document.dispatchEvent(new CustomEvent('pp:note-loaded'));
 }
 
 // Wrap any stray top-level text node / <br> (which can't carry a dir) into a
@@ -2777,45 +2822,187 @@ function hideAiError() {
 // entrance animation, instead of the whole list re-animating on every render.
 const aiShownMsgIds = new Set();
 
-// Each user's own free OpenRouter key (Settings → AI Chat & actions).
-function aiKey() { return (settings.ai && settings.ai.openrouterKey) || ''; }
+// ---------- AI providers ----------
+// Everything the UI needs to know about a backend, keyed by the id stored in
+// settings.ai.provider. The model lists themselves live in main.js and arrive
+// via aiProviders() at boot, so the two processes can't drift apart.
+const AI_PROVIDER_META = {
+  openrouter: {
+    label: 'OpenRouter', keyField: 'openrouterKey',
+    prefix: 'sk-or-v1-', signup: 'https://openrouter.ai/keys',
+    input: 'aiApiKeyInput', free: true
+  },
+  openai: {
+    label: 'OpenAI', keyField: 'openaiKey',
+    prefix: 'sk-', signup: 'https://platform.openai.com/api-keys',
+    input: 'aiOpenaiKeyInput'
+  },
+  google: {
+    label: 'Google AI Studio', keyField: 'googleKey',
+    prefix: 'AIza', signup: 'https://aistudio.google.com/apikey',
+    input: 'aiGoogleKeyInput'
+  },
+  anthropic: {
+    label: 'Anthropic (Claude)', keyField: 'anthropicKey',
+    prefix: 'sk-ant-', signup: 'https://console.anthropic.com/settings/keys',
+    input: 'aiAnthropicKeyInput'
+  },
+  custom: {
+    label: 'Custom endpoint', keyField: 'customKey',
+    prefix: '', signup: '',
+    input: 'aiCustomUrlInput'
+  }
+};
+const AI_PROVIDER_IDS = Object.keys(AI_PROVIDER_META);
 
-// Bilingual (English + Persian) onboarding card shown in AI Chat when there's
-// no key yet — explains how to grab a free OpenRouter key and where to paste it.
+// Model catalog from main.js — { [providerId]: { family, models } }.
+let aiProviderCatalog = {};
+
+function aiProvider() {
+  const p = settings.ai && settings.ai.provider;
+  return AI_PROVIDER_IDS.includes(p) ? p : 'openrouter';
+}
+
+// The active provider's key. Named aiKey() since that's what every existing
+// call site uses; it just isn't OpenRouter-only any more.
+function aiKey() {
+  const meta = AI_PROVIDER_META[aiProvider()];
+  return (settings.ai && settings.ai[meta.keyField]) || '';
+}
+
+// Models fetched from the provider with the user's own key, kept per provider
+// so switching back and forth doesn't refetch. Persisted, because a model list
+// is stable for days and a cold start shouldn't show a stale hard-coded list.
+function aiModelCache() {
+  if (!settings.ai.modelCache || typeof settings.ai.modelCache !== 'object') {
+    settings.ai.modelCache = {};
+  }
+  return settings.ai.modelCache;
+}
+
+// Models offered for the active provider, best source first: what the provider
+// actually told us, else the hand-typed list (custom endpoints), else the
+// curated fallback that ships with the app.
+function aiModelsFor(id) {
+  const cached = aiModelCache()[id];
+  if (cached && Array.isArray(cached.models) && cached.models.length) {
+    return cached.models.map((m) => (typeof m === 'string' ? m : m.id));
+  }
+  if (id === 'custom') {
+    return String((settings.ai && settings.ai.customModels) || '')
+      .split(/[\n,]/).map((s) => s.trim()).filter(Boolean);
+  }
+  const entry = aiProviderCatalog[id];
+  return entry && Array.isArray(entry.models) ? entry.models : [];
+}
+
+// Same list, but keeping the free/paid split so the picker can group it —
+// OpenRouter returns several hundred models and an ungrouped list is unusable.
+function aiModelEntriesFor(id) {
+  const cached = aiModelCache()[id];
+  if (cached && Array.isArray(cached.models) && cached.models.length) {
+    return cached.models.map((m) => (typeof m === 'string' ? { id: m, free: false } : m));
+  }
+  return aiModelsFor(id).map((m) => ({ id: m, free: false }));
+}
+
+// Everything main.js needs to make one request. Passed straight through the
+// preload bridge, so the shape here is the contract.
+function aiOpts() {
+  const id = aiProvider();
+  const ai = settings.ai || {};
+  return {
+    provider: id,
+    model: ai.model || 'auto',
+    apiKey: aiKey(),
+    baseUrl: ai.customUrl || '',
+    models: ai.customModels || ''
+  };
+}
+
+// Can we actually make a call? A custom endpoint needs a URL and a model but
+// no key (a local Ollama or LM Studio has none); everything else needs a key.
+function aiReady() {
+  if (aiProvider() === 'custom') {
+    const ai = settings.ai || {};
+    return !!String(ai.customUrl || '').trim() && aiModelsFor('custom').length > 0;
+  }
+  return !!aiKey();
+}
+
+// The settings field to focus when a call fails for want of credentials — so
+// "no key" sends the user to the RIGHT input, not always OpenRouter's.
+function aiKeyInputEl() {
+  return document.getElementById(AI_PROVIDER_META[aiProvider()].input) || aiApiKeyInputEl;
+}
+
+// Shared by every "you have no key yet" path.
+function promptForAiKey() {
+  openSettings();
+  setTimeout(() => { const el = aiKeyInputEl(); if (el) el.focus(); }, 60);
+}
+
+// Bilingual (English + Persian) onboarding card shown in AI Chat when there are
+// no credentials yet. Parameterised by provider rather than forked per
+// provider, so all five stay in sync.
 function buildAiOnboardCard() {
+  const id = aiProvider();
+  const meta = AI_PROVIDER_META[id];
   const card = document.createElement('div');
   card.className = 'ai-onboard';
-  card.innerHTML =
-    '<div class="ai-onboard-title">✨ Set up the free AI  ·  فعال‌سازی هوش مصنوعی رایگان</div>' +
-    '<div class="ai-onboard-body">' +
-      '<p>AI Chat, <b>Improve</b> and the AI actions run on <b>your own free OpenRouter key</b>, so you get your own limits. Takes ~1 minute:</p>' +
-      '<ol>' +
-        '<li>Tap <b>Get free key</b> → sign in (Google/GitHub) → create a key.</li>' +
-        '<li>Copy it (starts with <code>sk-or-v1-</code>).</li>' +
-        '<li>Tap <b>Open Settings</b> and paste it under “AI Chat &amp; actions”.</li>' +
-      '</ol>' +
-      '<hr class="ai-onboard-sep">' +
-      '<p dir="rtl">چت هوش مصنوعی، <b>Improve</b> و اکشن‌های AI با <b>کلیدِ رایگانِ خودت</b> کار می‌کنن تا لیمیتِ خودتو داشته باشی. حدود ۱ دقیقه:</p>' +
-      '<ol dir="rtl">' +
-        '<li>روی <b>دریافت کلید رایگان</b> بزن → وارد شو (گوگل/گیت‌هاب) → یه کلید بساز.</li>' +
-        '<li>کپیش کن (با <code>sk-or-v1-</code> شروع می‌شه).</li>' +
-        '<li>روی <b>باز کردن تنظیمات</b> بزن و زیر «AI Chat &amp; actions» بذارش.</li>' +
-      '</ol>' +
-    '</div>' +
-    '<div class="ai-onboard-actions">' +
-      '<button type="button" class="ai-onboard-btn primary js-get">Get free key · دریافت کلید</button>' +
-      '<button type="button" class="ai-onboard-btn js-settings">Open Settings · تنظیمات</button>' +
-    '</div>';
-  card.querySelector('.js-get').addEventListener('click', () => window.api.openExternal('https://openrouter.ai/keys'));
-  card.querySelector('.js-settings').addEventListener('click', () => { openSettings(); setTimeout(() => aiApiKeyInputEl.focus(), 60); });
+
+  if (id === 'custom') {
+    card.innerHTML =
+      '<div class="ai-onboard-title">✨ Set up your endpoint  ·  تنظیم سرویس دلخواه</div>' +
+      '<div class="ai-onboard-body">' +
+        '<p>You picked <b>Custom endpoint</b>. Add an OpenAI-compatible URL and at least one model name in Settings — a key is optional for local runtimes like Ollama or LM Studio.</p>' +
+        '<hr class="ai-onboard-sep">' +
+        '<p dir="rtl">حالتِ <b>سرویس دلخواه</b> رو انتخاب کردی. توی تنظیمات یه آدرسِ سازگار با OpenAI و حداقل یک نامِ مدل وارد کن — برای سرویس‌های محلی مثل Ollama یا LM Studio کلید لازم نیست.</p>' +
+      '</div>' +
+      '<div class="ai-onboard-actions">' +
+        '<button type="button" class="ai-onboard-btn primary js-settings">Open Settings · تنظیمات</button>' +
+      '</div>';
+  } else {
+    const freeEn = meta.free
+      ? 'run on <b>your own free ' + meta.label + ' key</b>, so you get your own limits'
+      : 'run on <b>your own ' + meta.label + ' key</b>';
+    const freeFa = meta.free
+      ? 'با <b>کلیدِ رایگانِ خودت</b> کار می‌کنن تا لیمیتِ خودتو داشته باشی'
+      : 'با <b>کلیدِ ' + meta.label + ' خودت</b> کار می‌کنن';
+    card.innerHTML =
+      '<div class="ai-onboard-title">✨ Set up ' + meta.label + '  ·  فعال‌سازی هوش مصنوعی</div>' +
+      '<div class="ai-onboard-body">' +
+        '<p>AI Chat, <b>Improve</b> and the AI actions ' + freeEn + '. Takes ~1 minute:</p>' +
+        '<ol>' +
+          '<li>Tap <b>Get key</b> → sign in → create a key.</li>' +
+          '<li>Copy it' + (meta.prefix ? ' (starts with <code>' + meta.prefix + '</code>)' : '') + '.</li>' +
+          '<li>Tap <b>Open Settings</b> and paste it under “AI Chat &amp; actions”.</li>' +
+        '</ol>' +
+        '<hr class="ai-onboard-sep">' +
+        '<p dir="rtl">چت هوش مصنوعی، <b>Improve</b> و اکشن‌های AI ' + freeFa + '. حدود ۱ دقیقه:</p>' +
+        '<ol dir="rtl">' +
+          '<li>روی <b>دریافت کلید</b> بزن → وارد شو → یه کلید بساز.</li>' +
+          '<li>کپیش کن' + (meta.prefix ? ' (با <code>' + meta.prefix + '</code> شروع می‌شه)' : '') + '.</li>' +
+          '<li>روی <b>باز کردن تنظیمات</b> بزن و زیر «AI Chat &amp; actions» بذارش.</li>' +
+        '</ol>' +
+      '</div>' +
+      '<div class="ai-onboard-actions">' +
+        '<button type="button" class="ai-onboard-btn primary js-get">Get key · دریافت کلید</button>' +
+        '<button type="button" class="ai-onboard-btn js-settings">Open Settings · تنظیمات</button>' +
+      '</div>';
+    const get = card.querySelector('.js-get');
+    if (get) get.addEventListener('click', () => window.api.openExternal(meta.signup));
+  }
+
+  card.querySelector('.js-settings').addEventListener('click', promptForAiKey);
   return card;
 }
 
 function renderAiMessages() {
   aiMessagesEl.innerHTML = '';
   const msgs = aiMessages();
-  if (!aiKey()) {
-    // no key yet → focus the onboarding (chat history reappears once a key is set)
+  if (!aiReady()) {
+    // no credentials yet → focus the onboarding (chat history reappears once set)
     aiShownMsgIds.clear();
     aiMessagesEl.appendChild(buildAiOnboardCard());
     return;
@@ -2851,7 +3038,7 @@ let aiSending = false;
 async function sendAiMessage() {
   const text = aiInputEl.value.trim();
   if (!text || aiSending) return;
-  if (!aiKey()) { renderAiMessages(); openSettings(); aiApiKeyInputEl.focus(); return; }
+  if (!aiReady()) { renderAiMessages(); promptForAiKey(); return; }
   hideAiError();
   aiInputEl.value = '';
   aiAutoGrow();
@@ -2874,7 +3061,7 @@ async function sendAiMessage() {
 
   try {
     const history = aiMessages().map((m) => ({ role: m.role, content: m.text }));
-    const res = await window.api.chatMessage(history, aiKey());
+    const res = await window.api.chatMessage(history, aiOpts());
     thinking.remove();
     if (res && res.ok && res.text) {
       aiMessages().push({ id: uid(), ts: Date.now(), role: 'assistant', text: res.text });
@@ -5291,34 +5478,62 @@ function cleanUpNote() {
 
 cleanBtn.addEventListener('click', cleanUpNote);
 
-// Transient button title while each AI action runs.
-const AI_ACTION_TITLES = {
-  improve: 'Improving…',
-  translate: 'Translating…',
-  summarize: 'Summarizing…',
-  grammar: 'Fixing grammar…',
-  'tone-professional': 'Rewriting…',
-  'tone-casual': 'Rewriting…',
-  'tone-concise': 'Rewriting…'
-};
+// The built-in AI actions, in menu order. `id` is the key main.js looks up in
+// AI_ACTION_PROMPTS — the prompts themselves stay in main so they only exist
+// once. A `sep` entry draws a divider.
+const BUILTIN_AI_ACTIONS = [
+  { id: 'improve', label: 'Improve prompt', title: 'Improving…' },
+  { id: 'translate', label: 'Translate (FA ⇄ EN)', title: 'Translating…' },
+  { id: 'summarize', label: 'Summarize', title: 'Summarizing…' },
+  { id: 'grammar', label: 'Fix grammar & spelling', title: 'Fixing grammar…' },
+  { sep: true },
+  { id: 'tone-professional', label: 'Make professional', title: 'Rewriting…' },
+  { id: 'tone-casual', label: 'Make casual', title: 'Rewriting…' },
+  { id: 'tone-concise', label: 'Make concise', title: 'Rewriting…' }
+];
 
-// Shared by every AI text action (Improve, Translate, Summarize, …) — handles
-// the network call and the button's generating/failed states; `applyFn(text)`
-// decides what to do with the result (whole-tab replace, selection replace,
-// code-block replace, …).
-async function runAiTransform(btnEl, sourceText, action, applyFn) {
+// Transient button title while each AI action runs.
+const AI_ACTION_TITLES = {};
+BUILTIN_AI_ACTIONS.forEach((a) => { if (a.id) AI_ACTION_TITLES[a.id] = a.title; });
+
+function customAiActions() {
+  if (!Array.isArray(settings.customAiActions)) settings.customAiActions = [];
+  return settings.customAiActions;
+}
+function recentAiPrompts() {
+  if (!Array.isArray(settings.recentAiPrompts)) settings.recentAiPrompts = [];
+  return settings.recentAiPrompts;
+}
+
+// Remember a one-shot instruction so it's one click away next time. Most recent
+// first, de-duplicated, capped at 5.
+function rememberAiPrompt(prompt) {
+  const p = String(prompt || '').trim();
+  if (!p) return;
+  const list = recentAiPrompts().filter((x) => x !== p);
+  list.unshift(p);
+  settings.recentAiPrompts = list.slice(0, 5);
+  saveSettingsNow();
+}
+
+// Shared by every AI text action (Improve, Translate, Summarize, a custom
+// instruction, …) — handles the network call and the button's generating/failed
+// states; `applyFn(text)` decides what to do with the result (whole-tab
+// replace, selection replace, code-block replace, …). `prompt` is set only for
+// a custom action, where it IS the system prompt.
+async function runAiTransform(btnEl, sourceText, action, applyFn, prompt) {
   if (!sourceText.trim()) return;
-  // no key yet → send the user to Settings to add their free OpenRouter key
-  if (!aiKey()) { openSettings(); aiApiKeyInputEl.focus(); return; }
+  // no credentials yet → send the user to the right field in Settings
+  if (!aiReady()) { promptForAiKey(); return; }
   const defaultTitle = btnEl.title;
   // applyFn closes over the tab/selection this ran against; if the workspace
   // was swapped meanwhile, dropping the result beats writing it somewhere else.
   const epoch = profileEpoch;
   btnEl.disabled = true;
   btnEl.classList.add('generating');
-  btnEl.title = AI_ACTION_TITLES[action] || 'Working…';
+  btnEl.title = (prompt ? 'Working…' : AI_ACTION_TITLES[action]) || 'Working…';
   try {
-    const res = await window.api.aiTransform(action, sourceText, aiKey());
+    const res = await window.api.aiTransform(action, sourceText, aiOpts(), prompt || '');
     if (epoch !== profileEpoch) return;
     if (res && res.ok && res.text) {
       applyFn(res.text);
@@ -5343,63 +5558,230 @@ function runImprove(btnEl, sourceText, applyFn) {
   return runAiTransform(btnEl, sourceText, 'improve', applyFn);
 }
 
-// Write an AI result back into the tab: replaces the selected line-slice if
-// there was a selection, otherwise the whole tab. Only touches the DOM when
-// the user is still on the originating tab (guards against a mid-flight tab
-// switch — same pattern as runImageGeneration).
-function applyTransformResult(t, tabId, sel, hasSelection, out) {
-  if (!activeTab() || activeTab().id !== tabId) { if (!hasSelection) t.content = out; return; }
-  if (hasSelection) {
-    const text = sel.line.textContent;
-    if (sel.end > text.length) return; // line changed underneath us — skip rather than corrupt it
-    setLineText(sel.line, text.slice(0, sel.start) + out + text.slice(sel.end), sel.start + out.length);
-    scheduleSave();
+// ---------- Selection ranges ----------
+// currentLineSelection() only understands a selection that sits inside ONE
+// line: for anything wider its commonAncestorContainer is the editor itself, so
+// it silently returns a zero-width caret. That used to make an AI action on a
+// multi-line selection quietly rewrite the WHOLE TAB instead. This resolves a
+// selection of any height to a line range: { from, to, start, end, text },
+// where from/to are indices into editorLines() and start/end are character
+// offsets within those two lines. Returns null when nothing is selected.
+function currentSelectionRange() {
+  const sel = window.getSelection();
+  if (!sel || !sel.rangeCount || sel.isCollapsed) return null;
+  const range = sel.getRangeAt(0);
+  if (!editorEl.contains(range.commonAncestorContainer)) return null;
+
+  const lineOf = (node) => {
+    let n = node;
+    while (n && n !== editorEl && n.parentNode !== editorEl) n = n.parentNode;
+    return n && n !== editorEl ? n : null;
+  };
+  const startLine = lineOf(range.startContainer);
+  const endLine = lineOf(range.endContainer);
+  if (!startLine || !endLine) return null;
+
+  const lines = editorLines();
+  let from = lines.indexOf(startLine);
+  let to = lines.indexOf(endLine);
+  if (from < 0 || to < 0) return null;
+
+  // Character offset of a boundary within its own line.
+  const offsetIn = (line, container, offset) => {
+    const r = document.createRange();
+    r.selectNodeContents(line);
+    try { r.setEnd(container, offset); } catch { return 0; }
+    return r.toString().length;
+  };
+  let start = offsetIn(startLine, range.startContainer, range.startOffset);
+  let end = offsetIn(endLine, range.endContainer, range.endOffset);
+
+  // A backwards drag can hand us the endpoints in reverse.
+  if (from > to || (from === to && start > end)) {
+    [from, to] = [to, from];
+    [start, end] = [end, start];
+  }
+  if (from === to && start === end) return null;
+
+  const texts = lines.map((d) => d.textContent);
+  const text = from === to
+    ? texts[from].slice(start, end)
+    : [texts[from].slice(start), ...texts.slice(from + 1, to), texts[to].slice(0, end)].join('\n');
+  return { from, to, start, end, text };
+}
+
+// Write an AI result back into the tab. `range` is null for a whole-tab action.
+// Both paths rebuild the full content and go through noteEditForUndo, so a
+// selection edit is a single undo step too (it wasn't, before). Only touches
+// the DOM when the user is still on the originating tab — guards against a
+// mid-flight tab switch, same pattern as runImageGeneration.
+function applyTransformResult(t, tabId, range, out) {
+  if (!activeTab() || activeTab().id !== tabId) { if (!range) t.content = out; return; }
+  const prev = t.content;
+  let next;
+  let caretLine = null;
+
+  if (range) {
+    const lines = getEditorText().split('\n');
+    // The text moved underneath us (a shared note synced, say) — skip rather
+    // than splice at offsets that no longer mean anything.
+    if (range.to >= lines.length ||
+        range.start > lines[range.from].length ||
+        range.end > lines[range.to].length) return;
+    const merged = lines[range.from].slice(0, range.start) + out + lines[range.to].slice(range.end);
+    const mergedLines = merged.split('\n');
+    next = [...lines.slice(0, range.from), ...mergedLines, ...lines.slice(range.to + 1)].join('\n');
+    caretLine = range.from + mergedLines.length - 1;
   } else {
-    const prev = t.content;
-    noteEditForUndo(t, prev);
-    t.content = out;
-    setEditorText(out);
-    updateCounts();
-    updatePlaceholderPanel();
-    if (!t.custom) renderTabs();
-    scheduleSave();
-    editorEl.focus();
+    next = out;
+  }
+  if (next === prev) return;
+
+  noteEditForUndo(t, prev);
+  t.content = next;
+  setEditorText(next);
+  updateCounts();
+  updatePlaceholderPanel();
+  if (!t.custom) renderTabs();
+  scheduleSave();
+  editorEl.focus();
+  if (caretLine == null) {
     placeCaretEnd();
+  } else {
+    const line = editorLines()[caretLine];
+    if (line) placeCaretInLine(line, line.textContent.length); else placeCaretEnd();
   }
 }
 
-// Runs an AI action on the current single-line selection if there is one
-// (mirrors the single-line constraint of surroundSelection/bold — this editor
-// is line-based, so cross-line selections aren't addressable), otherwise the
-// whole tab.
-async function runTabAiAction(action) {
+// Runs an AI action on the current selection (of any height) if there is one,
+// otherwise on the whole tab. `prompt` is set only for a custom instruction.
+async function runTabAiAction(action, prompt, presetRange) {
   if (!aiOn() || mdOn() || fsActive() || !activeTab()) return;
-  if (!aiKey()) { openSettings(); aiApiKeyInputEl.focus(); return; }
+  if (!aiReady()) { promptForAiKey(); return; }
   markFeatureSeen('improve');
   const t = activeTab();
   syncEditorToState();
   const tabId = t.id;
-  const sel = currentLineSelection();
-  const hasSelection = !!(sel && sel.end > sel.start);
-  const source = hasSelection ? sel.line.textContent.slice(sel.start, sel.end) : t.content;
+  // presetRange is captured before a dialog steals focus (which destroys the
+  // live selection); without one, read the selection now.
+  const range = presetRange !== undefined ? presetRange : currentSelectionRange();
+  const source = range ? range.text : t.content;
   if (!source.trim()) return;
-  // shimmer the target text (the selected line, or the whole editor) so it's
-  // clear the AI is working on it
-  const workEl = hasSelection ? sel.line : editorEl;
-  if (workEl) workEl.classList.add('ai-working');
+
+  // Shimmer the target text — the selected lines, or the whole editor — so it's
+  // clear what the AI is working on.
+  const workEls = range
+    ? editorLines().slice(range.from, range.to + 1)
+    : [editorEl];
+  workEls.forEach((el) => el && el.classList.add('ai-working'));
   try {
-    await runAiTransform(improveBtn, source, action, (out) => applyTransformResult(t, tabId, sel, hasSelection, out));
+    await runAiTransform(improveBtn, source, action,
+      (out) => applyTransformResult(t, tabId, range, out), prompt);
   } finally {
-    if (workEl) workEl.classList.remove('ai-working');
+    workEls.forEach((el) => el && el.classList.remove('ai-working'));
   }
 }
 
 function improvePromptNote() { return runTabAiAction('improve'); }
 
 // ---------- AI actions menu ----------
+// The selection captured when the menu opened. Everything downstream uses this
+// rather than reading the live selection, because opening the custom-instruction
+// dialog moves focus into a textarea and destroys the editor selection.
+let aiMenuRange = null;
+
+// The recent instructions currently drawn in the menu. Held as a snapshot so a
+// row's index stays valid between render and click.
+let aiMenuRecents = [];
+
+function truncateLabel(s, n) {
+  s = String(s || '').replace(/\s+/g, ' ').trim();
+  return s.length > n ? s.slice(0, n - 1) + '…' : s;
+}
+
+// One recent instruction: click the row to run it, ★ to keep it as a saved
+// action, ✕ to forget it. dir="auto" so a Persian instruction reads correctly
+// while the row itself stays laid out the same way.
+function addRecentRow(prompt, idx) {
+  const el = document.createElement('div');
+  el.className = 'ctx-item ctx-dim ctx-item-recent';
+  el.dataset.aiRecent = String(idx);
+
+  const label = document.createElement('span');
+  label.className = 'ctx-item-label';
+  label.setAttribute('dir', 'auto');
+  label.textContent = '↻ ' + truncateLabel(prompt, 28);
+  label.title = prompt;
+  el.appendChild(label);
+
+  const btns = document.createElement('span');
+  btns.className = 'ctx-item-btns';
+  const mini = (cls, glyph, title) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'ctx-mini-btn ' + cls;
+    b.textContent = glyph;
+    b.title = title;
+    btns.appendChild(b);
+  };
+  mini('js-pin', '★', tr('ai.pin', 'Keep as an action'));
+  mini('js-forget', '✕', tr('ai.forget', 'Remove from recents'));
+  el.appendChild(btns);
+
+  aiActionsMenu.appendChild(el);
+  return el;
+}
+
+// Rebuild the menu from the built-ins plus whatever the user has saved. Called
+// on every open, so a newly saved action shows up immediately.
+function renderAiActionsMenu() {
+  aiActionsMenu.innerHTML = '';
+  const add = (cls, text, data) => {
+    const el = document.createElement('div');
+    el.className = cls;
+    el.textContent = text;
+    if (data) Object.keys(data).forEach((k) => { el.dataset[k] = data[k]; });
+    aiActionsMenu.appendChild(el);
+    return el;
+  };
+
+  const scope = aiMenuRange
+    ? tr('ai.onSelection', 'AI · on selection')
+    : tr('ai.onTab', 'AI · on the whole tab');
+  add('ctx-label', scope);
+
+  BUILTIN_AI_ACTIONS.forEach((a) => {
+    if (a.sep) { add('ctx-sep', ''); return; }
+    add('ctx-item', tr('ai.' + a.id, a.label), { aiAction: a.id });
+  });
+
+  const saved = customAiActions();
+  if (saved.length) {
+    add('ctx-sep', '');
+    saved.forEach((a) => add('ctx-item', '★ ' + truncateLabel(a.name, 34), { aiCustom: a.id }));
+  }
+
+  // Recents are throwaway by nature, so each one carries its own controls:
+  // pin it to keep it as a real action, or drop it. Indices point into this
+  // snapshot rather than being recomputed later, so deleting one can't shift
+  // the row under a click.
+  aiMenuRecents = recentAiPrompts().filter((p) => !saved.some((a) => a.prompt === p)).slice(0, 3);
+  if (aiMenuRecents.length) {
+    add('ctx-sep', '');
+    aiMenuRecents.forEach((p, i) => addRecentRow(p, i));
+  }
+
+  add('ctx-sep', '');
+  add('ctx-item', tr('ai.custom', 'Custom instruction…'), { aiCustom: '__new__' });
+  if (saved.length) add('ctx-item', tr('ai.manage', 'Manage custom actions…'), { aiManage: '1' });
+}
+
 function showAiActionsMenu(x, y) {
   if (!aiOn() || mdOn() || fsActive() || !activeTab()) return;
+  // Capture the selection BEFORE anything can steal focus.
+  aiMenuRange = currentSelectionRange();
   hideTextContextMenu();
+  renderAiActionsMenu();
   aiActionsMenu.style.left = x + 'px';
   aiActionsMenu.style.top = y + 'px';
   aiActionsMenu.classList.remove('hidden');
@@ -5416,11 +5798,133 @@ function hideAiActionsMenu() { aiActionsMenu.classList.add('hidden'); }
 // keep selection/focus in the editor when clicking a menu item
 aiActionsMenu.addEventListener('mousedown', (e) => e.preventDefault());
 aiActionsMenu.addEventListener('click', (e) => {
-  const item = e.target.closest('[data-ai-action]');
+  const item = e.target.closest('[data-ai-action],[data-ai-custom],[data-ai-recent],[data-ai-manage]');
   if (!item) return;
-  const action = item.dataset.aiAction;
+
+  // Pin / forget act on the row without running anything and without closing —
+  // tidying up a few recents in one go shouldn't mean reopening the menu each
+  // time. Handled before the run paths so a button click never fires the row.
+  const mini = e.target.closest('.ctx-mini-btn');
+  if (mini && item.dataset.aiRecent) {
+    e.stopPropagation();
+    const prompt = aiMenuRecents[Number(item.dataset.aiRecent)];
+    if (!prompt) return;
+    if (mini.classList.contains('js-pin')) {
+      customAiActions().push({ id: uid(), name: truncateLabel(prompt, 30), prompt });
+    }
+    // Pinned or dropped, it leaves the recents list either way — once it's a
+    // saved action, keeping a duplicate copy under "recent" is just noise.
+    settings.recentAiPrompts = recentAiPrompts().filter((p) => p !== prompt);
+    saveSettingsNow();
+    renderCustomActionsList();
+    renderAiActionsMenu();
+    return;
+  }
+
+  const range = aiMenuRange;
   hideAiActionsMenu();
-  runTabAiAction(action);
+
+  if (item.dataset.aiAction) {
+    runTabAiAction(item.dataset.aiAction, '', range);
+  } else if (item.dataset.aiManage) {
+    openSettings();
+    setTimeout(() => {
+      const el = document.getElementById('customActionsList');
+      if (el) el.scrollIntoView({ block: 'center' });
+    }, 60);
+  } else if (item.dataset.aiRecent) {
+    // Same snapshot the row was drawn from, so the index can't have drifted.
+    const prompt = aiMenuRecents[Number(item.dataset.aiRecent)];
+    if (prompt) {
+      rememberAiPrompt(prompt); // re-running it makes it the most recent again
+      runTabAiAction('custom', prompt, range);
+    }
+  } else if (item.dataset.aiCustom === '__new__') {
+    openAiCustomDialog(range);
+  } else if (item.dataset.aiCustom) {
+    const found = customAiActions().find((a) => a.id === item.dataset.aiCustom);
+    if (found) runTabAiAction('custom', found.prompt, range);
+  }
+});
+
+// ---------- Custom instruction dialog ----------
+// `aiCustomRange` holds the selection this run targets. It's captured when the
+// menu opens (see aiMenuRange) because focusing the textarea below clears the
+// editor's own selection.
+let aiCustomRange = null;
+// 'run' = fired from the AI menu against the note; 'add'/'edit' = opened from
+// Settings, where the dialog only writes to the saved-actions list.
+let aiCustomMode = 'run';
+
+function openAiCustomDialog(range) {
+  aiCustomMode = 'run';
+  editingCustomActionId = null;
+  aiCustomRange = range || null;
+  aiCustomInput.value = '';
+  aiCustomSaveChk.checked = false;
+  aiCustomName.value = '';
+  aiCustomNameRow.classList.add('hidden');
+  aiCustomRun.textContent = tr('run', 'Run');
+  const n = aiCustomRange ? aiCustomRange.text.length : 0;
+  aiCustomScope.textContent = aiCustomRange
+    ? tr('ai.scopeSel', 'Runs on your selection') + ' · ' + n
+    : tr('ai.scopeTab', 'Runs on the whole tab');
+  aiCustomDialog.classList.remove('hidden');
+  aiCustomInput.focus();
+}
+
+function closeAiCustomDialog() {
+  aiCustomDialog.classList.add('hidden');
+  aiCustomRange = null;
+  editingCustomActionId = null;
+  aiCustomMode = 'run';
+}
+
+function confirmAiCustomDialog() {
+  const prompt = aiCustomInput.value.trim();
+  if (!prompt) { closeAiCustomDialog(); return; }
+  const range = aiCustomRange;
+  const save = aiCustomSaveChk.checked;
+  const name = aiCustomName.value.trim();
+  const editingId = editingCustomActionId;
+  const mode = aiCustomMode;
+  closeAiCustomDialog();
+
+  // Opened from Settings — save only; there's no selection to run against.
+  if (mode === 'edit') {
+    const found = customAiActions().find((x) => x.id === editingId);
+    if (found) { found.name = name || truncateLabel(prompt, 30); found.prompt = prompt; }
+    saveSettingsNow();
+    renderCustomActionsList();
+    return;
+  }
+  if (mode === 'add') {
+    customAiActions().push({ id: uid(), name: name || truncateLabel(prompt, 30), prompt });
+    saveSettingsNow();
+    renderCustomActionsList();
+    return;
+  }
+
+  if (save) {
+    customAiActions().push({ id: uid(), name: name || truncateLabel(prompt, 30), prompt });
+    saveSettingsNow();
+    renderCustomActionsList();
+  } else {
+    rememberAiPrompt(prompt);
+  }
+  runTabAiAction('custom', prompt, range);
+}
+
+aiCustomSaveChk.addEventListener('change', () => {
+  aiCustomNameRow.classList.toggle('hidden', !aiCustomSaveChk.checked);
+  if (aiCustomSaveChk.checked) aiCustomName.focus();
+});
+aiCustomCancel.addEventListener('click', closeAiCustomDialog);
+aiCustomRun.addEventListener('click', confirmAiCustomDialog);
+aiCustomDialog.addEventListener('keydown', (e) => {
+  // Enter runs; Shift+Enter is a newline, since an instruction can be long.
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); confirmAiCustomDialog(); }
+  if (e.key === 'Escape') { e.preventDefault(); closeAiCustomDialog(); }
 });
 
 // Right-clicking the Improve toolbar button opens the actions menu at it.
@@ -6767,7 +7271,7 @@ function syncSettingsUI() {
   providerHintPollinationsEl.classList.toggle('hidden', genProvider !== 'pollinations');
 
   voiceHfApiKeyInputEl.value = (settings.voice && settings.voice.hfApiKey) || '';
-  aiApiKeyInputEl.value = (settings.ai && settings.ai.openrouterKey) || '';
+  syncAiProviderUI();
   togglePlaceholdersEl.checked = settings.placeholdersEnabled;
   resizeRow.classList.remove('disabled');
   placeholderPositionSeg.querySelectorAll('.seg-btn').forEach((b) => {
@@ -7164,11 +7668,238 @@ voiceHfApiKeyInputEl.addEventListener('change', () => {
   saveSettingsNow();
 });
 
-aiApiKeyInputEl.addEventListener('change', () => {
-  settings.ai = { ...settings.ai, openrouterKey: aiApiKeyInputEl.value.trim() };
+// ---------- AI provider settings ----------
+// Reflect settings.ai into the provider picker, the model list, and whichever
+// per-provider key group is active.
+function syncAiProviderUI() {
+  const ai = settings.ai || {};
+  const id = aiProvider();
+  aiProviderSelectEl.value = id;
+  AI_PROVIDER_IDS.forEach((p) => {
+    const el = document.getElementById(AI_PROVIDER_FIELD_IDS[p]);
+    if (el) el.classList.toggle('hidden', p !== id);
+  });
+
+  aiApiKeyInputEl.value = ai.openrouterKey || '';
+  aiOpenaiKeyInputEl.value = ai.openaiKey || '';
+  aiGoogleKeyInputEl.value = ai.googleKey || '';
+  aiAnthropicKeyInputEl.value = ai.anthropicKey || '';
+  aiCustomUrlInputEl.value = ai.customUrl || '';
+  aiCustomKeyInputEl.value = ai.customKey || '';
+  aiCustomModelsInputEl.value = ai.customModels || '';
+
+  // Rebuild the model list for this provider, keeping the saved choice when it
+  // still exists and falling back to Auto when it doesn't.
+  const entries = aiModelEntriesFor(id);
+  const wanted = ai.model || 'auto';
+  aiModelSelectEl.innerHTML = '';
+  const autoOpt = document.createElement('option');
+  autoOpt.value = 'auto';
+  autoOpt.textContent = tr('ai.auto', 'Auto — recommended');
+  aiModelSelectEl.appendChild(autoOpt);
+
+  const addOption = (parent, m) => {
+    const o = document.createElement('option');
+    o.value = m.id;
+    o.textContent = m.id;
+    parent.appendChild(o);
+  };
+  const free = entries.filter((m) => m.free);
+  const paid = entries.filter((m) => !m.free);
+  if (free.length && paid.length) {
+    // OpenRouter mostly — hundreds of models, and which ones cost nothing is
+    // the only distinction that matters at a glance.
+    const gf = document.createElement('optgroup');
+    gf.label = tr('ai.freeModels', 'Free');
+    free.forEach((m) => addOption(gf, m));
+    aiModelSelectEl.appendChild(gf);
+    const gp = document.createElement('optgroup');
+    gp.label = tr('ai.paidModels', 'Paid');
+    paid.forEach((m) => addOption(gp, m));
+    aiModelSelectEl.appendChild(gp);
+  } else {
+    entries.forEach((m) => addOption(aiModelSelectEl, m));
+  }
+
+  const ids = entries.map((m) => m.id);
+  aiModelSelectEl.value = ids.includes(wanted) ? wanted : 'auto';
+  if (aiModelSelectEl.value !== wanted) settings.ai = { ...settings.ai, model: aiModelSelectEl.value };
+
+  // Say where this list came from, so "Auto" against a stale built-in list is
+  // distinguishable from a list the provider actually confirmed.
+  const cached = aiModelCache()[id];
+  if (!aiModelBusy) {
+    if (cached && cached.ts) {
+      aiModelStatusEl.textContent =
+        tr('ai.listLive', 'Loaded from your provider') + ' · ' + ids.length;
+      aiModelStatusEl.classList.remove('model-status-warn');
+    } else {
+      aiModelStatusEl.textContent = tr('ai.listBuiltin', 'Built-in list — press ↻ to load the real one');
+      aiModelStatusEl.classList.remove('model-status-warn');
+    }
+  }
+
+  renderCustomActionsList();
+}
+
+// ---------- Live model list ----------
+let aiModelBusy = false;
+
+// Ask the provider which models this key can actually use. `silent` is for the
+// automatic refresh after a key is pasted — that one shouldn't shout on failure,
+// because the key may simply be half-typed.
+async function refreshAiModels(silent) {
+  if (aiModelBusy) return;
+  const id = aiProvider();
+  aiModelBusy = true;
+  aiModelRefreshBtn.classList.add('spinning');
+  aiModelStatusEl.classList.remove('model-status-warn');
+  aiModelStatusEl.textContent = tr('ai.listLoading', 'Asking the provider…');
+  try {
+    const res = await window.api.aiListModels(aiOpts());
+    aiModelBusy = false;
+    // The user may have switched provider while this was in flight; a list
+    // fetched for the old one must not be filed under the new one.
+    if (aiProvider() !== id) { syncAiProviderUI(); return; }
+
+    if (res && res.ok && Array.isArray(res.models) && res.models.length) {
+      const prev = settings.ai.model;
+      aiModelCache()[id] = { ts: Date.now(), models: res.models.slice(0, 400) };
+      const stillThere = res.models.some((m) => m.id === prev);
+      settings.ai = { ...settings.ai, model: (prev && prev !== 'auto' && !stillThere) ? 'auto' : prev };
+      saveSettingsNow();
+      syncAiProviderUI();
+      if (prev && prev !== 'auto' && !stillThere) {
+        aiModelStatusEl.textContent =
+          tr('ai.listDropped', 'Your saved model is gone from this provider — switched to Auto') +
+          ' · ' + res.models.length;
+        aiModelStatusEl.classList.add('model-status-warn');
+      }
+      return;
+    }
+    if (silent) { syncAiProviderUI(); return; }
+    aiModelStatusEl.textContent = (res && res.error) || tr('ai.listFailed', "Couldn't load the model list.");
+    aiModelStatusEl.classList.add('model-status-warn');
+  } catch (err) {
+    aiModelBusy = false;
+    if (!silent) {
+      aiModelStatusEl.textContent = tr('ai.listFailed', "Couldn't load the model list.");
+      aiModelStatusEl.classList.add('model-status-warn');
+    }
+  } finally {
+    aiModelBusy = false;
+    aiModelRefreshBtn.classList.remove('spinning');
+  }
+}
+
+function setAiSetting(patch) {
+  settings.ai = { ...settings.ai, ...patch };
   saveSettingsNow();
-  if (aiChatActive()) renderAiMessages(); // reflect the new key in the onboarding/empty state
+  if (aiChatActive()) renderAiMessages(); // reflect new credentials in the onboarding/empty state
+}
+
+aiProviderSelectEl.addEventListener('change', () => {
+  // Reset the model on a provider switch — the old id belongs to another
+  // catalog and would otherwise be sent to a backend that's never heard of it.
+  settings.ai = { ...settings.ai, provider: aiProviderSelectEl.value, model: 'auto' };
+  saveSettingsNow();
+  syncAiProviderUI();
+  if (aiChatActive()) renderAiMessages();
+  // No list for this provider yet? Fetch quietly if we already have its key.
+  if (!aiModelCache()[aiProvider()] && aiReady()) refreshAiModels(true);
 });
+aiModelSelectEl.addEventListener('change', () => setAiSetting({ model: aiModelSelectEl.value }));
+aiModelRefreshBtn.addEventListener('click', () => refreshAiModels(false));
+
+// Pasting a key is the moment we can finally ask that provider anything, so
+// that's when the real model list gets pulled.
+function onAiKeyEntered(patch) {
+  setAiSetting(patch);
+  if (aiReady()) refreshAiModels(true);
+}
+aiApiKeyInputEl.addEventListener('change', () => onAiKeyEntered({ openrouterKey: aiApiKeyInputEl.value.trim() }));
+aiOpenaiKeyInputEl.addEventListener('change', () => onAiKeyEntered({ openaiKey: aiOpenaiKeyInputEl.value.trim() }));
+aiGoogleKeyInputEl.addEventListener('change', () => onAiKeyEntered({ googleKey: aiGoogleKeyInputEl.value.trim() }));
+aiAnthropicKeyInputEl.addEventListener('change', () => onAiKeyEntered({ anthropicKey: aiAnthropicKeyInputEl.value.trim() }));
+aiCustomUrlInputEl.addEventListener('change', () => onAiKeyEntered({ customUrl: aiCustomUrlInputEl.value.trim() }));
+aiCustomKeyInputEl.addEventListener('change', () => onAiKeyEntered({ customKey: aiCustomKeyInputEl.value.trim() }));
+aiCustomModelsInputEl.addEventListener('change', () => {
+  setAiSetting({ customModels: aiCustomModelsInputEl.value.trim() });
+  syncAiProviderUI(); // the model dropdown is built from this field
+});
+
+// ---------- Custom AI actions (Settings list) ----------
+function renderCustomActionsList() {
+  if (!customActionsListEl) return;
+  const list = customAiActions();
+  customActionsListEl.innerHTML = '';
+  if (!list.length) {
+    const empty = document.createElement('p');
+    empty.className = 'set-hint custom-action-empty';
+    empty.textContent = tr('ai.noCustom', 'No custom actions yet.');
+    customActionsListEl.appendChild(empty);
+    return;
+  }
+  list.forEach((a) => {
+    const row = document.createElement('div');
+    row.className = 'custom-action-row';
+    row.innerHTML =
+      '<div class="custom-action-text">' +
+        '<span class="custom-action-name"></span>' +
+        '<small class="custom-action-prompt"></small>' +
+      '</div>' +
+      '<div class="custom-action-btns">' +
+        '<button type="button" class="custom-action-btn js-edit" title="Edit">✎</button>' +
+        '<button type="button" class="custom-action-btn js-del" title="Delete">🗑</button>' +
+      '</div>';
+    // textContent, not innerHTML — these strings are user input.
+    row.querySelector('.custom-action-name').textContent = a.name;
+    row.querySelector('.custom-action-prompt').textContent = a.prompt;
+    row.querySelector('.js-edit').addEventListener('click', () => editCustomAction(a.id));
+    row.querySelector('.js-del').addEventListener('click', () => {
+      settings.customAiActions = customAiActions().filter((x) => x.id !== a.id);
+      saveSettingsNow();
+      renderCustomActionsList();
+    });
+    customActionsListEl.appendChild(row);
+  });
+}
+
+// Editing reuses the run dialog: the name/prompt are pre-filled and Run saves
+// the edit instead of firing a transform.
+let editingCustomActionId = null;
+
+function editCustomAction(id) {
+  const a = customAiActions().find((x) => x.id === id);
+  if (!a) return;
+  aiCustomMode = 'edit';
+  editingCustomActionId = id;
+  aiCustomRange = null;
+  aiCustomInput.value = a.prompt;
+  aiCustomName.value = a.name;
+  aiCustomSaveChk.checked = true;
+  aiCustomNameRow.classList.remove('hidden');
+  aiCustomScope.textContent = tr('ai.editing', 'Editing a saved action');
+  aiCustomRun.textContent = tr('save', 'Save');
+  aiCustomDialog.classList.remove('hidden');
+  aiCustomInput.focus();
+}
+
+if (customActionAddBtn) {
+  customActionAddBtn.addEventListener('click', () => {
+    aiCustomMode = 'add';
+    editingCustomActionId = null;
+    aiCustomRange = null;
+    aiCustomInput.value = '';
+    aiCustomName.value = '';
+    aiCustomSaveChk.checked = true;
+    aiCustomNameRow.classList.remove('hidden');
+    aiCustomScope.textContent = tr('ai.newAction', 'Saved to the AI actions menu');
+    aiCustomRun.textContent = tr('save', 'Save');
+    aiCustomDialog.classList.remove('hidden');
+    aiCustomInput.focus();
+  });
+}
 
 // ---------- Storage location ----------
 changeStorageBtn.addEventListener('click', async () => {
@@ -7252,6 +7983,10 @@ placeholderWrapSeg.addEventListener('click', (e) => {
 resetBtn.addEventListener('click', async () => {
   settings = { ...DEFAULT_SETTINGS };
   settings.imageGen = { ...DEFAULT_SETTINGS.imageGen };
+  // fresh copies, never the shared DEFAULT_SETTINGS references
+  settings.ai = { ...DEFAULT_SETTINGS.ai };
+  settings.customAiActions = [];
+  settings.recentAiPrompts = [];
   await window.api.setStartup(false);
   try {
     settings.quickCaptureEnabled = !!(await window.api.setQuickCapture(true));
@@ -7870,26 +8605,58 @@ const CURRENT_VERSION = document.getElementById('aboutVersion').textContent.repl
 const WHATS_NEW =
   "What's new in v" + CURRENT_VERSION + " ✨\n" +
   '\n' +
-  '• The Blackout candle holds its light steady now. It used to flare up on\n' +
-  '   every keystroke and sink while you paused; the room brightening under\n' +
-  '   your hands was the opposite of what that theme is for. Only the flame\n' +
-  '   moves, following the word you are writing.\n' +
-  '• And it looks like a flame: built from a shape that is widest a third of\n' +
-  '   the way up, rippling as it burns, drawn in four soft layers from the\n' +
-  '   hot air around it down to the blue at the wick.\n' +
+  '• Write your own AI actions. Select some text, right-click → AI actions →\n' +
+  '   "Custom instruction…", and tell it what you want: "list these lines by\n' +
+  '   topic", "turn this into a table". Tick "Save as action" and it joins the\n' +
+  '   menu for next time. Your saved actions live in Settings.\n' +
+  '• AI actions now respect a selection that spans more than one line. They\n' +
+  '   used to quietly rewrite the whole tab instead — and one Ctrl+Z puts a\n' +
+  '   selection back now, which it didn\'t before.\n' +
+  '• Pick your AI provider: OpenRouter (still free, still the default), OpenAI,\n' +
+  '   Google AI Studio, Anthropic (Claude), or any OpenAI-compatible endpoint —\n' +
+  '   including local ones like Ollama and LM Studio, which need no key at all.\n' +
+  '• Pick your model, too — from the provider\'s real list, not a guess. Press ↻\n' +
+  '   next to Model and PromptPad asks your provider which models your key can\n' +
+  '   use. If a model you\'d chosen has been retired, it says so and drops back\n' +
+  '   to Auto instead of failing later.\n' +
+  '• Busy providers no longer look like broken ones. Google\'s free tier answers\n' +
+  '   "503 overloaded" fairly often; that used to reach you as a failed action.\n' +
+  '   Now it retries, and under Auto moves on to the next model.\n' +
+  '• A note you open has a past. The Ghosts theme used to haunt you with\n' +
+  '   nothing until you typed — it now remembers the words already in the note.\n' +
+  '\n' +
+  'Note on Claude: it needs an API key from console.anthropic.com. A Claude.ai\n' +
+  'Pro/Max subscription is a separate product and issues no key — to try Claude\n' +
+  'cheaply, use OpenRouter and pick an anthropic/claude-… model.\n' +
   '\n' +
   'You can close this tab — it won\'t come back until the next update.\n' +
   '\n' +
   '\n' +
   'تازه‌ها در نسخه ' + CURRENT_VERSION + ' ✨\n' +
   '\n' +
-  '• شمعِ تم Blackout حالا نورش ثابت است. قبلاً با هر کلید شعله‌ور می‌شد و\n' +
-  '   موقع مکث پایین می‌آمد — روشن شدن اتاق زیر دست‌هایت، درست خلاف کاری\n' +
-  '   بود که این تم برایش ساخته شده. فقط خودِ شعله حرکت می‌کند و دنبال\n' +
-  '   کلمه‌ای می‌رود که می‌نویسی.\n' +
-  '• و حالا شبیه شعله است: شکلی که یک‌سومِ بالا پهن‌ترین جایش است، موقع\n' +
-  '   سوختن موج می‌خورد، و در چهار لایه‌ی نرم کشیده می‌شود — از هوای داغِ\n' +
-  '   دورش تا آبیِ محل فتیله.\n' +
+  '• اکشن‌های دلخواهِ خودت را بنویس. یک متن را انتخاب کن، راست‌کلیک ← AI actions\n' +
+  '   ← «دستور دلخواه…»، و هرچه می‌خواهی بگو: «این خط‌ها را بر اساس موضوع\n' +
+  '   دسته‌بندی کن»، «این را جدول کن». گزینه‌ی «ذخیره به‌عنوان اکشن» را بزن تا\n' +
+  '   دفعه‌ی بعد با یک کلیک در دسترس باشد. اکشن‌های ذخیره‌شده در تنظیمات هستند.\n' +
+  '• اکشن‌های AI حالا انتخابِ چندخطی را درست می‌فهمند. قبلاً بی‌صدا کلِ تب را\n' +
+  '   بازنویسی می‌کردند — و حالا یک Ctrl+Z متنِ انتخاب‌شده را برمی‌گرداند که\n' +
+  '   قبلاً اصلاً برنمی‌گشت.\n' +
+  '• سرویس‌دهنده‌ات را انتخاب کن: OpenRouter (هنوز رایگان و پیش‌فرض)، OpenAI،\n' +
+  '   Google AI Studio، انتروپیک (Claude)، یا هر سرویسِ سازگار با OpenAI —\n' +
+  '   از جمله سرویس‌های محلی مثل Ollama و LM Studio که اصلاً کلید نمی‌خواهند.\n' +
+  '• مدل را هم خودت انتخاب کن — از لیستِ واقعیِ سرویس‌دهنده، نه حدس. کنارِ\n' +
+  '   «مدل» دکمه‌ی ↻ را بزن تا با کلیدِ خودت بپرسد چه مدل‌هایی در دسترست هست.\n' +
+  '   اگر مدلی که انتخاب کرده بودی حذف شده باشد، خبر می‌دهد و به Auto برمی‌گردد\n' +
+  '   به‌جای اینکه بعداً خطا بدهد.\n' +
+  '• سرویسِ شلوغ دیگر شبیهِ سرویسِ خراب نیست. سقفِ رایگانِ گوگل نسبتاً زیاد\n' +
+  '   «۵۰۳ — بیش از حد شلوغ» می‌دهد؛ قبلاً همین به‌صورتِ شکستِ کار به تو\n' +
+  '   می‌رسید. حالا دوباره تلاش می‌کند و در حالتِ Auto سراغِ مدلِ بعدی می‌رود.\n' +
+  '• هر نُتی گذشته‌ای دارد. تم Ghosts قبلاً تا وقتی تایپ نمی‌کردی هیچ‌چیز نشان\n' +
+  '   نمی‌داد — حالا کلماتی را که از قبل در نُت هستند به یاد می‌آورد.\n' +
+  '\n' +
+  'درباره‌ی Claude: به کلیدِ API از console.anthropic.com نیاز دارد. اشتراکِ\n' +
+  'Claude.ai Pro/Max محصولی جداست و کلید نمی‌دهد — برای امتحانِ ارزانِ Claude،\n' +
+  'از OpenRouter استفاده کن و یکی از مدل‌های anthropic/claude-… را بردار.\n' +
   '\n' +
   'این تب را می‌توانی ببندی — تا آپدیت بعدی دیگر برنمی‌گردد.';
 
@@ -11228,6 +11995,14 @@ window.addEventListener('focus', () => {
   settings.seenFeatures = { ...(settings.seenFeatures || {}) };
   settings.voice = { ...DEFAULT_SETTINGS.voice, ...(settings.voice || {}) };
   settings.ai = { ...DEFAULT_SETTINGS.ai, ...(settings.ai || {}) };
+  // Arrays need the same guard as the nested objects: a save written before
+  // these existed would otherwise leave them undefined.
+  settings.customAiActions = Array.isArray(settings.customAiActions) ? settings.customAiActions : [];
+  settings.recentAiPrompts = Array.isArray(settings.recentAiPrompts) ? settings.recentAiPrompts : [];
+  // Model catalog lives in main.js so the two processes can't drift; pull it
+  // once at boot. A failure here only costs the dropdown its options — Auto
+  // still works, since main resolves the list itself on every call.
+  try { aiProviderCatalog = (await window.api.aiProviders()) || {}; } catch { aiProviderCatalog = {}; }
   settings.zenMode = false; // focus mode is per-session; never boot into a chromeless window
   settings.tabPosition = 'left'; // the top layout was removed — always the left rail
   // `helpLang` used to switch only the Settings help text; it's now the whole UI

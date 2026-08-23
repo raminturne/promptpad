@@ -1,6 +1,6 @@
 {
   "name": "promptpad",
-  "version": "3.4.1",
+  "version": "3.5.0",
   "description": "A compact, always-on-top notepad widget for writing AI prompts",
   "main": "main.js",
   "author": "PromptPad",
@@ -16,6 +16,9 @@
   "devDependencies": {
     "electron": "^31.0.0",
     "electron-builder": "^24.13.3"
+  },
+  "overrides": {
+    "js-yaml": "4.3.1"
   },
   "build": {
     "appId": "com.raminturne.promptpad",

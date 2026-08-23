@@ -1176,32 +1176,165 @@ if (!app.requestSingleInstanceLock()) {
     }
   });
 
-  // Chat completion via the user's own free OpenRouter key (each user brings
-  // their own key — Settings → AI). OpenRouter is OpenAI-compatible and works
-  // from regions where Groq/OpenAI are geo-blocked, since the client only talks
-  // to OpenRouter's proxy. Backs Improve, the AI actions menu, and AI Chat.
-  // A short list of solid free instruct models (verified working from the
-  // user's region). We DON'T use `openrouter/free` — its auto-router sometimes
-  // picks non-chat models (e.g. a content-safety classifier). fetchAiChat tries
-  // them in order and falls through to the next only when one is rate-limited.
-  const OPENROUTER_MODELS = [
-    'google/gemma-4-26b-a4b-it:free',
-    'nvidia/nemotron-3-super-120b-a12b:free',
-    'nvidia/nemotron-3-ultra-550b-a55b:free'
-  ];
-  async function fetchAiChat(messages, apiKey) {
-    apiKey = String(apiKey || '').trim();
-    if (!apiKey) return { ok: false, needsKey: true, error: 'Add a free OpenRouter key in Settings → AI.' };
+  // Chat completion via the user's own key — each user brings their own
+  // (Settings → AI), so everyone gets their own rate limits. Backs Improve,
+  // the AI actions menu, and AI Chat.
+  //
+  // Five backends, but only TWO wire protocols. OpenRouter, OpenAI, Google AI
+  // Studio and any custom endpoint all speak OpenAI's chat-completions shape,
+  // so they share one request/response path. Anthropic is the odd one out and
+  // gets its own adapter — but it returns the same { ok, text, tryNext,
+  // error } shape, so nothing above this line has to care which one ran.
+  //
+  // OpenRouter stays the default: it works from regions where OpenAI and Google
+  // are geo-blocked, since the client only ever talks to OpenRouter's proxy.
+  const AI_PROVIDERS = {
+    openrouter: {
+      family: 'openai',
+      url: 'https://openrouter.ai/api/v1/chat/completions',
+      modelsUrl: 'https://openrouter.ai/api/v1/models',
+      // Fallback list, used until the live one is fetched. Solid free instruct
+      // models, verified working from the user's region.
+      // We DON'T use `openrouter/free` — its auto-router sometimes picks
+      // non-chat models (e.g. a content-safety classifier).
+      models: [
+        'google/gemma-4-26b-a4b-it:free',
+        'nvidia/nemotron-3-super-120b-a12b:free',
+        'nvidia/nemotron-3-ultra-550b-a55b:free'
+      ],
+      headers: {
+        'HTTP-Referer': 'https://github.com/raminturne/promptpad',
+        'X-Title': 'PromptPad'
+      },
+      needsKey: 'Add a free OpenRouter key in Settings → AI.'
+    },
+    openai: {
+      family: 'openai',
+      url: 'https://api.openai.com/v1/chat/completions',
+      modelsUrl: 'https://api.openai.com/v1/models',
+      models: ['gpt-4o-mini', 'gpt-4o'],
+      headers: {},
+      needsKey: 'Add an OpenAI API key in Settings → AI.'
+    },
+    google: {
+      family: 'openai',
+      // Google AI Studio publishes an OpenAI-compatible endpoint that takes the
+      // AI Studio key as a bearer token, so it rides the shared path rather
+      // than needing a Gemini-shaped adapter of its own.
+      url: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
+      modelsUrl: 'https://generativelanguage.googleapis.com/v1beta/openai/models',
+      models: ['gemini-flash-latest', 'gemini-flash-lite-latest', 'gemini-pro-latest'],
+      headers: {},
+      needsKey: 'Add a Google AI Studio key in Settings → AI.'
+    },
+    anthropic: {
+      family: 'anthropic',
+      url: 'https://api.anthropic.com/v1/messages',
+      modelsUrl: 'https://api.anthropic.com/v1/models',
+      // Haiku first: it's the cheapest and fastest, which is the right default
+      // for short text transforms. Note these need an API key from
+      // console.anthropic.com — a Claude.ai Pro/Max subscription is a separate
+      // product and cannot authenticate here.
+      models: ['claude-haiku-4-5', 'claude-sonnet-5', 'claude-opus-5'],
+      headers: {},
+      needsKey: 'Add an Anthropic API key in Settings → AI.'
+    },
+    custom: {
+      family: 'openai',
+      url: '', // both the URL and the model list come from settings
+      models: [],
+      headers: {},
+      needsKey: 'Add your endpoint URL in Settings → AI.'
+    }
+  };
+
+  // Merge a provider's static config with the per-request bits that only exist
+  // in settings (the custom endpoint's URL, key and hand-typed model list).
+  function resolveAiProvider(opts) {
+    const id = AI_PROVIDERS[opts && opts.provider] ? opts.provider : 'openrouter';
+    const cfg = { id, ...AI_PROVIDERS[id] };
+    if (id === 'custom') {
+      cfg.url = String((opts && opts.baseUrl) || '').trim();
+      cfg.models = splitModels(opts && opts.models);
+    }
+    return cfg;
+  }
+
+  // Accepts either an array or the raw comma/newline-separated string the
+  // settings field holds.
+  function splitModels(v) {
+    if (Array.isArray(v)) v = v.join(',');
+    return String(v || '').split(/[\n,]/).map((s) => s.trim()).filter(Boolean);
+  }
+
+  // Renderer payloads used to be a bare API-key string. Tolerate that so an
+  // older call site (or a stale renderer during an update) still works.
+  function normalizeAiOpts(v) {
+    if (typeof v === 'string') return { provider: 'openrouter', model: 'auto', apiKey: v };
+    return v && typeof v === 'object' ? v : {};
+  }
+
+  async function fetchAiChat(messages, opts) {
+    opts = normalizeAiOpts(opts);
+    const apiKey = String(opts.apiKey || '').trim();
+    const cfg = resolveAiProvider(opts);
+    if (cfg.id === 'custom') {
+      // A local runtime (Ollama, LM Studio) needs no key, so only the URL and
+      // model list are actually required here.
+      if (!cfg.url) return { ok: false, needsKey: true, error: cfg.needsKey };
+      if (!cfg.models.length) {
+        return { ok: false, needsKey: true, error: 'Add at least one model name in Settings → AI.' };
+      }
+    } else if (!apiKey) {
+      return { ok: false, needsKey: true, error: cfg.needsKey };
+    }
+
+    // 'auto' keeps the original behaviour: walk the list, falling through to
+    // the next model ONLY when one is rate-limited. Picking a model explicitly
+    // means the user wants that model, so a rate-limit surfaces as an error
+    // rather than silently switching to a different one behind their back.
+    const wanted = String(opts.model || 'auto').trim();
+    const models = wanted && wanted !== 'auto' ? [wanted] : cfg.models;
+    if (!models.length) return { ok: false, error: 'No model is configured for this provider.' };
+
+    // One model, with a couple of quick retries when the provider itself
+    // wobbles (5xx). Without this a single Gemini 503 — which is routine on the
+    // free tier — reached the user as a failed action.
+    const TRANSIENT_TRIES = 3;
+    const once = async (model) => {
+      let res;
+      for (let i = 0; i < TRANSIENT_TRIES; i++) {
+        res = cfg.family === 'anthropic'
+          ? await fetchAnthropicOnce(messages, apiKey, model, cfg)
+          : await fetchAiChatOnce(messages, apiKey, model, cfg);
+        if (res.ok || !res.transient) return res;
+        // Back off with jitter so a retry doesn't land in the same overloaded
+        // moment (and so two PromptPad windows don't sync up).
+        if (i < TRANSIENT_TRIES - 1) await sleep(700 * Math.pow(2, i) + Math.random() * 400);
+      }
+      return res;
+    };
+
     let last = { ok: false, error: 'The AI is busy right now — wait a moment and try again.' };
-    for (const model of OPENROUTER_MODELS) {
-      const res = await fetchAiChatOnce(messages, apiKey, model);
+    for (const model of models) {
+      const res = await once(model);
       if (res.ok) return res;
       last = res;
-      if (!res.rateLimited) return res; // a real error (bad key, network) — stop here
+      if (!res.tryNext) return res; // a real error (bad key, network) — stop here
     }
-    return last; // every model was rate-limited
+    // Everything was busy. Say so in terms the user can act on, rather than
+    // leaving the last provider-worded retry message as the final answer.
+    if (last.transient && models.length > 1) {
+      return { ok: false, error: 'Every model was busy just now — try again in a moment.' };
+    }
+    return last;
   }
-  function fetchAiChatOnce(messages, apiKey, model) {
+
+  // Shared HTTP plumbing for every provider: POST JSON, 40s timeout, 2MB cap.
+  // Resolves { status, json, body } on any completed response, or { error }.
+  // Both adapters below build on this so the timeout/abort/size handling only
+  // exists in one place.
+  function postJson(url, headers, payload) {
     return new Promise((resolve) => {
       let settled = false;
       let timer;
@@ -1216,16 +1349,11 @@ if (!app.requestSingleInstanceLock()) {
       try {
         req = net.request({
           method: 'POST',
-          url: 'https://openrouter.ai/api/v1/chat/completions',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: 'Bearer ' + apiKey,
-            'HTTP-Referer': 'https://github.com/raminturne/promptpad',
-            'X-Title': 'PromptPad'
-          }
+          url,
+          headers: { 'Content-Type': 'application/json', ...headers }
         });
       } catch (err) {
-        return finish({ ok: false, error: 'Could not start the request.' });
+        return finish({ error: 'Could not start the request — check the endpoint URL.' });
       }
 
       timer = setTimeout(() => { try { req.abort(); } catch {} }, 40_000);
@@ -1238,7 +1366,7 @@ if (!app.requestSingleInstanceLock()) {
         res.on('data', (chunk) => {
           total += chunk.length;
           if (total > 2_000_000) {
-            finish({ ok: false, error: 'Response was too large.' });
+            finish({ error: 'Response was too large.' });
             try { req.abort(); } catch {}
             return;
           }
@@ -1249,31 +1377,220 @@ if (!app.requestSingleInstanceLock()) {
           const body = Buffer.concat(bufs).toString('utf8');
           let json = null;
           try { json = JSON.parse(body); } catch {}
-          if (statusCode >= 400) {
-            const apiMsg = json && json.error &&
-              (json.error.message || (json.error.metadata && json.error.metadata.raw) || json.error);
-            if (statusCode === 401 || statusCode === 403) {
-              return finish({ ok: false, error: 'The AI key was rejected — check it in Settings → AI.' });
-            }
-            if (statusCode === 429) {
-              return finish({ ok: false, rateLimited: true, error: 'The AI is busy right now — wait a moment and try again.' });
-            }
-            return finish({ ok: false, error: apiMsg ? String(apiMsg).slice(0, 300) : 'Request failed (status ' + statusCode + ').' });
-          }
-          const content = json && json.choices && json.choices[0] && json.choices[0].message && json.choices[0].message.content;
-          if (typeof content !== 'string' || !content.trim()) {
-            return finish({ ok: false, error: 'No text came back.' });
-          }
-          finish({ ok: true, text: content.trim() });
+          finish({ status: statusCode, json, body });
         });
       });
 
-      req.on('abort', () => finish({ ok: false, error: 'Request timed out.' }));
-      req.on('error', (err) => finish({ ok: false, error: err.message || 'Network error.' }));
+      req.on('abort', () => finish({ error: 'Request timed out.' }));
+      req.on('error', (err) => finish({ error: err.message || 'Network error.' }));
 
-      req.write(JSON.stringify({ model, messages, temperature: 0.7 }));
+      try {
+        req.write(JSON.stringify(payload));
+        req.end();
+      } catch (err) {
+        finish({ error: 'Could not send the request.' });
+      }
+    });
+  }
+
+  // Map a non-2xx response onto our shared error shape. `label` names the
+  // provider so a rejected key points at the right settings field.
+  function aiHttpError(status, json, label) {
+    const apiMsg = json && json.error &&
+      (json.error.message || (json.error.metadata && json.error.metadata.raw) || json.error);
+    if (status === 401 || status === 403) {
+      return { ok: false, error: 'The ' + label + ' key was rejected — check it in Settings → AI.' };
+    }
+    if (status === 429) {
+      return { ok: false, tryNext: true, error: 'You have hit this provider\'s rate limit — wait a moment and try again.' };
+    }
+    // A model this key can't reach, or one the provider has since retired.
+    // Under `auto` that's a reason to try the next one, not to stop.
+    if (status === 404) {
+      return {
+        ok: false, tryNext: true,
+        error: "That model isn't available on your key — pick another in Settings → AI."
+      };
+    }
+    // 5xx means the provider's own end wobbled, not that anything is wrong with
+    // the request. Google's free tier throws 503 "model is overloaded" often
+    // enough that treating it as a hard failure made Gemini look broken; 529 is
+    // Anthropic's equivalent. These are worth retrying in place AND worth
+    // falling through on, which is what `transient` marks.
+    if (status >= 500) {
+      const busy = status === 503 || status === 529;
+      return {
+        ok: false,
+        tryNext: true,   // so `auto` still advances to the next model
+        transient: true, // and so the same model is retried first
+        error: busy
+          ? label + ' is overloaded right now (' + status + ') — retrying.'
+          : label + ' had a server error (' + status + ') — retrying.'
+      };
+    }
+    return {
+      ok: false,
+      error: apiMsg ? String(apiMsg).slice(0, 300) : 'Request failed (status ' + status + ').'
+    };
+  }
+
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  // ---- Live model lists ----------------------------------------------------
+  // The hard-coded lists above are only a fallback. Model names go stale fast
+  // (Google renames and retires them constantly), and a stale name reaches the
+  // user as a confusing 404, so the real list is fetched with their own key and
+  // the picker is built from that.
+  function getJson(url, headers) {
+    return new Promise((resolve) => {
+      let settled = false;
+      let timer;
+      const finish = (r) => { if (settled) return; settled = true; clearTimeout(timer); resolve(r); };
+      let req;
+      try {
+        req = net.request({ method: 'GET', url, headers: headers || {} });
+      } catch (err) { return finish({ error: 'Could not start the request — check the endpoint URL.' }); }
+      timer = setTimeout(() => { try { req.abort(); } catch {} }, 20_000);
+      let bufs = [], total = 0;
+      req.on('response', (res) => {
+        res.on('data', (c) => {
+          total += c.length;
+          if (total > 4_000_000) { finish({ error: 'Model list was too large.' }); try { req.abort(); } catch {} return; }
+          bufs.push(c);
+        });
+        res.on('end', () => {
+          if (settled) return;
+          let json = null;
+          try { json = JSON.parse(Buffer.concat(bufs).toString('utf8')); } catch {}
+          finish({ status: res.statusCode, json });
+        });
+      });
+      req.on('abort', () => finish({ error: 'Request timed out.' }));
+      req.on('error', (err) => finish({ error: err.message || 'Network error.' }));
       req.end();
     });
+  }
+
+  // Ids that are real models but can't hold a conversation — embeddings, audio,
+  // image and moderation endpoints. Offering them in a chat picker only
+  // produces a puzzling error later.
+  const NON_CHAT_RE = /embed|whisper|tts|audio|realtime|dall-e|imagen|veo|moderation|rerank|aqa|vision-only|codestral-embed/i;
+
+  function modelListHeaders(cfg, apiKey) {
+    if (cfg.family === 'anthropic') {
+      return { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' };
+    }
+    return apiKey ? { Authorization: 'Bearer ' + apiKey } : {};
+  }
+
+  // Every provider here returns OpenAI's { data: [{ id }] } envelope —
+  // Anthropic's /v1/models does too — so one parser covers all of them.
+  async function fetchModelList(opts) {
+    opts = normalizeAiOpts(opts);
+    const cfg = resolveAiProvider(opts);
+    const apiKey = String(opts.apiKey || '').trim();
+
+    let url = cfg.modelsUrl;
+    if (cfg.id === 'custom') {
+      // Derive /models from whatever chat URL they gave us.
+      const base = String(opts.baseUrl || '').trim();
+      if (!base) return { ok: false, error: 'Add your endpoint URL first.' };
+      url = base.replace(/\/chat\/completions\/?$/, '/models');
+      if (url === base) url = base.replace(/\/+$/, '') + '/models';
+    }
+    if (!url) return { ok: false, error: 'This provider has no model list.' };
+    if (!apiKey && cfg.id !== 'openrouter' && cfg.id !== 'custom') {
+      return { ok: false, needsKey: true, error: cfg.needsKey };
+    }
+
+    const res = await getJson(url, modelListHeaders(cfg, apiKey));
+    if (res.error) return { ok: false, error: res.error };
+    if (res.status >= 400) return { ok: false, ...aiHttpError(res.status, res.json, cfg.id) };
+
+    const raw = res.json && (res.json.data || res.json.models);
+    if (!Array.isArray(raw)) return { ok: false, error: 'That endpoint did not return a model list.' };
+
+    const models = [];
+    const seen = new Set();
+    raw.forEach((m) => {
+      // Google's OpenAI-compatible layer prefixes ids with "models/"; the chat
+      // endpoint takes them bare, and bare is what our fallback list uses.
+      let id = String((m && (m.id || m.name)) || '').replace(/^models\//, '').trim();
+      if (!id || seen.has(id) || NON_CHAT_RE.test(id)) return;
+      seen.add(id);
+      const pricing = m && m.pricing;
+      const free = /:free$/.test(id) ||
+        !!(pricing && Number(pricing.prompt) === 0 && Number(pricing.completion) === 0);
+      models.push({ id, free });
+    });
+    if (!models.length) return { ok: false, error: 'No chat models came back.' };
+
+    // Free first, then alphabetical — on OpenRouter that is the difference
+    // between a usable picker and 400 unsorted ids.
+    models.sort((a, b) => (a.free === b.free ? a.id.localeCompare(b.id) : (a.free ? -1 : 1)));
+    return { ok: true, models };
+  }
+
+  ipcMain.handle('ai-list-models', async (_e, payload) => fetchModelList(payload && payload.ai));
+  // --- Adapter A: OpenAI-compatible (OpenRouter, OpenAI, Google AI Studio, custom) ---
+  async function fetchAiChatOnce(messages, apiKey, model, cfg) {
+    const headers = { ...cfg.headers };
+    // A local runtime may not want an Authorization header at all.
+    if (apiKey) headers.Authorization = 'Bearer ' + apiKey;
+
+    const res = await postJson(cfg.url, headers, { model, messages, temperature: 0.7 });
+    if (res.error) return { ok: false, error: res.error };
+    if (res.status >= 400) return aiHttpError(res.status, res.json, 'AI');
+
+    const json = res.json;
+    const content = json && json.choices && json.choices[0] &&
+      json.choices[0].message && json.choices[0].message.content;
+    if (typeof content !== 'string' || !content.trim()) {
+      return { ok: false, error: 'No text came back.' };
+    }
+    return { ok: true, text: content.trim() };
+  }
+
+  // --- Adapter B: Anthropic (Claude) ---
+  // Four things differ from adapter A and each one is a hard failure if missed:
+  //   * auth is `x-api-key` + `anthropic-version`, not a bearer token
+  //   * the system prompt is a TOP-LEVEL field, not a message with role:system
+  //   * the reply lives in content[] blocks, not choices[0].message.content
+  //   * max_tokens is required
+  // We also deliberately send NO `temperature`: sampling parameters are removed
+  // on current Claude models and come back as a 400. Nothing else is sent
+  // either (no thinking/effort config) — the defaults work on every Claude
+  // model, whereas `effort` errors on the Haiku tier.
+  async function fetchAnthropicOnce(messages, apiKey, model, cfg) {
+    const list = Array.isArray(messages) ? messages : [];
+    const system = list.filter((m) => m && m.role === 'system')
+      .map((m) => String(m.content || '')).join('\n\n');
+    const turns = list.filter((m) => m && m.role !== 'system')
+      .map((m) => ({
+        role: m.role === 'assistant' ? 'assistant' : 'user',
+        content: String(m.content || '')
+      }))
+      .filter((m) => m.content);
+    if (!turns.length) return { ok: false, error: 'Message is empty.' };
+
+    const payload = { model, max_tokens: 8192, messages: turns };
+    if (system) payload.system = system;
+
+    const res = await postJson(cfg.url, {
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01'
+    }, payload);
+    if (res.error) return { ok: false, error: res.error };
+    if (res.status >= 400) return aiHttpError(res.status, res.json, 'Anthropic');
+
+    const json = res.json;
+    if (json && json.stop_reason === 'refusal') {
+      return { ok: false, error: 'Claude declined this request.' };
+    }
+    const block = json && Array.isArray(json.content) &&
+      json.content.find((b) => b && b.type === 'text' && typeof b.text === 'string' && b.text.trim());
+    if (!block) return { ok: false, error: 'No text came back.' };
+    return { ok: true, text: block.text.trim() };
   }
 
   // System prompts for each AI text action. All share the same rule: return
@@ -1305,35 +1622,42 @@ if (!app.requestSingleInstanceLock()) {
     ' Output ONLY the resulting text — no explanations, no preamble, no markdown code fences, and no ' +
     'surrounding quotation marks.';
 
-  function runAiAction(action, text, apiKey) {
-    const sys = AI_ACTION_PROMPTS[action];
+  // `opts.prompt` carries a user-written custom instruction; when it's absent
+  // this falls back to the built-in prompt for `action`. Either way the shared
+  // output rule is appended here, so a custom action can't come back wrapped in
+  // a preamble or code fences.
+  function runAiAction(action, text, opts) {
+    opts = normalizeAiOpts(opts);
+    const custom = String(opts.prompt || '').trim().slice(0, 2000);
+    const sys = custom || AI_ACTION_PROMPTS[action];
     if (!sys) return Promise.resolve({ ok: false, error: 'Unknown action.' });
     text = String(text || '').trim().slice(0, 8000);
     if (!text) return Promise.resolve({ ok: false, error: 'Nothing to work on — the text is empty.' });
     return fetchAiChat([
       { role: 'system', content: sys + AI_OUTPUT_RULE },
       { role: 'user', content: text }
-    ], apiKey);
+    ], opts);
   }
 
   ipcMain.handle('ai-transform', async (_e, payload) => {
     const action = payload && payload.action;
     const text = payload && payload.text;
-    const apiKey = payload && payload.apiKey;
-    return runAiAction(action, text, apiKey);
+    const opts = normalizeAiOpts(payload && (payload.ai || payload.apiKey));
+    if (payload && payload.prompt) opts.prompt = payload.prompt;
+    return runAiAction(action, text, opts);
   });
 
   // Kept for back-compat with the existing improvePrompt bridge.
   ipcMain.handle('improve-prompt', async (_e, payload) => {
-    // payload is { text, apiKey } (new) — tolerate a bare string too.
+    // payload is { text, ai } (new) — tolerate a bare string too.
     const text = typeof payload === 'string' ? payload : (payload && payload.text);
-    const apiKey = payload && typeof payload === 'object' ? payload.apiKey : '';
-    return runAiAction('improve', text, apiKey);
+    const opts = typeof payload === 'object' && payload ? (payload.ai || payload.apiKey) : '';
+    return runAiAction('improve', text, opts);
   });
 
   ipcMain.handle('chat-message', async (_e, payload) => {
     const history = payload && payload.history;
-    const apiKey = payload && payload.apiKey;
+    const opts = normalizeAiOpts(payload && (payload.ai || payload.apiKey));
     if (!Array.isArray(history)) return { ok: false, error: 'Invalid message history.' };
     // Cap both turn count and per-message size so a long-running conversation
     // can't grow into an unbounded request.
@@ -1349,7 +1673,17 @@ if (!app.requestSingleInstanceLock()) {
           'prompts. Keep replies concise and to the point.'
       },
       ...turns
-    ], apiKey);
+    ], opts);
+  });
+
+  // The renderer builds the model dropdown from this, so the catalog only ever
+  // lives in one place and the two processes can't drift apart.
+  ipcMain.handle('ai-providers', async () => {
+    const out = {};
+    Object.keys(AI_PROVIDERS).forEach((id) => {
+      out[id] = { family: AI_PROVIDERS[id].family, models: AI_PROVIDERS[id].models.slice() };
+    });
+    return out;
   });
 
   // Free (rate-limited) speech-to-text via Hugging Face's hosted Whisper —

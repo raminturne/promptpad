@@ -1786,7 +1786,8 @@ body {
   text-transform: uppercase;
 }
 
-.mini-dialog input {
+.mini-dialog input,
+.mini-dialog textarea {
   background: var(--bg);
   border: 1px solid var(--border-strong);
   border-radius: 7px;
@@ -1798,7 +1799,8 @@ body {
   width: 100%;
   user-select: text;
 }
-.mini-dialog input:focus { border-color: var(--accent); }
+.mini-dialog input:focus,
+.mini-dialog textarea:focus { border-color: var(--accent); }
 
 .mini-dialog-actions {
   display: flex;
@@ -4154,3 +4156,131 @@ body:has(.app.fx-blackout) { background: #14100c; }
 }
 .app.fx-keys .placeholder-tag,
 .app.fx-keys .todo-mark { transition: color 0.18s ease-out; }
+
+/* ---------- AI provider & model pickers (Settings) ---------- */
+.set-field-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 8px 0;
+}
+.set-field-label {
+  flex: 0 0 auto;
+  min-width: 58px;
+  font-size: 12px;
+  color: var(--muted);
+}
+/* The app uses segmented controls almost everywhere, but five providers don't
+   fit across this window — a select keeps the row one line at any width. */
+.set-select {
+  flex: 1;
+  cursor: pointer;
+  padding-right: 6px;
+}
+.set-select:focus { border-color: var(--accent); }
+
+/* ---------- Custom AI actions (Settings list) ---------- */
+.custom-actions-list { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; }
+.custom-action-empty { opacity: 0.7; margin: 4px 0; }
+.custom-action-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  padding: 7px 10px;
+}
+.custom-action-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.custom-action-name { font-size: 12.5px; color: var(--text); }
+/* Prompts can be long — keep each row one line tall. */
+.custom-action-prompt {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.custom-action-btns { flex: 0 0 auto; display: flex; gap: 4px; }
+.custom-action-btn {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 3px 5px;
+  border-radius: 5px;
+  line-height: 1;
+}
+.custom-action-btn:hover { background: var(--elevated-hi); color: var(--text); }
+.custom-action-add { align-self: flex-start; margin-top: 4px; }
+
+/* ---------- Custom instruction dialog ---------- */
+.ai-custom-input {
+  resize: vertical;
+  min-height: 56px;
+  line-height: 1.45;
+  font-size: 13px;
+}
+.ai-custom-save {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+}
+.ai-custom-save input { width: auto; margin: 0; cursor: pointer; }
+
+/* Recent instructions sit below the saved ones and read as secondary. */
+.ctx-item.ctx-dim { color: var(--muted); }
+.ctx-item.ctx-dim:hover { color: var(--text); }
+
+/* ---------- Live model list ---------- */
+.model-refresh {
+  flex: 0 0 auto;
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  padding: 7px 9px;
+}
+.model-refresh:hover { color: var(--text); border-color: var(--accent); }
+.model-refresh.spinning { animation: model-spin 0.9s linear infinite; pointer-events: none; }
+@keyframes model-spin { to { transform: rotate(360deg); } }
+
+.model-status { margin: 2px 0 0; font-size: 11px; opacity: 0.75; }
+/* Only for the case worth interrupting over: a saved model that no longer
+   exists, or a list that wouldn't load. */
+.model-status-warn { color: var(--danger, #e2686b); opacity: 1; }
+
+/* ---------- Recent AI instructions (pin / forget) ---------- */
+.ctx-item-recent { display: flex; align-items: center; gap: 6px; }
+/* The label takes the slack and clips; the buttons keep their size, so a long
+   instruction can't push them out of the menu. */
+.ctx-item-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ctx-item-btns { flex: 0 0 auto; display: flex; gap: 1px; opacity: 0.45; }
+/* Visible at rest so they're discoverable, brighter on the row you're on. */
+.ctx-item-recent:hover .ctx-item-btns { opacity: 1; }
+.ctx-mini-btn {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 11px;
+  line-height: 1;
+  padding: 3px 4px;
+  border-radius: 4px;
+}
+.ctx-mini-btn:hover { background: var(--elevated-hi); color: var(--text); }
+.ctx-mini-btn.js-pin:hover { color: var(--accent); }

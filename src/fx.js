@@ -785,6 +785,48 @@
         if (memory.length > 60) memory.shift();
       };
 
+      // A note you open has a past too. Without this, memory only ever filled
+      // from `beforeinput`, so opening a note you wrote yesterday haunted you
+      // with nothing at all until you typed — the room was empty precisely
+      // where it had the most to remember. Seeding from the note's own words
+      // costs nothing extra downstream: echo() already drops any word that
+      // isn't in the note, so seeded and typed words are the same kind of thing.
+      const seedFromNote = () => {
+        const ed = document.querySelector('.editor-area');
+        const text = ed ? ed.textContent : '';
+        if (!text || !text.trim()) { memory = []; return; }
+        // Words, not fragments — the same "longer than one character" bar that
+        // remember() applies to what you type.
+        const seen = new Set(memory.map((m) => m.text));
+        const words = [];
+        for (const raw of text.split(/[\s.,;:!?()[\]{}"'«»…،؛؟]+/)) {
+          const w = raw.trim().slice(0, 40);
+          if (w.length < 2 || seen.has(w)) continue;
+          seen.add(w);
+          words.push({ text: w, rtl: RTL_RE.test(w) });
+        }
+        // Take a spread across the whole note rather than the first 60 words,
+        // so a long note doesn't only ever echo its opening paragraph.
+        for (let i = words.length - 1; i > 0; i--) {
+          const j = (Math.random() * (i + 1)) | 0;
+          [words[i], words[j]] = [words[j], words[i]];
+        }
+        memory = memory.concat(words).slice(-60);
+      };
+
+      // Re-seed whenever the editor's whole content is swapped (tab switch,
+      // undo, a whole-tab AI action). setEditorText() in the renderer raises
+      // this; typing never does.
+      const onNoteLoaded = () => {
+        memory = [];
+        noteAt = 0;      // drop the cached note text so inNote() re-reads it
+        seedFromNote();
+      };
+      document.addEventListener('pp:note-loaded', onNoteLoaded);
+      this._onNoteLoaded = onNoteLoaded;
+      // The editor is already populated when a theme is switched on mid-session.
+      seedFromNote();
+
       // What the note says right now. Read straight off the editor (the raw
       // lines are kept in the DOM even in markdown mode) and cached for a
       // moment, so checking a word costs nothing.
@@ -897,8 +939,10 @@
       stopRaf();
       if (this._resize) window.removeEventListener('resize', this._resize);
       if (this._onInput) document.removeEventListener('beforeinput', this._onInput, true);
+      if (this._onNoteLoaded) document.removeEventListener('pp:note-loaded', this._onNoteLoaded);
       this._resize = null;
       this._onInput = null;
+      this._onNoteLoaded = null;
     }
   };
 

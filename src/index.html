@@ -856,19 +856,104 @@
             </div>
             <div id="aiKeyFields">
             <p class="set-hint help-en">Powers AI Chat, Improve, and the AI actions (translate, summarize, fix grammar…).
-              Each person uses their own free key, so everyone gets their own limits.</p>
+              Each person uses their own key, so everyone gets their own limits.</p>
             <p class="set-hint help-fa" dir="rtl">پشتِ چت هوش مصنوعی، Improve و اکشن‌های AI (ترجمه، خلاصه‌سازی، اصلاح گرامر…) همینه.
-              هر کاربر با کلیدِ رایگانِ خودش کار می‌کنه، پس لیمیتِ هرکس برای خودشه.</p>
-            <input type="password" id="aiApiKeyInput" class="text-input" placeholder="OpenRouter API key (sk-or-v1-…)" autocomplete="off" spellcheck="false" />
-            <p class="backup-note help-en">Free — create a key at
-              <a href="#" class="about-link" data-url="https://openrouter.ai/keys">openrouter.ai/keys</a>
-              (free account, no card required), then paste it here. Uses OpenRouter's free models. Stored
-              locally, same as your other preferences.</p>
-            <p class="backup-note help-fa" dir="rtl">رایگان — یه کلید بساز از
-              <a href="#" class="about-link" data-url="https://openrouter.ai/keys">openrouter.ai/keys</a>
-              (حسابِ رایگان، بدون کارت بانکی)، بعد همین‌جا بذارش. از مدل‌های رایگانِ OpenRouter استفاده می‌کنه.
-              فقط روی همین دستگاه ذخیره می‌شه.</p>
+              هر کاربر با کلیدِ خودش کار می‌کنه، پس لیمیتِ هرکس برای خودشه.</p>
+
+            <div class="set-field-row">
+              <label class="set-field-label" for="aiProviderSelect">Provider</label>
+              <select id="aiProviderSelect" class="text-input set-select">
+                <option value="openrouter">OpenRouter (free)</option>
+                <option value="openai">OpenAI</option>
+                <option value="google">Google AI Studio</option>
+                <option value="anthropic">Anthropic (Claude)</option>
+                <option value="custom">Custom endpoint…</option>
+              </select>
             </div>
+            <div class="set-field-row">
+              <label class="set-field-label" for="aiModelSelect">Model</label>
+              <select id="aiModelSelect" class="text-input set-select"></select>
+            </div>
+            <p class="backup-note help-en"><b>Auto</b> tries the provider's models in order and moves on
+              when one is busy. Picking a model uses only that one.</p>
+            <p class="backup-note help-fa" dir="rtl">حالتِ <b>Auto</b> مدل‌ها رو به‌ترتیب امتحان می‌کنه و اگه یکی
+              شلوغ بود می‌ره سراغِ بعدی. اگه مدلی رو انتخاب کنی فقط از همون استفاده می‌شه.</p>
+
+            <!-- OpenRouter -->
+            <div id="aiOpenrouterFields">
+              <input type="password" id="aiApiKeyInput" class="text-input" placeholder="OpenRouter API key (sk-or-v1-…)" autocomplete="off" spellcheck="false" />
+              <p class="backup-note help-en">Free — create a key at
+                <a href="#" class="about-link" data-url="https://openrouter.ai/keys">openrouter.ai/keys</a>
+                (free account, no card required), then paste it here. Uses OpenRouter's free models. Stored
+                locally, same as your other preferences.</p>
+              <p class="backup-note help-fa" dir="rtl">رایگان — یه کلید بساز از
+                <a href="#" class="about-link" data-url="https://openrouter.ai/keys">openrouter.ai/keys</a>
+                (حسابِ رایگان، بدون کارت بانکی)، بعد همین‌جا بذارش. از مدل‌های رایگانِ OpenRouter استفاده می‌کنه.
+                فقط روی همین دستگاه ذخیره می‌شه.</p>
+            </div>
+
+            <!-- OpenAI -->
+            <div id="aiOpenaiFields" class="hidden">
+              <input type="password" id="aiOpenaiKeyInput" class="text-input" placeholder="OpenAI API key (sk-…)" autocomplete="off" spellcheck="false" />
+              <p class="backup-note help-en">Paid (pay-as-you-go) — create a key at
+                <a href="#" class="about-link" data-url="https://platform.openai.com/api-keys">platform.openai.com/api-keys</a>.
+                Stored locally, same as your other preferences.</p>
+              <p class="backup-note help-fa" dir="rtl">پولی (به‌اندازه‌ی مصرف) — کلید رو از
+                <a href="#" class="about-link" data-url="https://platform.openai.com/api-keys">platform.openai.com/api-keys</a>
+                بگیر. فقط روی همین دستگاه ذخیره می‌شه.</p>
+            </div>
+
+            <!-- Google AI Studio -->
+            <div id="aiGoogleFields" class="hidden">
+              <input type="password" id="aiGoogleKeyInput" class="text-input" placeholder="Google AI Studio key (AIza…)" autocomplete="off" spellcheck="false" />
+              <p class="backup-note help-en">Has a free tier — create a key at
+                <a href="#" class="about-link" data-url="https://aistudio.google.com/apikey">aistudio.google.com/apikey</a>.
+                This is separate from the Gemini key used for image generation. Stored locally.</p>
+              <p class="backup-note help-fa" dir="rtl">سقفِ رایگان داره — کلید رو از
+                <a href="#" class="about-link" data-url="https://aistudio.google.com/apikey">aistudio.google.com/apikey</a>
+                بساز. این کلید از کلیدِ Gemini برای ساختِ تصویر جداست. فقط روی همین دستگاه ذخیره می‌شه.</p>
+            </div>
+
+            <!-- Anthropic (Claude) -->
+            <div id="aiAnthropicFields" class="hidden">
+              <input type="password" id="aiAnthropicKeyInput" class="text-input" placeholder="Anthropic API key (sk-ant-…)" autocomplete="off" spellcheck="false" />
+              <p class="backup-note help-en">Paid (pay-as-you-go) — create a key at
+                <a href="#" class="about-link" data-url="https://console.anthropic.com/settings/keys">console.anthropic.com</a>.
+                <b>A Claude.ai Pro/Max subscription will not work here</b> — it's a separate product and issues no
+                API key. To use Claude on a subscription-like budget, pick OpenRouter above and choose an
+                <code>anthropic/claude-…</code> model instead.</p>
+              <p class="backup-note help-fa" dir="rtl">پولی (به‌اندازه‌ی مصرف) — کلید رو از
+                <a href="#" class="about-link" data-url="https://console.anthropic.com/settings/keys">console.anthropic.com</a>
+                بگیر. <b>اشتراکِ Claude.ai Pro/Max اینجا کار نمی‌کنه</b> — محصولِ جداییه و کلیدِ API نمی‌ده.
+                اگه می‌خوای Claude رو ارزون‌تر امتحان کنی، بالا OpenRouter رو انتخاب کن و یکی از مدل‌های
+                <code>anthropic/claude-…</code> رو بردار.</p>
+            </div>
+
+            <!-- Any OpenAI-compatible endpoint -->
+            <div id="aiCustomFields" class="hidden">
+              <input type="text" id="aiCustomUrlInput" class="text-input" placeholder="https://api.example.com/v1/chat/completions" autocomplete="off" spellcheck="false" />
+              <input type="password" id="aiCustomKeyInput" class="text-input" placeholder="API key (leave empty for local servers)" autocomplete="off" spellcheck="false" />
+              <input type="text" id="aiCustomModelsInput" class="text-input" placeholder="Model names, comma separated" autocomplete="off" spellcheck="false" />
+              <p class="backup-note help-en">Any OpenAI-compatible chat-completions endpoint — Groq, DeepSeek,
+                Together, Mistral, or a local runtime like Ollama and LM Studio (those need no key).</p>
+              <p class="backup-note help-fa" dir="rtl">هر سرویسی که با فرمتِ OpenAI سازگار باشه — Groq، DeepSeek،
+                Together، Mistral، یا سرویس‌های محلی مثل Ollama و LM Studio (اونا کلید نمی‌خوان).</p>
+            </div>
+            </div>
+          </section>
+
+          <!-- Custom AI actions -->
+          <section class="set-group" id="customActionsGroup">
+            <div class="set-label-row">
+              <h3 class="set-label">Custom AI actions</h3>
+              <button type="button" class="lang-toggle" title="فارسی / English"><span class="lt-to-fa">فارسی</span><span class="lt-to-en">English</span></button>
+            </div>
+            <p class="set-hint help-en">Your own instructions, added to the AI actions menu. Select some text,
+              right-click → AI actions, and pick one.</p>
+            <p class="set-hint help-fa" dir="rtl">دستورهای خودت که به منوی AI actions اضافه می‌شن. یه متن رو
+              انتخاب کن، راست‌کلیک → AI actions، و یکی رو بزن.</p>
+            <div id="customActionsList" class="custom-actions-list"></div>
+            <button type="button" id="customActionAdd" class="mini-dialog-save custom-action-add">+ Add action</button>
           </section>
 
           <!-- Speech to text -->
@@ -1317,17 +1402,29 @@
     </div>
 
     <!-- AI actions menu (opens from the editor right-click menu or by
-         right-clicking the Improve button) -->
-    <div id="aiActionsMenu" class="ctx-menu hidden">
-      <div class="ctx-label">AI · on selection or whole tab</div>
-      <div class="ctx-item" data-ai-action="improve">Improve prompt</div>
-      <div class="ctx-item" data-ai-action="translate">Translate (FA ⇄ EN)</div>
-      <div class="ctx-item" data-ai-action="summarize">Summarize</div>
-      <div class="ctx-item" data-ai-action="grammar">Fix grammar &amp; spelling</div>
-      <div class="ctx-sep"></div>
-      <div class="ctx-item" data-ai-action="tone-professional">Make professional</div>
-      <div class="ctx-item" data-ai-action="tone-casual">Make casual</div>
-      <div class="ctx-item" data-ai-action="tone-concise">Make concise</div>
+         right-clicking the Improve button). Filled in by renderAiActionsMenu()
+         so saved custom actions and recent instructions appear alongside the
+         built-ins. -->
+    <div id="aiActionsMenu" class="ctx-menu hidden"></div>
+
+    <!-- Custom AI instruction — write a one-off instruction for the selected
+         text, optionally saving it as a reusable action. -->
+    <div id="aiCustomDialog" class="mini-dialog hidden">
+      <span class="mini-dialog-label">Custom AI instruction</span>
+      <textarea id="aiCustomInput" class="mini-dialog-input ai-custom-input" rows="3"
+        spellcheck="false" placeholder="e.g. list these lines by topic"></textarea>
+      <p class="mini-dialog-text" id="aiCustomScope"></p>
+      <label class="ai-custom-save">
+        <input type="checkbox" id="aiCustomSave" />
+        <span>Save as action</span>
+      </label>
+      <div id="aiCustomNameRow" class="hidden">
+        <input type="text" id="aiCustomName" class="mini-dialog-input" placeholder="Action name" spellcheck="false" />
+      </div>
+      <div class="mini-dialog-actions">
+        <button id="aiCustomCancel" class="mini-dialog-cancel">Cancel</button>
+        <button id="aiCustomRun" class="mini-dialog-save">Run</button>
+      </div>
     </div>
 
     <!-- Export format flyout (from "Export as file…" on a tab or group).

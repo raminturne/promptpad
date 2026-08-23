@@ -43,9 +43,12 @@ contextBridge.exposeInMainWorld('api', {
   saveImage: (base64, ext) => ipcRenderer.invoke('save-image', base64, ext),
   saveMedia: (base64, ext) => ipcRenderer.invoke('save-media', base64, ext),
   generateImage: (prompt, opts) => ipcRenderer.invoke('generate-image', prompt, opts),
-  improvePrompt: (text, apiKey) => ipcRenderer.invoke('improve-prompt', { text, apiKey }),
-  aiTransform: (action, text, apiKey) => ipcRenderer.invoke('ai-transform', { action, text, apiKey }),
-  chatMessage: (history, apiKey) => ipcRenderer.invoke('chat-message', { history, apiKey }),
+  // `ai` is { provider, model, apiKey, baseUrl, models } — see aiOpts() in the
+  // renderer. `prompt` is only set for a custom AI action.
+  improvePrompt: (text, ai) => ipcRenderer.invoke('improve-prompt', { text, ai }),
+  aiTransform: (action, text, ai, prompt) => ipcRenderer.invoke('ai-transform', { action, text, ai, prompt }),
+  chatMessage: (history, ai) => ipcRenderer.invoke('chat-message', { history, ai }),
+  aiProviders: () => ipcRenderer.invoke('ai-providers'),
   transcribeAudio: (base64, mimeType, opts) => ipcRenderer.invoke('transcribe-audio', base64, mimeType, opts),
   downloadImage: (filename) => ipcRenderer.invoke('download-image', filename),
   revealImage: (filename) => ipcRenderer.invoke('reveal-image', filename),

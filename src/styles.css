@@ -1786,7 +1786,8 @@ body {
   text-transform: uppercase;
 }
 
-.mini-dialog input {
+.mini-dialog input,
+.mini-dialog textarea {
   background: var(--bg);
   border: 1px solid var(--border-strong);
   border-radius: 7px;
@@ -1798,7 +1799,8 @@ body {
   width: 100%;
   user-select: text;
 }
-.mini-dialog input:focus { border-color: var(--accent); }
+.mini-dialog input:focus,
+.mini-dialog textarea:focus { border-color: var(--accent); }
 
 .mini-dialog-actions {
   display: flex;
@@ -4154,3 +4156,83 @@ body:has(.app.fx-blackout) { background: #14100c; }
 }
 .app.fx-keys .placeholder-tag,
 .app.fx-keys .todo-mark { transition: color 0.18s ease-out; }
+
+/* ---------- AI provider & model pickers (Settings) ---------- */
+.set-field-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 8px 0;
+}
+.set-field-label {
+  flex: 0 0 auto;
+  min-width: 58px;
+  font-size: 12px;
+  color: var(--muted);
+}
+/* The app uses segmented controls almost everywhere, but five providers don't
+   fit across this window — a select keeps the row one line at any width. */
+.set-select {
+  flex: 1;
+  cursor: pointer;
+  padding-right: 6px;
+}
+.set-select:focus { border-color: var(--accent); }
+
+/* ---------- Custom AI actions (Settings list) ---------- */
+.custom-actions-list { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; }
+.custom-action-empty { opacity: 0.7; margin: 4px 0; }
+.custom-action-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  padding: 7px 10px;
+}
+.custom-action-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.custom-action-name { font-size: 12.5px; color: var(--text); }
+/* Prompts can be long — keep each row one line tall. */
+.custom-action-prompt {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.custom-action-btns { flex: 0 0 auto; display: flex; gap: 4px; }
+.custom-action-btn {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 3px 5px;
+  border-radius: 5px;
+  line-height: 1;
+}
+.custom-action-btn:hover { background: var(--elevated-hi); color: var(--text); }
+.custom-action-add { align-self: flex-start; margin-top: 4px; }
+
+/* ---------- Custom instruction dialog ---------- */
+.ai-custom-input {
+  resize: vertical;
+  min-height: 56px;
+  line-height: 1.45;
+  font-size: 13px;
+}
+.ai-custom-save {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+}
+.ai-custom-save input { width: auto; margin: 0; cursor: pointer; }
+
+/* Recent instructions sit below the saved ones and read as secondary. */
+.ctx-item.ctx-dim { color: var(--muted); }
+.ctx-item.ctx-dim:hover { color: var(--text); }

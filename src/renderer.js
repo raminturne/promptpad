@@ -8421,26 +8421,48 @@ const CURRENT_VERSION = document.getElementById('aboutVersion').textContent.repl
 const WHATS_NEW =
   "What's new in v" + CURRENT_VERSION + " ✨\n" +
   '\n' +
-  '• The Blackout candle holds its light steady now. It used to flare up on\n' +
-  '   every keystroke and sink while you paused; the room brightening under\n' +
-  '   your hands was the opposite of what that theme is for. Only the flame\n' +
-  '   moves, following the word you are writing.\n' +
-  '• And it looks like a flame: built from a shape that is widest a third of\n' +
-  '   the way up, rippling as it burns, drawn in four soft layers from the\n' +
-  '   hot air around it down to the blue at the wick.\n' +
+  '• Write your own AI actions. Select some text, right-click → AI actions →\n' +
+  '   "Custom instruction…", and tell it what you want: "list these lines by\n' +
+  '   topic", "turn this into a table". Tick "Save as action" and it joins the\n' +
+  '   menu for next time. Your saved actions live in Settings.\n' +
+  '• AI actions now respect a selection that spans more than one line. They\n' +
+  '   used to quietly rewrite the whole tab instead — and one Ctrl+Z puts a\n' +
+  '   selection back now, which it didn\'t before.\n' +
+  '• Pick your AI provider: OpenRouter (still free, still the default), OpenAI,\n' +
+  '   Google AI Studio, Anthropic (Claude), or any OpenAI-compatible endpoint —\n' +
+  '   including local ones like Ollama and LM Studio, which need no key at all.\n' +
+  '• Pick your model, too. Auto works exactly as before, trying the free models\n' +
+  '   in turn when one is busy; choose a specific model and only that one runs.\n' +
+  '• A note you open has a past. The Ghosts theme used to haunt you with\n' +
+  '   nothing until you typed — it now remembers the words already in the note.\n' +
+  '\n' +
+  'Note on Claude: it needs an API key from console.anthropic.com. A Claude.ai\n' +
+  'Pro/Max subscription is a separate product and issues no key — to try Claude\n' +
+  'cheaply, use OpenRouter and pick an anthropic/claude-… model.\n' +
   '\n' +
   'You can close this tab — it won\'t come back until the next update.\n' +
   '\n' +
   '\n' +
   'تازه‌ها در نسخه ' + CURRENT_VERSION + ' ✨\n' +
   '\n' +
-  '• شمعِ تم Blackout حالا نورش ثابت است. قبلاً با هر کلید شعله‌ور می‌شد و\n' +
-  '   موقع مکث پایین می‌آمد — روشن شدن اتاق زیر دست‌هایت، درست خلاف کاری\n' +
-  '   بود که این تم برایش ساخته شده. فقط خودِ شعله حرکت می‌کند و دنبال\n' +
-  '   کلمه‌ای می‌رود که می‌نویسی.\n' +
-  '• و حالا شبیه شعله است: شکلی که یک‌سومِ بالا پهن‌ترین جایش است، موقع\n' +
-  '   سوختن موج می‌خورد، و در چهار لایه‌ی نرم کشیده می‌شود — از هوای داغِ\n' +
-  '   دورش تا آبیِ محل فتیله.\n' +
+  '• اکشن‌های دلخواهِ خودت را بنویس. یک متن را انتخاب کن، راست‌کلیک ← AI actions\n' +
+  '   ← «دستور دلخواه…»، و هرچه می‌خواهی بگو: «این خط‌ها را بر اساس موضوع\n' +
+  '   دسته‌بندی کن»، «این را جدول کن». گزینه‌ی «ذخیره به‌عنوان اکشن» را بزن تا\n' +
+  '   دفعه‌ی بعد با یک کلیک در دسترس باشد. اکشن‌های ذخیره‌شده در تنظیمات هستند.\n' +
+  '• اکشن‌های AI حالا انتخابِ چندخطی را درست می‌فهمند. قبلاً بی‌صدا کلِ تب را\n' +
+  '   بازنویسی می‌کردند — و حالا یک Ctrl+Z متنِ انتخاب‌شده را برمی‌گرداند که\n' +
+  '   قبلاً اصلاً برنمی‌گشت.\n' +
+  '• سرویس‌دهنده‌ات را انتخاب کن: OpenRouter (هنوز رایگان و پیش‌فرض)، OpenAI،\n' +
+  '   Google AI Studio، انتروپیک (Claude)، یا هر سرویسِ سازگار با OpenAI —\n' +
+  '   از جمله سرویس‌های محلی مثل Ollama و LM Studio که اصلاً کلید نمی‌خواهند.\n' +
+  '• مدل را هم خودت انتخاب کن. حالتِ Auto دقیقاً مثل قبل کار می‌کند و اگر مدلی\n' +
+  '   شلوغ بود می‌رود سراغِ بعدی؛ اگر مدلی را انتخاب کنی فقط همان اجرا می‌شود.\n' +
+  '• هر نُتی گذشته‌ای دارد. تم Ghosts قبلاً تا وقتی تایپ نمی‌کردی هیچ‌چیز نشان\n' +
+  '   نمی‌داد — حالا کلماتی را که از قبل در نُت هستند به یاد می‌آورد.\n' +
+  '\n' +
+  'درباره‌ی Claude: به کلیدِ API از console.anthropic.com نیاز دارد. اشتراکِ\n' +
+  'Claude.ai Pro/Max محصولی جداست و کلید نمی‌دهد — برای امتحانِ ارزانِ Claude،\n' +
+  'از OpenRouter استفاده کن و یکی از مدل‌های anthropic/claude-… را بردار.\n' +
   '\n' +
   'این تب را می‌توانی ببندی — تا آپدیت بعدی دیگر برنمی‌گردد.';
 

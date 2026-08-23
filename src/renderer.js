@@ -5690,9 +5690,46 @@ function improvePromptNote() { return runTabAiAction('improve'); }
 // dialog moves focus into a textarea and destroys the editor selection.
 let aiMenuRange = null;
 
+// The recent instructions currently drawn in the menu. Held as a snapshot so a
+// row's index stays valid between render and click.
+let aiMenuRecents = [];
+
 function truncateLabel(s, n) {
   s = String(s || '').replace(/\s+/g, ' ').trim();
   return s.length > n ? s.slice(0, n - 1) + '…' : s;
+}
+
+// One recent instruction: click the row to run it, ★ to keep it as a saved
+// action, ✕ to forget it. dir="auto" so a Persian instruction reads correctly
+// while the row itself stays laid out the same way.
+function addRecentRow(prompt, idx) {
+  const el = document.createElement('div');
+  el.className = 'ctx-item ctx-dim ctx-item-recent';
+  el.dataset.aiRecent = String(idx);
+
+  const label = document.createElement('span');
+  label.className = 'ctx-item-label';
+  label.setAttribute('dir', 'auto');
+  label.textContent = '↻ ' + truncateLabel(prompt, 28);
+  label.title = prompt;
+  el.appendChild(label);
+
+  const btns = document.createElement('span');
+  btns.className = 'ctx-item-btns';
+  const mini = (cls, glyph, title) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'ctx-mini-btn ' + cls;
+    b.textContent = glyph;
+    b.title = title;
+    btns.appendChild(b);
+  };
+  mini('js-pin', '★', tr('ai.pin', 'Keep as an action'));
+  mini('js-forget', '✕', tr('ai.forget', 'Remove from recents'));
+  el.appendChild(btns);
+
+  aiActionsMenu.appendChild(el);
+  return el;
 }
 
 // Rebuild the menu from the built-ins plus whatever the user has saved. Called
@@ -5724,10 +5761,14 @@ function renderAiActionsMenu() {
     saved.forEach((a) => add('ctx-item', '★ ' + truncateLabel(a.name, 34), { aiCustom: a.id }));
   }
 
-  const recents = recentAiPrompts().filter((p) => !saved.some((a) => a.prompt === p));
-  if (recents.length) {
+  // Recents are throwaway by nature, so each one carries its own controls:
+  // pin it to keep it as a real action, or drop it. Indices point into this
+  // snapshot rather than being recomputed later, so deleting one can't shift
+  // the row under a click.
+  aiMenuRecents = recentAiPrompts().filter((p) => !saved.some((a) => a.prompt === p)).slice(0, 3);
+  if (aiMenuRecents.length) {
     add('ctx-sep', '');
-    recents.slice(0, 3).forEach((p, i) => add('ctx-item ctx-dim', '↻ ' + truncateLabel(p, 34), { aiRecent: String(i) }));
+    aiMenuRecents.forEach((p, i) => addRecentRow(p, i));
   }
 
   add('ctx-sep', '');
@@ -5759,6 +5800,27 @@ aiActionsMenu.addEventListener('mousedown', (e) => e.preventDefault());
 aiActionsMenu.addEventListener('click', (e) => {
   const item = e.target.closest('[data-ai-action],[data-ai-custom],[data-ai-recent],[data-ai-manage]');
   if (!item) return;
+
+  // Pin / forget act on the row without running anything and without closing —
+  // tidying up a few recents in one go shouldn't mean reopening the menu each
+  // time. Handled before the run paths so a button click never fires the row.
+  const mini = e.target.closest('.ctx-mini-btn');
+  if (mini && item.dataset.aiRecent) {
+    e.stopPropagation();
+    const prompt = aiMenuRecents[Number(item.dataset.aiRecent)];
+    if (!prompt) return;
+    if (mini.classList.contains('js-pin')) {
+      customAiActions().push({ id: uid(), name: truncateLabel(prompt, 30), prompt });
+    }
+    // Pinned or dropped, it leaves the recents list either way — once it's a
+    // saved action, keeping a duplicate copy under "recent" is just noise.
+    settings.recentAiPrompts = recentAiPrompts().filter((p) => p !== prompt);
+    saveSettingsNow();
+    renderCustomActionsList();
+    renderAiActionsMenu();
+    return;
+  }
+
   const range = aiMenuRange;
   hideAiActionsMenu();
 
@@ -5771,10 +5833,12 @@ aiActionsMenu.addEventListener('click', (e) => {
       if (el) el.scrollIntoView({ block: 'center' });
     }, 60);
   } else if (item.dataset.aiRecent) {
-    const saved = customAiActions();
-    const recents = recentAiPrompts().filter((p) => !saved.some((a) => a.prompt === p));
-    const prompt = recents[Number(item.dataset.aiRecent)];
-    if (prompt) runTabAiAction('custom', prompt, range);
+    // Same snapshot the row was drawn from, so the index can't have drifted.
+    const prompt = aiMenuRecents[Number(item.dataset.aiRecent)];
+    if (prompt) {
+      rememberAiPrompt(prompt); // re-running it makes it the most recent again
+      runTabAiAction('custom', prompt, range);
+    }
   } else if (item.dataset.aiCustom === '__new__') {
     openAiCustomDialog(range);
   } else if (item.dataset.aiCustom) {

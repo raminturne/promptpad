@@ -160,6 +160,8 @@
     'AI · on the whole tab': 'هوش مصنوعی · روی کلِ تب',
     'Custom instruction…': 'دستور دلخواه…',
     'Manage custom actions…': 'مدیریت اکشن‌های دلخواه…',
+    'Keep as an action': 'نگه‌داشتن به‌عنوان اکشن',
+    'Remove from recents': 'حذف از اخیرها',
     // ---- custom instruction dialog ----
     'Custom AI instruction': 'دستور دلخواه هوش مصنوعی',
     'e.g. list these lines by topic': 'مثلاً: این خط‌ها رو بر اساس موضوع دسته‌بندی کن',

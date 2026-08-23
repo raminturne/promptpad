@@ -4257,3 +4257,30 @@ body:has(.app.fx-blackout) { background: #14100c; }
 /* Only for the case worth interrupting over: a saved model that no longer
    exists, or a list that wouldn't load. */
 .model-status-warn { color: var(--danger, #e2686b); opacity: 1; }
+
+/* ---------- Recent AI instructions (pin / forget) ---------- */
+.ctx-item-recent { display: flex; align-items: center; gap: 6px; }
+/* The label takes the slack and clips; the buttons keep their size, so a long
+   instruction can't push them out of the menu. */
+.ctx-item-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ctx-item-btns { flex: 0 0 auto; display: flex; gap: 1px; opacity: 0.45; }
+/* Visible at rest so they're discoverable, brighter on the row you're on. */
+.ctx-item-recent:hover .ctx-item-btns { opacity: 1; }
+.ctx-mini-btn {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 11px;
+  line-height: 1;
+  padding: 3px 4px;
+  border-radius: 4px;
+}
+.ctx-mini-btn:hover { background: var(--elevated-hi); color: var(--text); }
+.ctx-mini-btn.js-pin:hover { color: var(--accent); }

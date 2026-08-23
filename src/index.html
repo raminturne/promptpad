@@ -873,11 +873,15 @@
             <div class="set-field-row">
               <label class="set-field-label" for="aiModelSelect">Model</label>
               <select id="aiModelSelect" class="text-input set-select"></select>
+              <button type="button" id="aiModelRefresh" class="model-refresh" title="Fetch the model list from the provider">↻</button>
             </div>
+            <p class="set-hint model-status" id="aiModelStatus"></p>
             <p class="backup-note help-en"><b>Auto</b> tries the provider's models in order and moves on
-              when one is busy. Picking a model uses only that one.</p>
+              when one is busy. Picking a model uses only that one. Press ↻ to load the real list from
+              the provider using your key.</p>
             <p class="backup-note help-fa" dir="rtl">حالتِ <b>Auto</b> مدل‌ها رو به‌ترتیب امتحان می‌کنه و اگه یکی
-              شلوغ بود می‌ره سراغِ بعدی. اگه مدلی رو انتخاب کنی فقط از همون استفاده می‌شه.</p>
+              شلوغ بود می‌ره سراغِ بعدی. اگه مدلی رو انتخاب کنی فقط از همون استفاده می‌شه. با ↻ لیستِ واقعیِ
+              مدل‌ها با کلیدِ خودت از سرویس‌دهنده گرفته می‌شه.</p>
 
             <!-- OpenRouter -->
             <div id="aiOpenrouterFields">

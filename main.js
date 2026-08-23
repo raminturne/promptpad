@@ -1183,7 +1183,7 @@ if (!app.requestSingleInstanceLock()) {
   // Five backends, but only TWO wire protocols. OpenRouter, OpenAI, Google AI
   // Studio and any custom endpoint all speak OpenAI's chat-completions shape,
   // so they share one request/response path. Anthropic is the odd one out and
-  // gets its own adapter — but it returns the same { ok, text, rateLimited,
+  // gets its own adapter — but it returns the same { ok, text, tryNext,
   // error } shape, so nothing above this line has to care which one ran.
   //
   // OpenRouter stays the default: it works from regions where OpenAI and Google
@@ -1192,7 +1192,9 @@ if (!app.requestSingleInstanceLock()) {
     openrouter: {
       family: 'openai',
       url: 'https://openrouter.ai/api/v1/chat/completions',
-      // Solid free instruct models, verified working from the user's region.
+      modelsUrl: 'https://openrouter.ai/api/v1/models',
+      // Fallback list, used until the live one is fetched. Solid free instruct
+      // models, verified working from the user's region.
       // We DON'T use `openrouter/free` — its auto-router sometimes picks
       // non-chat models (e.g. a content-safety classifier).
       models: [
@@ -1209,6 +1211,7 @@ if (!app.requestSingleInstanceLock()) {
     openai: {
       family: 'openai',
       url: 'https://api.openai.com/v1/chat/completions',
+      modelsUrl: 'https://api.openai.com/v1/models',
       models: ['gpt-4o-mini', 'gpt-4o'],
       headers: {},
       needsKey: 'Add an OpenAI API key in Settings → AI.'
@@ -1219,6 +1222,7 @@ if (!app.requestSingleInstanceLock()) {
       // AI Studio key as a bearer token, so it rides the shared path rather
       // than needing a Gemini-shaped adapter of its own.
       url: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
+      modelsUrl: 'https://generativelanguage.googleapis.com/v1beta/openai/models',
       models: ['gemini-flash-latest', 'gemini-flash-lite-latest', 'gemini-pro-latest'],
       headers: {},
       needsKey: 'Add a Google AI Studio key in Settings → AI.'
@@ -1226,6 +1230,7 @@ if (!app.requestSingleInstanceLock()) {
     anthropic: {
       family: 'anthropic',
       url: 'https://api.anthropic.com/v1/messages',
+      modelsUrl: 'https://api.anthropic.com/v1/models',
       // Haiku first: it's the cheapest and fastest, which is the right default
       // for short text transforms. Note these need an API key from
       // console.anthropic.com — a Claude.ai Pro/Max subscription is a separate
@@ -1292,16 +1297,37 @@ if (!app.requestSingleInstanceLock()) {
     const models = wanted && wanted !== 'auto' ? [wanted] : cfg.models;
     if (!models.length) return { ok: false, error: 'No model is configured for this provider.' };
 
+    // One model, with a couple of quick retries when the provider itself
+    // wobbles (5xx). Without this a single Gemini 503 — which is routine on the
+    // free tier — reached the user as a failed action.
+    const TRANSIENT_TRIES = 3;
+    const once = async (model) => {
+      let res;
+      for (let i = 0; i < TRANSIENT_TRIES; i++) {
+        res = cfg.family === 'anthropic'
+          ? await fetchAnthropicOnce(messages, apiKey, model, cfg)
+          : await fetchAiChatOnce(messages, apiKey, model, cfg);
+        if (res.ok || !res.transient) return res;
+        // Back off with jitter so a retry doesn't land in the same overloaded
+        // moment (and so two PromptPad windows don't sync up).
+        if (i < TRANSIENT_TRIES - 1) await sleep(700 * Math.pow(2, i) + Math.random() * 400);
+      }
+      return res;
+    };
+
     let last = { ok: false, error: 'The AI is busy right now — wait a moment and try again.' };
     for (const model of models) {
-      const res = cfg.family === 'anthropic'
-        ? await fetchAnthropicOnce(messages, apiKey, model, cfg)
-        : await fetchAiChatOnce(messages, apiKey, model, cfg);
+      const res = await once(model);
       if (res.ok) return res;
       last = res;
-      if (!res.rateLimited) return res; // a real error (bad key, network) — stop here
+      if (!res.tryNext) return res; // a real error (bad key, network) — stop here
     }
-    return last; // every model was rate-limited
+    // Everything was busy. Say so in terms the user can act on, rather than
+    // leaving the last provider-worded retry message as the final answer.
+    if (last.transient && models.length > 1) {
+      return { ok: false, error: 'Every model was busy just now — try again in a moment.' };
+    }
+    return last;
   }
 
   // Shared HTTP plumbing for every provider: POST JSON, 40s timeout, 2MB cap.
@@ -1375,16 +1401,137 @@ if (!app.requestSingleInstanceLock()) {
     if (status === 401 || status === 403) {
       return { ok: false, error: 'The ' + label + ' key was rejected — check it in Settings → AI.' };
     }
-    // 529 is Anthropic's "overloaded"; treat it like a rate limit so `auto`
-    // moves on to the next model instead of giving up.
-    if (status === 429 || status === 529) {
-      return { ok: false, rateLimited: true, error: 'The AI is busy right now — wait a moment and try again.' };
+    if (status === 429) {
+      return { ok: false, tryNext: true, error: 'You have hit this provider\'s rate limit — wait a moment and try again.' };
+    }
+    // A model this key can't reach, or one the provider has since retired.
+    // Under `auto` that's a reason to try the next one, not to stop.
+    if (status === 404) {
+      return {
+        ok: false, tryNext: true,
+        error: "That model isn't available on your key — pick another in Settings → AI."
+      };
+    }
+    // 5xx means the provider's own end wobbled, not that anything is wrong with
+    // the request. Google's free tier throws 503 "model is overloaded" often
+    // enough that treating it as a hard failure made Gemini look broken; 529 is
+    // Anthropic's equivalent. These are worth retrying in place AND worth
+    // falling through on, which is what `transient` marks.
+    if (status >= 500) {
+      const busy = status === 503 || status === 529;
+      return {
+        ok: false,
+        tryNext: true,   // so `auto` still advances to the next model
+        transient: true, // and so the same model is retried first
+        error: busy
+          ? label + ' is overloaded right now (' + status + ') — retrying.'
+          : label + ' had a server error (' + status + ') — retrying.'
+      };
     }
     return {
       ok: false,
       error: apiMsg ? String(apiMsg).slice(0, 300) : 'Request failed (status ' + status + ').'
     };
   }
+
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  // ---- Live model lists ----------------------------------------------------
+  // The hard-coded lists above are only a fallback. Model names go stale fast
+  // (Google renames and retires them constantly), and a stale name reaches the
+  // user as a confusing 404, so the real list is fetched with their own key and
+  // the picker is built from that.
+  function getJson(url, headers) {
+    return new Promise((resolve) => {
+      let settled = false;
+      let timer;
+      const finish = (r) => { if (settled) return; settled = true; clearTimeout(timer); resolve(r); };
+      let req;
+      try {
+        req = net.request({ method: 'GET', url, headers: headers || {} });
+      } catch (err) { return finish({ error: 'Could not start the request — check the endpoint URL.' }); }
+      timer = setTimeout(() => { try { req.abort(); } catch {} }, 20_000);
+      let bufs = [], total = 0;
+      req.on('response', (res) => {
+        res.on('data', (c) => {
+          total += c.length;
+          if (total > 4_000_000) { finish({ error: 'Model list was too large.' }); try { req.abort(); } catch {} return; }
+          bufs.push(c);
+        });
+        res.on('end', () => {
+          if (settled) return;
+          let json = null;
+          try { json = JSON.parse(Buffer.concat(bufs).toString('utf8')); } catch {}
+          finish({ status: res.statusCode, json });
+        });
+      });
+      req.on('abort', () => finish({ error: 'Request timed out.' }));
+      req.on('error', (err) => finish({ error: err.message || 'Network error.' }));
+      req.end();
+    });
+  }
+
+  // Ids that are real models but can't hold a conversation — embeddings, audio,
+  // image and moderation endpoints. Offering them in a chat picker only
+  // produces a puzzling error later.
+  const NON_CHAT_RE = /embed|whisper|tts|audio|realtime|dall-e|imagen|veo|moderation|rerank|aqa|vision-only|codestral-embed/i;
+
+  function modelListHeaders(cfg, apiKey) {
+    if (cfg.family === 'anthropic') {
+      return { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' };
+    }
+    return apiKey ? { Authorization: 'Bearer ' + apiKey } : {};
+  }
+
+  // Every provider here returns OpenAI's { data: [{ id }] } envelope —
+  // Anthropic's /v1/models does too — so one parser covers all of them.
+  async function fetchModelList(opts) {
+    opts = normalizeAiOpts(opts);
+    const cfg = resolveAiProvider(opts);
+    const apiKey = String(opts.apiKey || '').trim();
+
+    let url = cfg.modelsUrl;
+    if (cfg.id === 'custom') {
+      // Derive /models from whatever chat URL they gave us.
+      const base = String(opts.baseUrl || '').trim();
+      if (!base) return { ok: false, error: 'Add your endpoint URL first.' };
+      url = base.replace(/\/chat\/completions\/?$/, '/models');
+      if (url === base) url = base.replace(/\/+$/, '') + '/models';
+    }
+    if (!url) return { ok: false, error: 'This provider has no model list.' };
+    if (!apiKey && cfg.id !== 'openrouter' && cfg.id !== 'custom') {
+      return { ok: false, needsKey: true, error: cfg.needsKey };
+    }
+
+    const res = await getJson(url, modelListHeaders(cfg, apiKey));
+    if (res.error) return { ok: false, error: res.error };
+    if (res.status >= 400) return { ok: false, ...aiHttpError(res.status, res.json, cfg.id) };
+
+    const raw = res.json && (res.json.data || res.json.models);
+    if (!Array.isArray(raw)) return { ok: false, error: 'That endpoint did not return a model list.' };
+
+    const models = [];
+    const seen = new Set();
+    raw.forEach((m) => {
+      // Google's OpenAI-compatible layer prefixes ids with "models/"; the chat
+      // endpoint takes them bare, and bare is what our fallback list uses.
+      let id = String((m && (m.id || m.name)) || '').replace(/^models\//, '').trim();
+      if (!id || seen.has(id) || NON_CHAT_RE.test(id)) return;
+      seen.add(id);
+      const pricing = m && m.pricing;
+      const free = /:free$/.test(id) ||
+        !!(pricing && Number(pricing.prompt) === 0 && Number(pricing.completion) === 0);
+      models.push({ id, free });
+    });
+    if (!models.length) return { ok: false, error: 'No chat models came back.' };
+
+    // Free first, then alphabetical — on OpenRouter that is the difference
+    // between a usable picker and 400 unsorted ids.
+    models.sort((a, b) => (a.free === b.free ? a.id.localeCompare(b.id) : (a.free ? -1 : 1)));
+    return { ok: true, models };
+  }
+
+  ipcMain.handle('ai-list-models', async (_e, payload) => fetchModelList(payload && payload.ai));
   // --- Adapter A: OpenAI-compatible (OpenRouter, OpenAI, Google AI Studio, custom) ---
   async function fetchAiChatOnce(messages, apiKey, model, cfg) {
     const headers = { ...cfg.headers };

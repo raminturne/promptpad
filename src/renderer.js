@@ -384,6 +384,8 @@ const aiAnthropicKeyInputEl = document.getElementById('aiAnthropicKeyInput');
 const aiCustomUrlInputEl = document.getElementById('aiCustomUrlInput');
 const aiCustomKeyInputEl = document.getElementById('aiCustomKeyInput');
 const aiCustomModelsInputEl = document.getElementById('aiCustomModelsInput');
+const aiModelRefreshBtn = document.getElementById('aiModelRefresh');
+const aiModelStatusEl = document.getElementById('aiModelStatus');
 const AI_PROVIDER_FIELD_IDS = {
   openrouter: 'aiOpenrouterFields', openai: 'aiOpenaiFields', google: 'aiGoogleFields',
   anthropic: 'aiAnthropicFields', custom: 'aiCustomFields'
@@ -2868,15 +2870,40 @@ function aiKey() {
   return (settings.ai && settings.ai[meta.keyField]) || '';
 }
 
-// Models offered for the active provider. A custom endpoint has no catalog
-// entry, so its list comes from whatever the user typed.
+// Models fetched from the provider with the user's own key, kept per provider
+// so switching back and forth doesn't refetch. Persisted, because a model list
+// is stable for days and a cold start shouldn't show a stale hard-coded list.
+function aiModelCache() {
+  if (!settings.ai.modelCache || typeof settings.ai.modelCache !== 'object') {
+    settings.ai.modelCache = {};
+  }
+  return settings.ai.modelCache;
+}
+
+// Models offered for the active provider, best source first: what the provider
+// actually told us, else the hand-typed list (custom endpoints), else the
+// curated fallback that ships with the app.
 function aiModelsFor(id) {
+  const cached = aiModelCache()[id];
+  if (cached && Array.isArray(cached.models) && cached.models.length) {
+    return cached.models.map((m) => (typeof m === 'string' ? m : m.id));
+  }
   if (id === 'custom') {
     return String((settings.ai && settings.ai.customModels) || '')
       .split(/[\n,]/).map((s) => s.trim()).filter(Boolean);
   }
   const entry = aiProviderCatalog[id];
   return entry && Array.isArray(entry.models) ? entry.models : [];
+}
+
+// Same list, but keeping the free/paid split so the picker can group it —
+// OpenRouter returns several hundred models and an ungrouped list is unusable.
+function aiModelEntriesFor(id) {
+  const cached = aiModelCache()[id];
+  if (cached && Array.isArray(cached.models) && cached.models.length) {
+    return cached.models.map((m) => (typeof m === 'string' ? { id: m, free: false } : m));
+  }
+  return aiModelsFor(id).map((m) => ({ id: m, free: false }));
 }
 
 // Everything main.js needs to make one request. Passed straight through the
@@ -7599,23 +7626,106 @@ function syncAiProviderUI() {
 
   // Rebuild the model list for this provider, keeping the saved choice when it
   // still exists and falling back to Auto when it doesn't.
-  const models = aiModelsFor(id);
+  const entries = aiModelEntriesFor(id);
   const wanted = ai.model || 'auto';
   aiModelSelectEl.innerHTML = '';
   const autoOpt = document.createElement('option');
   autoOpt.value = 'auto';
   autoOpt.textContent = tr('ai.auto', 'Auto — recommended');
   aiModelSelectEl.appendChild(autoOpt);
-  models.forEach((m) => {
+
+  const addOption = (parent, m) => {
     const o = document.createElement('option');
-    o.value = m;
-    o.textContent = m;
-    aiModelSelectEl.appendChild(o);
-  });
-  aiModelSelectEl.value = models.includes(wanted) ? wanted : 'auto';
+    o.value = m.id;
+    o.textContent = m.id;
+    parent.appendChild(o);
+  };
+  const free = entries.filter((m) => m.free);
+  const paid = entries.filter((m) => !m.free);
+  if (free.length && paid.length) {
+    // OpenRouter mostly — hundreds of models, and which ones cost nothing is
+    // the only distinction that matters at a glance.
+    const gf = document.createElement('optgroup');
+    gf.label = tr('ai.freeModels', 'Free');
+    free.forEach((m) => addOption(gf, m));
+    aiModelSelectEl.appendChild(gf);
+    const gp = document.createElement('optgroup');
+    gp.label = tr('ai.paidModels', 'Paid');
+    paid.forEach((m) => addOption(gp, m));
+    aiModelSelectEl.appendChild(gp);
+  } else {
+    entries.forEach((m) => addOption(aiModelSelectEl, m));
+  }
+
+  const ids = entries.map((m) => m.id);
+  aiModelSelectEl.value = ids.includes(wanted) ? wanted : 'auto';
   if (aiModelSelectEl.value !== wanted) settings.ai = { ...settings.ai, model: aiModelSelectEl.value };
 
+  // Say where this list came from, so "Auto" against a stale built-in list is
+  // distinguishable from a list the provider actually confirmed.
+  const cached = aiModelCache()[id];
+  if (!aiModelBusy) {
+    if (cached && cached.ts) {
+      aiModelStatusEl.textContent =
+        tr('ai.listLive', 'Loaded from your provider') + ' · ' + ids.length;
+      aiModelStatusEl.classList.remove('model-status-warn');
+    } else {
+      aiModelStatusEl.textContent = tr('ai.listBuiltin', 'Built-in list — press ↻ to load the real one');
+      aiModelStatusEl.classList.remove('model-status-warn');
+    }
+  }
+
   renderCustomActionsList();
+}
+
+// ---------- Live model list ----------
+let aiModelBusy = false;
+
+// Ask the provider which models this key can actually use. `silent` is for the
+// automatic refresh after a key is pasted — that one shouldn't shout on failure,
+// because the key may simply be half-typed.
+async function refreshAiModels(silent) {
+  if (aiModelBusy) return;
+  const id = aiProvider();
+  aiModelBusy = true;
+  aiModelRefreshBtn.classList.add('spinning');
+  aiModelStatusEl.classList.remove('model-status-warn');
+  aiModelStatusEl.textContent = tr('ai.listLoading', 'Asking the provider…');
+  try {
+    const res = await window.api.aiListModels(aiOpts());
+    aiModelBusy = false;
+    // The user may have switched provider while this was in flight; a list
+    // fetched for the old one must not be filed under the new one.
+    if (aiProvider() !== id) { syncAiProviderUI(); return; }
+
+    if (res && res.ok && Array.isArray(res.models) && res.models.length) {
+      const prev = settings.ai.model;
+      aiModelCache()[id] = { ts: Date.now(), models: res.models.slice(0, 400) };
+      const stillThere = res.models.some((m) => m.id === prev);
+      settings.ai = { ...settings.ai, model: (prev && prev !== 'auto' && !stillThere) ? 'auto' : prev };
+      saveSettingsNow();
+      syncAiProviderUI();
+      if (prev && prev !== 'auto' && !stillThere) {
+        aiModelStatusEl.textContent =
+          tr('ai.listDropped', 'Your saved model is gone from this provider — switched to Auto') +
+          ' · ' + res.models.length;
+        aiModelStatusEl.classList.add('model-status-warn');
+      }
+      return;
+    }
+    if (silent) { syncAiProviderUI(); return; }
+    aiModelStatusEl.textContent = (res && res.error) || tr('ai.listFailed', "Couldn't load the model list.");
+    aiModelStatusEl.classList.add('model-status-warn');
+  } catch (err) {
+    aiModelBusy = false;
+    if (!silent) {
+      aiModelStatusEl.textContent = tr('ai.listFailed', "Couldn't load the model list.");
+      aiModelStatusEl.classList.add('model-status-warn');
+    }
+  } finally {
+    aiModelBusy = false;
+    aiModelRefreshBtn.classList.remove('spinning');
+  }
 }
 
 function setAiSetting(patch) {
@@ -7631,14 +7741,24 @@ aiProviderSelectEl.addEventListener('change', () => {
   saveSettingsNow();
   syncAiProviderUI();
   if (aiChatActive()) renderAiMessages();
+  // No list for this provider yet? Fetch quietly if we already have its key.
+  if (!aiModelCache()[aiProvider()] && aiReady()) refreshAiModels(true);
 });
 aiModelSelectEl.addEventListener('change', () => setAiSetting({ model: aiModelSelectEl.value }));
-aiApiKeyInputEl.addEventListener('change', () => setAiSetting({ openrouterKey: aiApiKeyInputEl.value.trim() }));
-aiOpenaiKeyInputEl.addEventListener('change', () => setAiSetting({ openaiKey: aiOpenaiKeyInputEl.value.trim() }));
-aiGoogleKeyInputEl.addEventListener('change', () => setAiSetting({ googleKey: aiGoogleKeyInputEl.value.trim() }));
-aiAnthropicKeyInputEl.addEventListener('change', () => setAiSetting({ anthropicKey: aiAnthropicKeyInputEl.value.trim() }));
-aiCustomUrlInputEl.addEventListener('change', () => setAiSetting({ customUrl: aiCustomUrlInputEl.value.trim() }));
-aiCustomKeyInputEl.addEventListener('change', () => setAiSetting({ customKey: aiCustomKeyInputEl.value.trim() }));
+aiModelRefreshBtn.addEventListener('click', () => refreshAiModels(false));
+
+// Pasting a key is the moment we can finally ask that provider anything, so
+// that's when the real model list gets pulled.
+function onAiKeyEntered(patch) {
+  setAiSetting(patch);
+  if (aiReady()) refreshAiModels(true);
+}
+aiApiKeyInputEl.addEventListener('change', () => onAiKeyEntered({ openrouterKey: aiApiKeyInputEl.value.trim() }));
+aiOpenaiKeyInputEl.addEventListener('change', () => onAiKeyEntered({ openaiKey: aiOpenaiKeyInputEl.value.trim() }));
+aiGoogleKeyInputEl.addEventListener('change', () => onAiKeyEntered({ googleKey: aiGoogleKeyInputEl.value.trim() }));
+aiAnthropicKeyInputEl.addEventListener('change', () => onAiKeyEntered({ anthropicKey: aiAnthropicKeyInputEl.value.trim() }));
+aiCustomUrlInputEl.addEventListener('change', () => onAiKeyEntered({ customUrl: aiCustomUrlInputEl.value.trim() }));
+aiCustomKeyInputEl.addEventListener('change', () => onAiKeyEntered({ customKey: aiCustomKeyInputEl.value.trim() }));
 aiCustomModelsInputEl.addEventListener('change', () => {
   setAiSetting({ customModels: aiCustomModelsInputEl.value.trim() });
   syncAiProviderUI(); // the model dropdown is built from this field
@@ -8431,8 +8551,13 @@ const WHATS_NEW =
   '• Pick your AI provider: OpenRouter (still free, still the default), OpenAI,\n' +
   '   Google AI Studio, Anthropic (Claude), or any OpenAI-compatible endpoint —\n' +
   '   including local ones like Ollama and LM Studio, which need no key at all.\n' +
-  '• Pick your model, too. Auto works exactly as before, trying the free models\n' +
-  '   in turn when one is busy; choose a specific model and only that one runs.\n' +
+  '• Pick your model, too — from the provider\'s real list, not a guess. Press ↻\n' +
+  '   next to Model and PromptPad asks your provider which models your key can\n' +
+  '   use. If a model you\'d chosen has been retired, it says so and drops back\n' +
+  '   to Auto instead of failing later.\n' +
+  '• Busy providers no longer look like broken ones. Google\'s free tier answers\n' +
+  '   "503 overloaded" fairly often; that used to reach you as a failed action.\n' +
+  '   Now it retries, and under Auto moves on to the next model.\n' +
   '• A note you open has a past. The Ghosts theme used to haunt you with\n' +
   '   nothing until you typed — it now remembers the words already in the note.\n' +
   '\n' +
@@ -8455,8 +8580,13 @@ const WHATS_NEW =
   '• سرویس‌دهنده‌ات را انتخاب کن: OpenRouter (هنوز رایگان و پیش‌فرض)، OpenAI،\n' +
   '   Google AI Studio، انتروپیک (Claude)، یا هر سرویسِ سازگار با OpenAI —\n' +
   '   از جمله سرویس‌های محلی مثل Ollama و LM Studio که اصلاً کلید نمی‌خواهند.\n' +
-  '• مدل را هم خودت انتخاب کن. حالتِ Auto دقیقاً مثل قبل کار می‌کند و اگر مدلی\n' +
-  '   شلوغ بود می‌رود سراغِ بعدی؛ اگر مدلی را انتخاب کنی فقط همان اجرا می‌شود.\n' +
+  '• مدل را هم خودت انتخاب کن — از لیستِ واقعیِ سرویس‌دهنده، نه حدس. کنارِ\n' +
+  '   «مدل» دکمه‌ی ↻ را بزن تا با کلیدِ خودت بپرسد چه مدل‌هایی در دسترست هست.\n' +
+  '   اگر مدلی که انتخاب کرده بودی حذف شده باشد، خبر می‌دهد و به Auto برمی‌گردد\n' +
+  '   به‌جای اینکه بعداً خطا بدهد.\n' +
+  '• سرویسِ شلوغ دیگر شبیهِ سرویسِ خراب نیست. سقفِ رایگانِ گوگل نسبتاً زیاد\n' +
+  '   «۵۰۳ — بیش از حد شلوغ» می‌دهد؛ قبلاً همین به‌صورتِ شکستِ کار به تو\n' +
+  '   می‌رسید. حالا دوباره تلاش می‌کند و در حالتِ Auto سراغِ مدلِ بعدی می‌رود.\n' +
   '• هر نُتی گذشته‌ای دارد. تم Ghosts قبلاً تا وقتی تایپ نمی‌کردی هیچ‌چیز نشان\n' +
   '   نمی‌داد — حالا کلماتی را که از قبل در نُت هستند به یاد می‌آورد.\n' +
   '\n' +

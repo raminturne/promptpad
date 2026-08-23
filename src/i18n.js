@@ -185,6 +185,15 @@
     'Google AI Studio': 'گوگل AI Studio',
     'Anthropic (Claude)': 'انتروپیک (Claude)',
     'Custom endpoint…': 'سرویس دلخواه…',
+    // ---- live model list ----
+    'Free': 'رایگان',
+    'Paid': 'پولی',
+    'Asking the provider…': 'در حال پرسیدن از سرویس‌دهنده…',
+    'Loaded from your provider': 'از سرویس‌دهنده گرفته شد',
+    'Built-in list — press ↻ to load the real one': 'لیستِ داخلی — برای لیستِ واقعی ↻ را بزن',
+    "Couldn't load the model list.": 'لیستِ مدل‌ها گرفته نشد.',
+    'Your saved model is gone from this provider — switched to Auto':
+      'مدلی که انتخاب کرده بودی دیگر روی این سرویس نیست — به Auto برگشت',
     'Voice': 'صدا',
     'Voice to Text': 'صدا به متن',
     'Markdown': 'مارک‌داون',

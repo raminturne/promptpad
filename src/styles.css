@@ -4236,3 +4236,24 @@ body:has(.app.fx-blackout) { background: #14100c; }
 /* Recent instructions sit below the saved ones and read as secondary. */
 .ctx-item.ctx-dim { color: var(--muted); }
 .ctx-item.ctx-dim:hover { color: var(--text); }
+
+/* ---------- Live model list ---------- */
+.model-refresh {
+  flex: 0 0 auto;
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  padding: 7px 9px;
+}
+.model-refresh:hover { color: var(--text); border-color: var(--accent); }
+.model-refresh.spinning { animation: model-spin 0.9s linear infinite; pointer-events: none; }
+@keyframes model-spin { to { transform: rotate(360deg); } }
+
+.model-status { margin: 2px 0 0; font-size: 11px; opacity: 0.75; }
+/* Only for the case worth interrupting over: a saved model that no longer
+   exists, or a list that wouldn't load. */
+.model-status-warn { color: var(--danger, #e2686b); opacity: 1; }

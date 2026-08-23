@@ -49,6 +49,8 @@ contextBridge.exposeInMainWorld('api', {
   aiTransform: (action, text, ai, prompt) => ipcRenderer.invoke('ai-transform', { action, text, ai, prompt }),
   chatMessage: (history, ai) => ipcRenderer.invoke('chat-message', { history, ai }),
   aiProviders: () => ipcRenderer.invoke('ai-providers'),
+  // Asks the provider itself which models this key can use.
+  aiListModels: (ai) => ipcRenderer.invoke('ai-list-models', { ai }),
   transcribeAudio: (base64, mimeType, opts) => ipcRenderer.invoke('transcribe-audio', base64, mimeType, opts),
   downloadImage: (filename) => ipcRenderer.invoke('download-image', filename),
   revealImage: (filename) => ipcRenderer.invoke('reveal-image', filename),

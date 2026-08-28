@@ -1115,7 +1115,7 @@ body {
 
 .settings-card {
   width: 100%;
-  max-width: 380px;
+  max-width: 430px;
   max-height: 100%;
   display: flex;
   flex-direction: column;
@@ -1149,10 +1149,51 @@ body {
   font-weight: 600;
 }
 
+/* Settings is split into tabs; the strip is pinned under the header and the
+   body scrolls only the active pane. */
+.settings-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.set-tab {
+  -webkit-app-region: no-drag;
+  font-family: var(--font);
+  font-size: 10.5px;
+  letter-spacing: 0.2px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted-2);
+  cursor: pointer;
+  transition: color 0.14s, background 0.14s, border-color 0.14s;
+}
+.set-tab:hover { color: var(--text); background: var(--elevated); }
+.set-tab.active {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
 .settings-body {
   padding: 6px 16px 16px;
   overflow-y: auto;
 }
+
+.settings-pane.hidden { display: none; }
+
+/* Arabic-script letters join up; the tracked-out Latin styling pulls them apart,
+   so drop the letter-spacing on the Persian UI. */
+.app.lang-fa .settings-title,
+.app.lang-fa .set-label,
+.app.lang-fa .set-tab { letter-spacing: 0; }
+/* each pane starts fresh, so the last group in it shouldn't draw a divider */
+.settings-pane > .set-group:last-child { border-bottom: none; }
 .settings-body::-webkit-scrollbar { width: 8px; }
 .settings-body::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 8px; }
 
@@ -1206,7 +1247,28 @@ body {
 .theme-row { display: flex; flex-direction: column; gap: 8px; }
 .theme-group { display: flex; flex-direction: column; gap: 6px; }
 .theme-group-label { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; opacity: .45; }
-.theme-swatches { display: flex; gap: 8px; flex-wrap: wrap; }
+.theme-swatches {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 10px 6px;
+  align-items: start;
+}
+
+/* a swatch and its name travel together */
+.theme-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.theme-name {
+  font-size: 9px;
+  line-height: 1.25;
+  text-align: center;
+  color: var(--muted);
+  word-break: break-word;
+}
+.theme-swatch.active + .theme-name { color: var(--accent); }
 
 .theme-swatch {
   width: 34px; height: 34px;
@@ -2935,7 +2997,9 @@ body {
    ========================================================= */
 
 /* --- toolbar-buttons settings row --- */
-.set-hint { font-size: 10.5px; color: var(--muted); margin: -4px 0 10px; line-height: 1.5; }
+.set-hint { display: block; font-size: 10.5px; color: var(--muted); margin: -4px 0 10px; line-height: 1.5; }
+/* a hint that explains a segmented control needs room to breathe under it */
+.seg + .set-hint, .shortcut-row + .set-hint { margin-top: 8px; }
 .toolbar-row { display: flex; flex-wrap: wrap; gap: 6px; }
 .toolbar-chip {
   padding: 5px 11px;
@@ -4110,6 +4174,13 @@ body:has(.app.fx-circuit) { background: #040b09; }
 body:has(.app.fx-aurora) { background: #060a14; }
 .app.fx-aurora { position: relative; z-index: 1; border-color: rgba(159, 232, 212, 0.22); }
 .app.fx-aurora .editor-area, .app.fx-aurora .md-preview { background: transparent; }
+
+/* ── Starfall ───────────────────────────────────────────────────────────
+   Stars and comets behind everything, under translucent night-sky panels. */
+.fx-starfall-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+body:has(.app.fx-starfall) { background: #04060e; }
+.app.fx-starfall { position: relative; z-index: 1; border-color: rgba(188, 208, 255, 0.22); }
+.app.fx-starfall .editor-area, .app.fx-starfall .md-preview { background: transparent; }
 
 /* ── Zen Garden ─────────────────────────────────────────────────────────
    Raked sand under translucent paper panels. */

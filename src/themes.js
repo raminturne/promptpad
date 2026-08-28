@@ -112,6 +112,15 @@
       elevated: 'rgba(12,18,32,0.74)', elevatedHi: 'rgba(18,26,44,0.82)',
       accent: '#9fe8d4', danger: '#ff8fa3', winBg: '#060a14'
     },
+    starfall: {
+      label: 'Starfall', type: 'pro', fx: 'starfall', cssClass: 'fx-starfall',
+      // A clear night. The sky is behind everything, so the panels stay
+      // translucent and dark enough that a comet crossing behind them still
+      // reads clearly through the glass.
+      bg: 'rgba(4,6,14,0.6)', text: '#dde4f5', sidebar: 'rgba(3,4,10,0.76)',
+      elevated: 'rgba(8,10,20,0.78)', elevatedHi: 'rgba(14,17,32,0.86)',
+      accent: '#bcd0ff', danger: '#ff8fa3', winBg: '#04060e'
+    },
     zen: {
       label: 'Zen Garden', type: 'pro', fx: 'zen', cssClass: 'fx-zen theme-light',
       // Sand and stone. Typing rakes the garden and quiet smooths it back, so
@@ -136,6 +145,12 @@
       bg: '#080b12', text: '#dce9fb', sidebar: '#050810', elevated: '#101825', elevatedHi: '#182338',
       accent: '#7fc4ff', danger: '#ff7a9c', winBg: '#080b12'
     },
+    // Smoke (letters hidden in a puff on typing, revealed as it clears) was
+    // tried and pulled — never read as natural enough to keep.
+    //
+    // Gunfire (sound theme: shot on type, reload on Space, a heavier round on
+    // Enter) is parked for now — coming back once there's real gunshot audio
+    // to drive it instead of a synthesized placeholder.
   };
 
   const FONTS = {

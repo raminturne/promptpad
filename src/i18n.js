@@ -39,6 +39,7 @@
     'Copy to': 'کپی به',
     // ---- Pro themes ----
     'Pro': 'حرفه‌ای',
+    'Sound': 'صدادار',
     'Restart PromptPad to finish applying this theme.':
       'برای کامل شدن این تم، پرامپت‌پد را یک‌بار ببند و باز کن.',
     'Restart': 'راه‌اندازی دوباره',
@@ -255,6 +256,16 @@
     'Clear chat': 'پاک کردن گفت‌وگو',
     'Dismiss': 'بستن',
 
+    // ---- settings: tabs ----
+    'General': 'عمومی',
+    'Appearance': 'ظاهر',
+    'Layout': 'چیدمان',
+    'Editor': 'ویرایشگر',
+    'Data': 'داده‌ها',
+    'System': 'سیستم',
+    'Placeholders': 'جای‌نگه‌دارها',
+    'Images & markdown': 'تصاویر و مارک‌داون',
+
     // ---- settings: language ----
     'Language': 'زبان',
     'English': 'English',
@@ -279,16 +290,16 @@
     'When disabled, the shortcut should…': 'وقتی غیرفعال است، میان‌بر چه کند…',
     'Send to tray': 'به سینی سیستم',
     'Do nothing': 'هیچ کاری نکند',
-    'Handy mode — dock position': 'حالت دم‌دستی — جای اتصال',
+    'Dock position': 'جای اتصال',
     'Left': 'چپ',
     'Center': 'وسط',
     'Right': 'راست',
-    'Handy mode — hide the panel': 'حالت دم‌دستی — بستن پنل',
+    'Hide the panel': 'بستن پنل',
     'When you click away': 'وقتی جای دیگری کلیک کنی',
     'When the mouse leaves': 'وقتی نشانگر بیرون برود',
     '"Click away" keeps it open while you\'re typing; "Mouse leaves" tucks it back the moment your cursor leaves the panel.':
       '«کلیک بیرون» تا وقتی تایپ می‌کنی باز نگهش می‌دارد؛ «خروج نشانگر» به‌محض بیرون رفتن نشانگر جمعش می‌کند.',
-    'Handy mode — show/hide shortcut': 'حالت دم‌دستی — میان‌بر نمایش/مخفی',
+    'Show/hide shortcut': 'میان‌بر نمایش/مخفی',
     'Click, then press a key combo': 'کلیک کن، بعد ترکیب کلید را بزن',
     'Reset': 'بازنشانی',
     'Collapses the window to a thin line at the bottom edge; hover it to slide the notepad open. Toggle with the dock button in the title bar or': 'پنجره را به یک نوار باریک در لبه پایین جمع می‌کند؛ نشانگر را رویش ببر تا باز شود. با دکمه‌ی داک در نوار عنوان یا',

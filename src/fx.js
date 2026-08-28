@@ -1497,6 +1497,124 @@
   };
 
   // ────────────────────────────────────────────────────────────────────────
+  // Starfall — a night sky behind the window: a field of quietly twinkling
+  // stars, crossed every few seconds by a comet with a tapering tail. Purely
+  // ambient — nothing here reads the keyboard — the same way a real sky
+  // doesn't care whether you're typing.
+  // ────────────────────────────────────────────────────────────────────────
+  RUNTIMES.starfall = {
+    start() {
+      const b = back();
+      if (!b) return;
+      const c = makeCanvas(b, 'fx-starfall-canvas');
+      const ctx = c.ctx;
+
+      const rand = (a, d) => a + Math.random() * (d - a);
+
+      let stars = [];
+      const buildStars = () => {
+        // Density off the panel area, not a fixed count — a maximised window
+        // gets a full sky instead of the same handful of stars stretched
+        // thin over it.
+        const n = Math.round((c.w * c.h) / 2600);
+        stars = Array.from({ length: n }, () => ({
+          x: Math.random() * c.w, y: Math.random() * c.h,
+          r: rand(0.4, 1.6), phase: rand(0, Math.PI * 2), speed: rand(0.6, 1.8)
+        }));
+      };
+      const resize = () => { c.resize(); buildStars(); };
+      resize();
+      window.addEventListener('resize', resize);
+      this._resize = resize;
+
+      let comets = [];
+      let nextCometAt = 0;
+      const scheduleComet = (now) => { nextCometAt = now + rand(2600, 6200); };
+
+      // Mostly-downward, tilted left or right — a real meteor's path, not a
+      // ball bouncing off the edges — starting just off the top of the
+      // window so it's already moving when it comes into view.
+      const spawnComet = () => {
+        if (!c.w || !c.h) return;
+        const dir = Math.random() < 0.5 ? 1 : -1;
+        const ang = Math.PI / 2 + dir * rand(0.35, 0.55);
+        const speed = rand(700, 1150);
+        comets.push({
+          x: dir > 0 ? rand(-0.05, 0.5) * c.w : rand(0.5, 1.05) * c.w,
+          y: rand(-0.05, 0.22) * c.h,
+          vx: Math.cos(ang) * speed, vy: Math.sin(ang) * speed,
+          tail: rand(60, 110), life: 1
+        });
+        if (comets.length > 4) comets.shift();
+      };
+
+      let nextDraw = 0;
+      let last = performance.now();
+      const tick = (now) => {
+        const dt = Math.min((now - last) / 1000, 0.05);
+        last = now;
+
+        if (now >= nextCometAt) { spawnComet(); scheduleComet(now); }
+
+        for (const cm of comets) {
+          cm.x += cm.vx * dt;
+          cm.y += cm.vy * dt;
+          cm.life -= dt * 0.85;
+        }
+        comets = comets.filter((cm) => cm.life > 0 &&
+          cm.x > -cm.tail - 20 && cm.x < c.w + cm.tail + 20 && cm.y < c.h + cm.tail + 20);
+
+        // The stars only need to twinkle, not animate smoothly — 20fps for
+        // the whole sky is imperceptible and a quarter of the paint cost.
+        if (now < nextDraw) { rafId = requestAnimationFrame(tick); return; }
+        nextDraw = now + 50;
+
+        ctx.clearRect(0, 0, c.w, c.h);
+        const t = now / 1000;
+        for (const s of stars) {
+          const a = 0.35 + 0.65 * (0.5 + 0.5 * Math.sin(t * s.speed + s.phase));
+          ctx.fillStyle = 'rgba(226,232,245,' + a.toFixed(3) + ')';
+          ctx.beginPath();
+          ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        for (const cm of comets) {
+          const a = Math.min(1, cm.life * 2.4);
+          if (a <= 0.01) continue;
+          const len = Math.hypot(cm.vx, cm.vy) || 1;
+          const tx = cm.x - (cm.vx / len) * cm.tail;
+          const ty = cm.y - (cm.vy / len) * cm.tail;
+          const g = ctx.createLinearGradient(cm.x, cm.y, tx, ty);
+          g.addColorStop(0, 'rgba(255,255,255,' + a.toFixed(3) + ')');
+          g.addColorStop(0.4, 'rgba(200,215,255,' + (a * 0.5).toFixed(3) + ')');
+          g.addColorStop(1, 'rgba(180,200,255,0)');
+          ctx.strokeStyle = g;
+          ctx.lineWidth = 1.6;
+          ctx.lineCap = 'round';
+          ctx.beginPath();
+          ctx.moveTo(cm.x, cm.y);
+          ctx.lineTo(tx, ty);
+          ctx.stroke();
+          ctx.fillStyle = 'rgba(255,255,255,' + a.toFixed(3) + ')';
+          ctx.beginPath();
+          ctx.arc(cm.x, cm.y, 1.4, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        rafId = requestAnimationFrame(tick);
+      };
+      scheduleComet(performance.now());
+      rafId = requestAnimationFrame(tick);
+    },
+    stop() {
+      stopRaf();
+      if (this._resize) window.removeEventListener('resize', this._resize);
+      this._resize = null;
+    }
+  };
+
+  // ────────────────────────────────────────────────────────────────────────
   // Zen — raked sand behind the window. Typing drags through it: each key
   // presses a hollow into the rake lines around the caret, and the wind takes
   // the hollows back out over the following minute. Write a lot and the

@@ -504,609 +504,607 @@
           </button>
         </div>
 
+        <div class="settings-tabs" id="settingsTabs" role="tablist">
+          <button type="button" class="set-tab" data-pane="general" role="tab">General</button>
+          <button type="button" class="set-tab" data-pane="appearance" role="tab">Appearance</button>
+          <button type="button" class="set-tab" data-pane="layout" role="tab">Layout</button>
+          <button type="button" class="set-tab" data-pane="editor" role="tab">Editor</button>
+          <button type="button" class="set-tab" data-pane="ai" role="tab">AI</button>
+          <button type="button" class="set-tab" data-pane="data" role="tab">Data</button>
+          <button type="button" class="set-tab" data-pane="about" role="tab">About</button>
+        </div>
+
         <div class="settings-body">
-          <!-- Language -->
-          <section class="set-group">
-            <h3 class="set-label">Language</h3>
-            <div class="seg" id="languageSeg">
-              <button class="seg-btn" data-lang="en">English</button>
-              <button class="seg-btn" data-lang="fa">فارسی</button>
-            </div>
-            <div class="set-toggle-row" id="rtlMirrorRow">
-              <div class="set-toggle-text">
-                <span>Mirror layout (RTL)</span>
-                <small>Moves the sidebar to the right and flips the whole layout</small>
+          <div class="settings-pane" data-pane="general" role="tabpanel">
+            <section class="set-group">
+              <h3 class="set-label">Language</h3>
+              <div class="seg" id="languageSeg">
+                <button class="seg-btn" data-lang="en">English</button>
+                <button class="seg-btn" data-lang="fa">فارسی</button>
               </div>
-              <label class="switch">
-                <input type="checkbox" id="toggleRtlMirror" />
-                <span class="slider"></span>
-              </label>
-            </div>
-          </section>
+              <div class="set-toggle-row" id="rtlMirrorRow">
+                <div class="set-toggle-text">
+                  <span>Mirror layout (RTL)</span>
+                  <small>Moves the sidebar to the right and flips the whole layout</small>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="toggleRtlMirror" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+            </section>
+            <section class="set-group">
+              <h3 class="set-label">System</h3>
+              <div class="set-toggle-row">
+                <div class="set-toggle-text">
+                  <span>Launch at startup</span>
+                  <small id="startupHint">Open PromptPad when Windows starts</small>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="toggleStartup" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+              <div class="set-toggle-row">
+                <div class="set-toggle-text">
+                  <span>Auto-check for updates</span>
+                  <small>Check GitHub for new versions on launch</small>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="toggleAutoUpdate" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+              <div class="set-toggle-row">
+                <div class="set-toggle-text">
+                  <span>Window opacity</span>
+                  <small id="opacityValue">100%</small>
+                </div>
+                <input type="range" id="opacityRange" class="range-input" min="70" max="100" step="5" />
+              </div>
+              <div class="set-toggle-row">
+                <div class="set-toggle-text">
+                  <span>Close to tray</span>
+                  <small>Keep running in the tray when closed</small>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="toggleTray" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+              <div class="set-toggle-row">
+                <div class="set-toggle-text">
+                  <span>Global quick capture</span>
+                  <small id="quickCaptureHint">Opens Fast Save from anywhere, even when PromptPad isn’t focused</small>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="toggleQuickCapture" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+              <div class="shortcut-row">
+                <input type="text" id="quickCaptureShortcutInput" class="text-input shortcut-input" readonly placeholder="Click, then press a key combo" />
+                <button class="seg-btn" id="quickCaptureShortcutReset" type="button">Reset</button>
+              </div>
+              <small class="set-hint" id="quickCaptureShortcutHint">Click the box and press your keys. Tip: avoid Ctrl+Shift combos — Windows uses them to switch keyboard layout.</small>
+            </section>
+          </div>
 
-          <!-- Appearance -->
-          <section class="set-group">
-            <h3 class="set-label">Theme</h3>
-            <div id="themeRow" class="theme-row"></div>
-            <h3 class="set-label" style="margin-top:14px">Font</h3>
-            <div id="fontRow" class="font-row"></div>
-            <div class="set-toggle-row" id="fontSizeRow">
-              <div class="set-toggle-text">
-                <span>Font size</span>
-                <small>Also: Ctrl + scroll, Ctrl+= / Ctrl+- / Ctrl+0</small>
+          <div class="settings-pane hidden" data-pane="appearance" role="tabpanel">
+            <section class="set-group">
+              <h3 class="set-label">Theme</h3>
+              <div id="themeRow" class="theme-row"></div>
+              <h3 class="set-label" style="margin-top:14px">Font</h3>
+              <div id="fontRow" class="font-row"></div>
+              <div class="set-toggle-row" id="fontSizeRow">
+                <div class="set-toggle-text">
+                  <span>Font size</span>
+                  <small>Also: Ctrl + scroll, Ctrl+= / Ctrl+- / Ctrl+0</small>
+                </div>
+                <div class="stepper">
+                  <button id="fontSizeDown" class="stepper-btn" title="Smaller">−</button>
+                  <span id="fontSizeValue" class="stepper-value">13.5px</span>
+                  <button id="fontSizeUp" class="stepper-btn" title="Bigger">+</button>
+                </div>
               </div>
-              <div class="stepper">
-                <button id="fontSizeDown" class="stepper-btn" title="Smaller">−</button>
-                <span id="fontSizeValue" class="stepper-value">13.5px</span>
-                <button id="fontSizeUp" class="stepper-btn" title="Bigger">+</button>
+            </section>
+            <section class="set-group">
+              <h3 class="set-label">Tab size</h3>
+              <div class="seg" id="tabSizeSeg">
+                <button class="seg-btn" data-tabsize="small">Small</button>
+                <button class="seg-btn" data-tabsize="medium">Medium</button>
+                <button class="seg-btn" data-tabsize="large">Large</button>
               </div>
-            </div>
-          </section>
+            </section>
+            <section class="set-group">
+              <h3 class="set-label">Toolbar buttons</h3>
+              <p class="set-hint">Click to show or hide each button in the bottom bar.</p>
+              <div id="toolbarRow" class="toolbar-row"></div>
+            </section>
+          </div>
 
-          <section class="set-group">
-            <h3 class="set-label">Tab size</h3>
-            <div class="seg" id="tabSizeSeg">
-              <button class="seg-btn" data-tabsize="small">Small</button>
-              <button class="seg-btn" data-tabsize="medium">Medium</button>
-              <button class="seg-btn" data-tabsize="large">Large</button>
-            </div>
-          </section>
+          <div class="settings-pane hidden" data-pane="layout" role="tabpanel">
+            <section class="set-group">
+              <h3 class="set-label">Handy mode</h3>
+              <div class="set-toggle-row">
+                <div class="set-toggle-text">
+                  <span>Handy mode</span>
+                  <small>Dock the window to a thin line at the screen edge</small>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="toggleHandy" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+              <div class="set-toggle-row" id="handyDisabledRow">
+                <div class="set-toggle-text">
+                  <span>When disabled, the shortcut should…</span>
+                  <small id="handyDisabledHint">Reuse Ctrl+Shift+D to hide/restore the window</small>
+                </div>
+                <div class="seg" id="handyDisabledSeg">
+                  <button class="seg-btn" data-handydisabled="minimize">Minimize</button>
+                  <button class="seg-btn" data-handydisabled="tray">Send to tray</button>
+                  <button class="seg-btn" data-handydisabled="none">Do nothing</button>
+                </div>
+              </div>
+            </section>
+            <section class="set-group" id="handyPosRow">
+              <h3 class="set-label">Dock position</h3>
+              <div class="seg" id="handyPosSeg">
+                <button class="seg-btn" data-handypos="left">Left</button>
+                <button class="seg-btn" data-handypos="center">Center</button>
+                <button class="seg-btn" data-handypos="right">Right</button>
+              </div>
+              <small class="set-hint">Collapses the window to a thin line at the bottom edge; hover it to slide the notepad open. Toggle with the dock button in the title bar or <b>Ctrl+Shift+D</b>.</small>
+            </section>
+            <section class="set-group" id="handyCloseRow">
+              <h3 class="set-label">Hide the panel</h3>
+              <div class="seg" id="handyCloseSeg">
+                <button class="seg-btn" data-handyclose="click">When you click away</button>
+                <button class="seg-btn" data-handyclose="leave">When the mouse leaves</button>
+              </div>
+              <small class="set-hint">"Click away" keeps it open while you're typing; "Mouse leaves" tucks it back the moment your cursor leaves the panel.</small>
+            </section>
+            <section class="set-group" id="handyShortcutRow">
+              <h3 class="set-label">Show/hide shortcut</h3>
+              <div class="shortcut-row">
+                <input type="text" id="handyShortcutInput" class="text-input shortcut-input" readonly placeholder="Click, then press a key combo" />
+                <button class="seg-btn" id="handyShortcutReset" type="button">Reset</button>
+              </div>
+              <small class="set-hint" id="handyShortcutHint">Global shortcut — toggles the dock even when PromptPad isn't focused. Click the box and press your keys (e.g. Ctrl+Shift+D).</small>
+            </section>
+            <section class="set-group">
+              <h3 class="set-label">Sidebar</h3>
+              <div class="set-toggle-row">
+                <div class="set-toggle-text">
+                  <span>Templates</span>
+                  <small>Show the templates button in the sidebar</small>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="toggleTemplates" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+              <div class="set-toggle-row">
+                <div class="set-toggle-text">
+                  <span>Fast Save</span>
+                  <small>Chat-style quick notes pinned above your tabs</small>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="toggleFastSave" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+              <div class="set-toggle-row" id="discoverRow">
+                <div class="set-toggle-text">
+                  <span>Discover</span>
+                  <small>Shared prompt gallery tab (browse &amp; publish prompts)</small>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="toggleDiscover" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+              <div class="set-toggle-row" id="collabRow">
+                <div class="set-toggle-text">
+                  <span>Shared notes</span>
+                  <small>Invite another user to edit one of your notes with you, live</small>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="toggleCollab" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+              <div class="set-toggle-row" id="labRow">
+                <div class="set-toggle-text">
+                  <span>Prompt Lab</span>
+                  <small>Your personal, local library of prompts + media</small>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="toggleLab" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+              <div class="set-toggle-row" id="aiChatRow">
+                <div class="set-toggle-text">
+                  <span>AI Chat</span>
+                  <small>Chat panel in the sidebar</small>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="toggleAiChat" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+              <div class="set-toggle-row" id="profilesRow">
+                <div class="set-toggle-text">
+                  <span>Profiles</span>
+                  <small>Separate sets of tabs, switched from the title bar</small>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="toggleProfiles" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+              <small class="set-hint" id="profilesHint">Turning this off only hides the switcher — your profiles and their tabs are kept.</small>
+              <h3 class="set-label" style="margin-top:14px">Tabs</h3>
+              <div class="set-toggle-row">
+                <div class="set-toggle-text">
+                  <span>Pinning</span>
+                  <small>Show the pin icon on tabs</small>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="togglePin" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+              <div class="set-toggle-row">
+                <div class="set-toggle-text">
+                  <span>Close button</span>
+                  <small>Show the × on hover over tabs</small>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="toggleClose" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+              <div class="set-toggle-row" id="resizeRow">
+                <div class="set-toggle-text">
+                  <span>Resizable tab width</span>
+                  <small>Drag the divider to resize (left layout)</small>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="toggleResize" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+            </section>
+          </div>
 
-          <!-- Text alignment used to live here as a global setting. It is per-note
-               now, so it belongs only on the toolbar's Align button. -->
+          <div class="settings-pane hidden" data-pane="editor" role="tabpanel">
+            <section class="set-group">
+              <h3 class="set-label">Placeholders</h3>
+              <div class="set-toggle-row">
+                <div class="set-toggle-text">
+                  <span>Detect placeholders</span>
+                  <small>Highlight [text] / {text} and offer quick-fill fields</small>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="togglePlaceholders" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+              <div class="set-toggle-row" id="placeholderPositionRow">
+                <div class="set-toggle-text">
+                  <span>Fill bar position</span>
+                  <small>Above the prompt, or as a side panel</small>
+                </div>
+                <div class="seg" id="placeholderPositionSeg">
+                  <button class="seg-btn" data-pos="top">Top</button>
+                  <button class="seg-btn" data-pos="right">Right</button>
+                </div>
+              </div>
+              <div class="set-toggle-row" id="placeholderWrapRow">
+                <div class="set-toggle-text">
+                  <span>Field layout</span>
+                  <small>One scrollable line, or stacked rows</small>
+                </div>
+                <div class="seg" id="placeholderWrapSeg">
+                  <button class="seg-btn" data-wrap="line">Line</button>
+                  <button class="seg-btn" data-wrap="stack">Stacked</button>
+                </div>
+              </div>
+            </section>
+            <section class="set-group">
+              <h3 class="set-label">Images &amp; markdown</h3>
+              <div class="set-toggle-row">
+                <div class="set-toggle-text">
+                  <span>Resize images</span>
+                  <small>Drag an image's corner to make it bigger or smaller</small>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="toggleImageResize" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+              <div class="set-toggle-row">
+                <div class="set-toggle-text">
+                  <span>Save images on right-click</span>
+                  <small>Right-click an image to download a copy</small>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="toggleImageDownload" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+              <div class="set-toggle-row">
+                <div class="set-toggle-text">
+                  <span>Full-size preview images</span>
+                  <small>In markdown preview, images fill the window width instead of staying small</small>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="toggleMdImageFullSize" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+              <div class="set-toggle-row">
+                <div class="set-toggle-text">
+                  <span>Markdown keyboard shortcuts</span>
+                  <small>Ctrl+I italic, Ctrl+Shift+1…6 headings, Ctrl+Shift+H highlight and more. Right-click → Markdown Commands always works.</small>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="toggleMdShortcuts" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+            </section>
+          </div>
 
-          <section class="set-group">
-            <div class="set-toggle-row">
-              <div class="set-toggle-text">
-                <span>Handy mode</span>
-                <small>Dock the window to a thin line at the screen edge</small>
+          <div class="settings-pane hidden" data-pane="ai" role="tabpanel">
+            <!-- Image generation — feature hidden for now, code kept intact for later -->
+            <section class="set-group hidden">
+              <h3 class="set-label">Image generation</h3>
+              <p class="set-hint">"Generate Image" sends the current tab's text to an image generator and
+                inserts a square preview image above it — handy for prompts written for image generators.</p>
+              <!-- Hugging Face and Gemini are wired up but hidden for now — both
+                   turned out unreliable in practice (HF's free hf-inference
+                   backend was down for its only supported model; Gemini's
+                   image quota was 0 with no billing enabled). Free Pollinations
+                   is the only option surfaced until those get revisited. -->
+              <div class="seg hidden" id="imageGenProviderSeg">
+                <button class="seg-btn" data-provider="pollinations">Free</button>
+                <button class="seg-btn" data-provider="huggingface">Hugging Face</button>
+                <button class="seg-btn" data-provider="gemini">Google Gemini</button>
               </div>
-              <label class="switch">
-                <input type="checkbox" id="toggleHandy" />
-                <span class="slider"></span>
-              </label>
-            </div>
-            <div class="set-toggle-row" id="handyDisabledRow">
-              <div class="set-toggle-text">
-                <span>When disabled, the shortcut should…</span>
-                <small id="handyDisabledHint">Reuse Ctrl+Shift+D to hide/restore the window</small>
+              <p class="set-hint" id="providerHintPollinations">No signup, no API key. Prompts are sent to
+                <a href="#" class="about-link" data-url="https://pollinations.ai">pollinations.ai</a>, a free
+                third-party image service — generations aren't saved to their public feed, but the prompt text
+                still leaves your machine. Quality is decent but on the weaker/faster side.</p>
+              <div id="hfProviderFields" class="hidden">
+                <input type="password" id="hfApiKeyInput" class="text-input" placeholder="Hugging Face access token" autocomplete="off" spellcheck="false" />
+                <p class="backup-note">Free (rate-limited), noticeably better quality than the no-signup option —
+                  uses the FLUX.1-schnell model. Get a token at
+                  <a href="#" class="about-link" data-url="https://huggingface.co/settings/tokens/new?ownUserPermissions=inference.serverless.write&amp;tokenType=fineGrained">huggingface.co/settings/tokens</a>
+                  (free account, no card required) with "Make calls to Inference Providers" permission. The token is
+                  stored locally in PromptPad's own settings file, the same as your other preferences.</p>
               </div>
-              <div class="seg" id="handyDisabledSeg">
-                <button class="seg-btn" data-handydisabled="minimize">Minimize</button>
-                <button class="seg-btn" data-handydisabled="tray">Send to tray</button>
-                <button class="seg-btn" data-handydisabled="none">Do nothing</button>
+              <div id="geminiProviderFields" class="hidden">
+                <input type="password" id="geminiApiKeyInput" class="text-input" placeholder="Gemini API key" autocomplete="off" spellcheck="false" />
+                <p class="backup-note">Get a key at
+                  <a href="#" class="about-link" data-url="https://aistudio.google.com/apikey">aistudio.google.com/apikey</a>
+                  (sign in with your Google account, click "Create API key"). Image generation is billed per image —
+                  see <a href="#" class="about-link" data-url="https://ai.google.dev/gemini-api/docs/pricing">Gemini's
+                  pricing page</a> for current rates; free-tier availability for image models varies by region and
+                  account and isn't guaranteed. The key is stored locally in PromptPad's own settings file, the same
+                  as your other preferences.</p>
               </div>
-            </div>
-          </section>
+            </section>
+            <section class="set-group">
+              <div class="set-label-row">
+                <h3 class="set-label">AI Chat &amp; actions</h3>
+                <button type="button" class="lang-toggle" title="فارسی / English"><span class="lt-to-fa">فارسی</span><span class="lt-to-en">English</span></button>
+              </div>
+              <div class="set-toggle-row">
+                <div class="set-toggle-text">
+                  <span>AI features</span>
+                  <small>Improve, AI actions, AI Chat and the AI button in Markdown</small>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="toggleAi" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+              <div id="aiKeyFields">
+              <p class="set-hint help-en">Powers AI Chat, Improve, and the AI actions (translate, summarize, fix grammar…).
+                Each person uses their own key, so everyone gets their own limits.</p>
+              <p class="set-hint help-fa" dir="rtl">پشتِ چت هوش مصنوعی، Improve و اکشن‌های AI (ترجمه، خلاصه‌سازی، اصلاح گرامر…) همینه.
+                هر کاربر با کلیدِ خودش کار می‌کنه، پس لیمیتِ هرکس برای خودشه.</p>
 
-          <section class="set-group" id="handyPosRow">
-            <h3 class="set-label">Handy mode — dock position</h3>
-            <div class="seg" id="handyPosSeg">
-              <button class="seg-btn" data-handypos="left">Left</button>
-              <button class="seg-btn" data-handypos="center">Center</button>
-              <button class="seg-btn" data-handypos="right">Right</button>
-            </div>
-            <small class="set-hint">Collapses the window to a thin line at the bottom edge; hover it to slide the notepad open. Toggle with the dock button in the title bar or <b>Ctrl+Shift+D</b>.</small>
-          </section>
+              <div class="set-field-row">
+                <label class="set-field-label" for="aiProviderSelect">Provider</label>
+                <select id="aiProviderSelect" class="text-input set-select">
+                  <option value="openrouter">OpenRouter (free)</option>
+                  <option value="openai">OpenAI</option>
+                  <option value="google">Google AI Studio</option>
+                  <option value="anthropic">Anthropic (Claude)</option>
+                  <option value="custom">Custom endpoint…</option>
+                </select>
+              </div>
+              <div class="set-field-row">
+                <label class="set-field-label" for="aiModelSelect">Model</label>
+                <select id="aiModelSelect" class="text-input set-select"></select>
+                <button type="button" id="aiModelRefresh" class="model-refresh" title="Fetch the model list from the provider">↻</button>
+              </div>
+              <p class="set-hint model-status" id="aiModelStatus"></p>
+              <p class="backup-note help-en"><b>Auto</b> tries the provider's models in order and moves on
+                when one is busy. Picking a model uses only that one. Press ↻ to load the real list from
+                the provider using your key.</p>
+              <p class="backup-note help-fa" dir="rtl">حالتِ <b>Auto</b> مدل‌ها رو به‌ترتیب امتحان می‌کنه و اگه یکی
+                شلوغ بود می‌ره سراغِ بعدی. اگه مدلی رو انتخاب کنی فقط از همون استفاده می‌شه. با ↻ لیستِ واقعیِ
+                مدل‌ها با کلیدِ خودت از سرویس‌دهنده گرفته می‌شه.</p>
 
-          <section class="set-group" id="handyCloseRow">
-            <h3 class="set-label">Handy mode — hide the panel</h3>
-            <div class="seg" id="handyCloseSeg">
-              <button class="seg-btn" data-handyclose="click">When you click away</button>
-              <button class="seg-btn" data-handyclose="leave">When the mouse leaves</button>
-            </div>
-            <small class="set-hint">"Click away" keeps it open while you're typing; "Mouse leaves" tucks it back the moment your cursor leaves the panel.</small>
-          </section>
+              <!-- OpenRouter -->
+              <div id="aiOpenrouterFields">
+                <input type="password" id="aiApiKeyInput" class="text-input" placeholder="OpenRouter API key (sk-or-v1-…)" autocomplete="off" spellcheck="false" />
+                <p class="backup-note help-en">Free — create a key at
+                  <a href="#" class="about-link" data-url="https://openrouter.ai/keys">openrouter.ai/keys</a>
+                  (free account, no card required), then paste it here. Uses OpenRouter's free models. Stored
+                  locally, same as your other preferences.</p>
+                <p class="backup-note help-fa" dir="rtl">رایگان — یه کلید بساز از
+                  <a href="#" class="about-link" data-url="https://openrouter.ai/keys">openrouter.ai/keys</a>
+                  (حسابِ رایگان، بدون کارت بانکی)، بعد همین‌جا بذارش. از مدل‌های رایگانِ OpenRouter استفاده می‌کنه.
+                  فقط روی همین دستگاه ذخیره می‌شه.</p>
+              </div>
 
-          <section class="set-group" id="handyShortcutRow">
-            <h3 class="set-label">Handy mode — show/hide shortcut</h3>
-            <div class="shortcut-row">
-              <input type="text" id="handyShortcutInput" class="text-input shortcut-input" readonly placeholder="Click, then press a key combo" />
-              <button class="seg-btn" id="handyShortcutReset" type="button">Reset</button>
-            </div>
-            <small class="set-hint" id="handyShortcutHint">Global shortcut — toggles the dock even when PromptPad isn't focused. Click the box and press your keys (e.g. Ctrl+Shift+D).</small>
-          </section>
+              <!-- OpenAI -->
+              <div id="aiOpenaiFields" class="hidden">
+                <input type="password" id="aiOpenaiKeyInput" class="text-input" placeholder="OpenAI API key (sk-…)" autocomplete="off" spellcheck="false" />
+                <p class="backup-note help-en">Paid (pay-as-you-go) — create a key at
+                  <a href="#" class="about-link" data-url="https://platform.openai.com/api-keys">platform.openai.com/api-keys</a>.
+                  Stored locally, same as your other preferences.</p>
+                <p class="backup-note help-fa" dir="rtl">پولی (به‌اندازه‌ی مصرف) — کلید رو از
+                  <a href="#" class="about-link" data-url="https://platform.openai.com/api-keys">platform.openai.com/api-keys</a>
+                  بگیر. فقط روی همین دستگاه ذخیره می‌شه.</p>
+              </div>
 
-          <!-- Sidebar & tabs -->
-          <section class="set-group">
-            <h3 class="set-label">Sidebar</h3>
-            <div class="set-toggle-row">
-              <div class="set-toggle-text">
-                <span>Templates</span>
-                <small>Show the templates button in the sidebar</small>
+              <!-- Google AI Studio -->
+              <div id="aiGoogleFields" class="hidden">
+                <input type="password" id="aiGoogleKeyInput" class="text-input" placeholder="Google AI Studio key (AIza…)" autocomplete="off" spellcheck="false" />
+                <p class="backup-note help-en">Has a free tier — create a key at
+                  <a href="#" class="about-link" data-url="https://aistudio.google.com/apikey">aistudio.google.com/apikey</a>.
+                  This is separate from the Gemini key used for image generation. Stored locally.</p>
+                <p class="backup-note help-fa" dir="rtl">سقفِ رایگان داره — کلید رو از
+                  <a href="#" class="about-link" data-url="https://aistudio.google.com/apikey">aistudio.google.com/apikey</a>
+                  بساز. این کلید از کلیدِ Gemini برای ساختِ تصویر جداست. فقط روی همین دستگاه ذخیره می‌شه.</p>
               </div>
-              <label class="switch">
-                <input type="checkbox" id="toggleTemplates" />
-                <span class="slider"></span>
-              </label>
-            </div>
-            <div class="set-toggle-row">
-              <div class="set-toggle-text">
-                <span>Fast Save</span>
-                <small>Chat-style quick notes pinned above your tabs</small>
-              </div>
-              <label class="switch">
-                <input type="checkbox" id="toggleFastSave" />
-                <span class="slider"></span>
-              </label>
-            </div>
-            <div class="set-toggle-row" id="discoverRow">
-              <div class="set-toggle-text">
-                <span>Discover</span>
-                <small>Shared prompt gallery tab (browse &amp; publish prompts)</small>
-              </div>
-              <label class="switch">
-                <input type="checkbox" id="toggleDiscover" />
-                <span class="slider"></span>
-              </label>
-            </div>
-            <div class="set-toggle-row" id="collabRow">
-              <div class="set-toggle-text">
-                <span>Shared notes</span>
-                <small>Invite another user to edit one of your notes with you, live</small>
-              </div>
-              <label class="switch">
-                <input type="checkbox" id="toggleCollab" />
-                <span class="slider"></span>
-              </label>
-            </div>
-            <div class="set-toggle-row" id="labRow">
-              <div class="set-toggle-text">
-                <span>Prompt Lab</span>
-                <small>Your personal, local library of prompts + media</small>
-              </div>
-              <label class="switch">
-                <input type="checkbox" id="toggleLab" />
-                <span class="slider"></span>
-              </label>
-            </div>
-            <div class="set-toggle-row" id="aiChatRow">
-              <div class="set-toggle-text">
-                <span>AI Chat</span>
-                <small>Chat panel in the sidebar</small>
-              </div>
-              <label class="switch">
-                <input type="checkbox" id="toggleAiChat" />
-                <span class="slider"></span>
-              </label>
-            </div>
-            <div class="set-toggle-row" id="profilesRow">
-              <div class="set-toggle-text">
-                <span>Profiles</span>
-                <small>Separate sets of tabs, switched from the title bar</small>
-              </div>
-              <label class="switch">
-                <input type="checkbox" id="toggleProfiles" />
-                <span class="slider"></span>
-              </label>
-            </div>
-            <small class="set-hint" id="profilesHint">Turning this off only hides the switcher — your profiles and their tabs are kept.</small>
-            <h3 class="set-label" style="margin-top:14px">Tabs</h3>
-            <div class="set-toggle-row">
-              <div class="set-toggle-text">
-                <span>Pinning</span>
-                <small>Show the pin icon on tabs</small>
-              </div>
-              <label class="switch">
-                <input type="checkbox" id="togglePin" />
-                <span class="slider"></span>
-              </label>
-            </div>
-            <div class="set-toggle-row">
-              <div class="set-toggle-text">
-                <span>Close button</span>
-                <small>Show the × on hover over tabs</small>
-              </div>
-              <label class="switch">
-                <input type="checkbox" id="toggleClose" />
-                <span class="slider"></span>
-              </label>
-            </div>
-            <div class="set-toggle-row" id="resizeRow">
-              <div class="set-toggle-text">
-                <span>Resizable tab width</span>
-                <small>Drag the divider to resize (left layout)</small>
-              </div>
-              <label class="switch">
-                <input type="checkbox" id="toggleResize" />
-                <span class="slider"></span>
-              </label>
-            </div>
-          </section>
 
-          <!-- Placeholders -->
-          <section class="set-group">
-            <div class="set-toggle-row">
-              <div class="set-toggle-text">
-                <span>Detect placeholders</span>
-                <small>Highlight [text] / {text} and offer quick-fill fields</small>
+              <!-- Anthropic (Claude) -->
+              <div id="aiAnthropicFields" class="hidden">
+                <input type="password" id="aiAnthropicKeyInput" class="text-input" placeholder="Anthropic API key (sk-ant-…)" autocomplete="off" spellcheck="false" />
+                <p class="backup-note help-en">Paid (pay-as-you-go) — create a key at
+                  <a href="#" class="about-link" data-url="https://console.anthropic.com/settings/keys">console.anthropic.com</a>.
+                  <b>A Claude.ai Pro/Max subscription will not work here</b> — it's a separate product and issues no
+                  API key. To use Claude on a subscription-like budget, pick OpenRouter above and choose an
+                  <code>anthropic/claude-…</code> model instead.</p>
+                <p class="backup-note help-fa" dir="rtl">پولی (به‌اندازه‌ی مصرف) — کلید رو از
+                  <a href="#" class="about-link" data-url="https://console.anthropic.com/settings/keys">console.anthropic.com</a>
+                  بگیر. <b>اشتراکِ Claude.ai Pro/Max اینجا کار نمی‌کنه</b> — محصولِ جداییه و کلیدِ API نمی‌ده.
+                  اگه می‌خوای Claude رو ارزون‌تر امتحان کنی، بالا OpenRouter رو انتخاب کن و یکی از مدل‌های
+                  <code>anthropic/claude-…</code> رو بردار.</p>
               </div>
-              <label class="switch">
-                <input type="checkbox" id="togglePlaceholders" />
-                <span class="slider"></span>
-              </label>
-            </div>
-            <div class="set-toggle-row" id="placeholderPositionRow">
-              <div class="set-toggle-text">
-                <span>Fill bar position</span>
-                <small>Above the prompt, or as a side panel</small>
-              </div>
-              <div class="seg" id="placeholderPositionSeg">
-                <button class="seg-btn" data-pos="top">Top</button>
-                <button class="seg-btn" data-pos="right">Right</button>
-              </div>
-            </div>
-            <div class="set-toggle-row" id="placeholderWrapRow">
-              <div class="set-toggle-text">
-                <span>Field layout</span>
-                <small>One scrollable line, or stacked rows</small>
-              </div>
-              <div class="seg" id="placeholderWrapSeg">
-                <button class="seg-btn" data-wrap="line">Line</button>
-                <button class="seg-btn" data-wrap="stack">Stacked</button>
-              </div>
-            </div>
-          </section>
 
-          <!-- Images -->
-          <section class="set-group">
-            <div class="set-toggle-row">
-              <div class="set-toggle-text">
-                <span>Resize images</span>
-                <small>Drag an image's corner to make it bigger or smaller</small>
+              <!-- Any OpenAI-compatible endpoint -->
+              <div id="aiCustomFields" class="hidden">
+                <input type="text" id="aiCustomUrlInput" class="text-input" placeholder="https://api.example.com/v1/chat/completions" autocomplete="off" spellcheck="false" />
+                <input type="password" id="aiCustomKeyInput" class="text-input" placeholder="API key (leave empty for local servers)" autocomplete="off" spellcheck="false" />
+                <input type="text" id="aiCustomModelsInput" class="text-input" placeholder="Model names, comma separated" autocomplete="off" spellcheck="false" />
+                <p class="backup-note help-en">Any OpenAI-compatible chat-completions endpoint — Groq, DeepSeek,
+                  Together, Mistral, or a local runtime like Ollama and LM Studio (those need no key).</p>
+                <p class="backup-note help-fa" dir="rtl">هر سرویسی که با فرمتِ OpenAI سازگار باشه — Groq، DeepSeek،
+                  Together، Mistral، یا سرویس‌های محلی مثل Ollama و LM Studio (اونا کلید نمی‌خوان).</p>
               </div>
-              <label class="switch">
-                <input type="checkbox" id="toggleImageResize" />
-                <span class="slider"></span>
-              </label>
-            </div>
-            <div class="set-toggle-row">
-              <div class="set-toggle-text">
-                <span>Save images on right-click</span>
-                <small>Right-click an image to download a copy</small>
               </div>
-              <label class="switch">
-                <input type="checkbox" id="toggleImageDownload" />
-                <span class="slider"></span>
-              </label>
-            </div>
-            <div class="set-toggle-row">
-              <div class="set-toggle-text">
-                <span>Full-size preview images</span>
-                <small>In markdown preview, images fill the window width instead of staying small</small>
+            </section>
+            <section class="set-group" id="customActionsGroup">
+              <div class="set-label-row">
+                <h3 class="set-label">Custom AI actions</h3>
+                <button type="button" class="lang-toggle" title="فارسی / English"><span class="lt-to-fa">فارسی</span><span class="lt-to-en">English</span></button>
               </div>
-              <label class="switch">
-                <input type="checkbox" id="toggleMdImageFullSize" />
-                <span class="slider"></span>
-              </label>
-            </div>
-            <div class="set-toggle-row">
-              <div class="set-toggle-text">
-                <span>Markdown keyboard shortcuts</span>
-                <small>Ctrl+I italic, Ctrl+Shift+1…6 headings, Ctrl+Shift+H highlight and more. Right-click → Markdown Commands always works.</small>
+              <p class="set-hint help-en">Your own instructions, added to the AI actions menu. Select some text,
+                right-click → AI actions, and pick one.</p>
+              <p class="set-hint help-fa" dir="rtl">دستورهای خودت که به منوی AI actions اضافه می‌شن. یه متن رو
+                انتخاب کن، راست‌کلیک → AI actions، و یکی رو بزن.</p>
+              <div id="customActionsList" class="custom-actions-list"></div>
+              <button type="button" id="customActionAdd" class="mini-dialog-save custom-action-add">+ Add action</button>
+            </section>
+            <section class="set-group">
+              <div class="set-label-row">
+                <h3 class="set-label">Speech to text</h3>
+                <button type="button" class="lang-toggle" title="فارسی / English"><span class="lt-to-fa">فارسی</span><span class="lt-to-en">English</span></button>
               </div>
-              <label class="switch">
-                <input type="checkbox" id="toggleMdShortcuts" />
-                <span class="slider"></span>
-              </label>
-            </div>
-          </section>
-
-          <!-- Toolbar buttons -->
-          <section class="set-group">
-            <h3 class="set-label">Toolbar buttons</h3>
-            <p class="set-hint">Click to show or hide each button in the bottom bar.</p>
-            <div id="toolbarRow" class="toolbar-row"></div>
-          </section>
-
-          <!-- Image generation — feature hidden for now, code kept intact for later -->
-          <section class="set-group hidden">
-            <h3 class="set-label">Image generation</h3>
-            <p class="set-hint">"Generate Image" sends the current tab's text to an image generator and
-              inserts a square preview image above it — handy for prompts written for image generators.</p>
-            <!-- Hugging Face and Gemini are wired up but hidden for now — both
-                 turned out unreliable in practice (HF's free hf-inference
-                 backend was down for its only supported model; Gemini's
-                 image quota was 0 with no billing enabled). Free Pollinations
-                 is the only option surfaced until those get revisited. -->
-            <div class="seg hidden" id="imageGenProviderSeg">
-              <button class="seg-btn" data-provider="pollinations">Free</button>
-              <button class="seg-btn" data-provider="huggingface">Hugging Face</button>
-              <button class="seg-btn" data-provider="gemini">Google Gemini</button>
-            </div>
-            <p class="set-hint" id="providerHintPollinations">No signup, no API key. Prompts are sent to
-              <a href="#" class="about-link" data-url="https://pollinations.ai">pollinations.ai</a>, a free
-              third-party image service — generations aren't saved to their public feed, but the prompt text
-              still leaves your machine. Quality is decent but on the weaker/faster side.</p>
-            <div id="hfProviderFields" class="hidden">
-              <input type="password" id="hfApiKeyInput" class="text-input" placeholder="Hugging Face access token" autocomplete="off" spellcheck="false" />
-              <p class="backup-note">Free (rate-limited), noticeably better quality than the no-signup option —
-                uses the FLUX.1-schnell model. Get a token at
+              <p class="set-hint help-en">The mic button records from your microphone and inserts the transcribed
+                text at the caret. Persian and English are both supported (auto-detected).</p>
+              <p class="set-hint help-fa" dir="rtl">دکمه‌ی میکروفون صداتو ضبط می‌کنه و متنِ تبدیل‌شده رو سرِ جای
+                مکان‌نما می‌ذاره. فارسی و انگلیسی هر دو پشتیبانی می‌شن (خودکار تشخیص داده می‌شن).</p>
+              <input type="password" id="voiceHfApiKeyInput" class="text-input" placeholder="Hugging Face access token" autocomplete="off" spellcheck="false" />
+              <p class="backup-note help-en">Free (rate-limited) — uses the Whisper large-v3 model, which
+                auto-detects the spoken language. Get a token at
                 <a href="#" class="about-link" data-url="https://huggingface.co/settings/tokens/new?ownUserPermissions=inference.serverless.write&amp;tokenType=fineGrained">huggingface.co/settings/tokens</a>
-                (free account, no card required) with "Make calls to Inference Providers" permission. The token is
-                stored locally in PromptPad's own settings file, the same as your other preferences.</p>
-            </div>
-            <div id="geminiProviderFields" class="hidden">
-              <input type="password" id="geminiApiKeyInput" class="text-input" placeholder="Gemini API key" autocomplete="off" spellcheck="false" />
-              <p class="backup-note">Get a key at
-                <a href="#" class="about-link" data-url="https://aistudio.google.com/apikey">aistudio.google.com/apikey</a>
-                (sign in with your Google account, click "Create API key"). Image generation is billed per image —
-                see <a href="#" class="about-link" data-url="https://ai.google.dev/gemini-api/docs/pricing">Gemini's
-                pricing page</a> for current rates; free-tier availability for image models varies by region and
-                account and isn't guaranteed. The key is stored locally in PromptPad's own settings file, the same
-                as your other preferences.</p>
-            </div>
-          </section>
-
-          <!-- AI Chat & actions -->
-          <section class="set-group">
-            <div class="set-label-row">
-              <h3 class="set-label">AI Chat &amp; actions</h3>
-              <button type="button" class="lang-toggle" title="فارسی / English"><span class="lt-to-fa">فارسی</span><span class="lt-to-en">English</span></button>
-            </div>
-            <div class="set-toggle-row">
-              <div class="set-toggle-text">
-                <span>AI features</span>
-                <small>Improve, AI actions, AI Chat and the AI button in Markdown</small>
-              </div>
-              <label class="switch">
-                <input type="checkbox" id="toggleAi" />
-                <span class="slider"></span>
-              </label>
-            </div>
-            <div id="aiKeyFields">
-            <p class="set-hint help-en">Powers AI Chat, Improve, and the AI actions (translate, summarize, fix grammar…).
-              Each person uses their own key, so everyone gets their own limits.</p>
-            <p class="set-hint help-fa" dir="rtl">پشتِ چت هوش مصنوعی، Improve و اکشن‌های AI (ترجمه، خلاصه‌سازی، اصلاح گرامر…) همینه.
-              هر کاربر با کلیدِ خودش کار می‌کنه، پس لیمیتِ هرکس برای خودشه.</p>
-
-            <div class="set-field-row">
-              <label class="set-field-label" for="aiProviderSelect">Provider</label>
-              <select id="aiProviderSelect" class="text-input set-select">
-                <option value="openrouter">OpenRouter (free)</option>
-                <option value="openai">OpenAI</option>
-                <option value="google">Google AI Studio</option>
-                <option value="anthropic">Anthropic (Claude)</option>
-                <option value="custom">Custom endpoint…</option>
-              </select>
-            </div>
-            <div class="set-field-row">
-              <label class="set-field-label" for="aiModelSelect">Model</label>
-              <select id="aiModelSelect" class="text-input set-select"></select>
-              <button type="button" id="aiModelRefresh" class="model-refresh" title="Fetch the model list from the provider">↻</button>
-            </div>
-            <p class="set-hint model-status" id="aiModelStatus"></p>
-            <p class="backup-note help-en"><b>Auto</b> tries the provider's models in order and moves on
-              when one is busy. Picking a model uses only that one. Press ↻ to load the real list from
-              the provider using your key.</p>
-            <p class="backup-note help-fa" dir="rtl">حالتِ <b>Auto</b> مدل‌ها رو به‌ترتیب امتحان می‌کنه و اگه یکی
-              شلوغ بود می‌ره سراغِ بعدی. اگه مدلی رو انتخاب کنی فقط از همون استفاده می‌شه. با ↻ لیستِ واقعیِ
-              مدل‌ها با کلیدِ خودت از سرویس‌دهنده گرفته می‌شه.</p>
-
-            <!-- OpenRouter -->
-            <div id="aiOpenrouterFields">
-              <input type="password" id="aiApiKeyInput" class="text-input" placeholder="OpenRouter API key (sk-or-v1-…)" autocomplete="off" spellcheck="false" />
-              <p class="backup-note help-en">Free — create a key at
-                <a href="#" class="about-link" data-url="https://openrouter.ai/keys">openrouter.ai/keys</a>
-                (free account, no card required), then paste it here. Uses OpenRouter's free models. Stored
+                (free account, no card required) with "Make calls to Inference Providers" permission. Stored
                 locally, same as your other preferences.</p>
-              <p class="backup-note help-fa" dir="rtl">رایگان — یه کلید بساز از
-                <a href="#" class="about-link" data-url="https://openrouter.ai/keys">openrouter.ai/keys</a>
-                (حسابِ رایگان، بدون کارت بانکی)، بعد همین‌جا بذارش. از مدل‌های رایگانِ OpenRouter استفاده می‌کنه.
-                فقط روی همین دستگاه ذخیره می‌شه.</p>
-            </div>
+              <p class="backup-note help-fa" dir="rtl">رایگان (با محدودیتِ نرخ) — از مدلِ Whisper large-v3 استفاده می‌کنه
+                که خودش زبانِ گفتار رو تشخیص می‌ده. یه توکن بگیر از
+                <a href="#" class="about-link" data-url="https://huggingface.co/settings/tokens/new?ownUserPermissions=inference.serverless.write&amp;tokenType=fineGrained">huggingface.co/settings/tokens</a>
+                (حسابِ رایگان، بدون کارت) با دسترسیِ «Make calls to Inference Providers». روی همین دستگاه ذخیره می‌شه.</p>
+            </section>
+          </div>
 
-            <!-- OpenAI -->
-            <div id="aiOpenaiFields" class="hidden">
-              <input type="password" id="aiOpenaiKeyInput" class="text-input" placeholder="OpenAI API key (sk-…)" autocomplete="off" spellcheck="false" />
-              <p class="backup-note help-en">Paid (pay-as-you-go) — create a key at
-                <a href="#" class="about-link" data-url="https://platform.openai.com/api-keys">platform.openai.com/api-keys</a>.
-                Stored locally, same as your other preferences.</p>
-              <p class="backup-note help-fa" dir="rtl">پولی (به‌اندازه‌ی مصرف) — کلید رو از
-                <a href="#" class="about-link" data-url="https://platform.openai.com/api-keys">platform.openai.com/api-keys</a>
-                بگیر. فقط روی همین دستگاه ذخیره می‌شه.</p>
-            </div>
-
-            <!-- Google AI Studio -->
-            <div id="aiGoogleFields" class="hidden">
-              <input type="password" id="aiGoogleKeyInput" class="text-input" placeholder="Google AI Studio key (AIza…)" autocomplete="off" spellcheck="false" />
-              <p class="backup-note help-en">Has a free tier — create a key at
-                <a href="#" class="about-link" data-url="https://aistudio.google.com/apikey">aistudio.google.com/apikey</a>.
-                This is separate from the Gemini key used for image generation. Stored locally.</p>
-              <p class="backup-note help-fa" dir="rtl">سقفِ رایگان داره — کلید رو از
-                <a href="#" class="about-link" data-url="https://aistudio.google.com/apikey">aistudio.google.com/apikey</a>
-                بساز. این کلید از کلیدِ Gemini برای ساختِ تصویر جداست. فقط روی همین دستگاه ذخیره می‌شه.</p>
-            </div>
-
-            <!-- Anthropic (Claude) -->
-            <div id="aiAnthropicFields" class="hidden">
-              <input type="password" id="aiAnthropicKeyInput" class="text-input" placeholder="Anthropic API key (sk-ant-…)" autocomplete="off" spellcheck="false" />
-              <p class="backup-note help-en">Paid (pay-as-you-go) — create a key at
-                <a href="#" class="about-link" data-url="https://console.anthropic.com/settings/keys">console.anthropic.com</a>.
-                <b>A Claude.ai Pro/Max subscription will not work here</b> — it's a separate product and issues no
-                API key. To use Claude on a subscription-like budget, pick OpenRouter above and choose an
-                <code>anthropic/claude-…</code> model instead.</p>
-              <p class="backup-note help-fa" dir="rtl">پولی (به‌اندازه‌ی مصرف) — کلید رو از
-                <a href="#" class="about-link" data-url="https://console.anthropic.com/settings/keys">console.anthropic.com</a>
-                بگیر. <b>اشتراکِ Claude.ai Pro/Max اینجا کار نمی‌کنه</b> — محصولِ جداییه و کلیدِ API نمی‌ده.
-                اگه می‌خوای Claude رو ارزون‌تر امتحان کنی، بالا OpenRouter رو انتخاب کن و یکی از مدل‌های
-                <code>anthropic/claude-…</code> رو بردار.</p>
-            </div>
-
-            <!-- Any OpenAI-compatible endpoint -->
-            <div id="aiCustomFields" class="hidden">
-              <input type="text" id="aiCustomUrlInput" class="text-input" placeholder="https://api.example.com/v1/chat/completions" autocomplete="off" spellcheck="false" />
-              <input type="password" id="aiCustomKeyInput" class="text-input" placeholder="API key (leave empty for local servers)" autocomplete="off" spellcheck="false" />
-              <input type="text" id="aiCustomModelsInput" class="text-input" placeholder="Model names, comma separated" autocomplete="off" spellcheck="false" />
-              <p class="backup-note help-en">Any OpenAI-compatible chat-completions endpoint — Groq, DeepSeek,
-                Together, Mistral, or a local runtime like Ollama and LM Studio (those need no key).</p>
-              <p class="backup-note help-fa" dir="rtl">هر سرویسی که با فرمتِ OpenAI سازگار باشه — Groq، DeepSeek،
-                Together، Mistral، یا سرویس‌های محلی مثل Ollama و LM Studio (اونا کلید نمی‌خوان).</p>
-            </div>
-            </div>
-          </section>
-
-          <!-- Custom AI actions -->
-          <section class="set-group" id="customActionsGroup">
-            <div class="set-label-row">
-              <h3 class="set-label">Custom AI actions</h3>
-              <button type="button" class="lang-toggle" title="فارسی / English"><span class="lt-to-fa">فارسی</span><span class="lt-to-en">English</span></button>
-            </div>
-            <p class="set-hint help-en">Your own instructions, added to the AI actions menu. Select some text,
-              right-click → AI actions, and pick one.</p>
-            <p class="set-hint help-fa" dir="rtl">دستورهای خودت که به منوی AI actions اضافه می‌شن. یه متن رو
-              انتخاب کن، راست‌کلیک → AI actions، و یکی رو بزن.</p>
-            <div id="customActionsList" class="custom-actions-list"></div>
-            <button type="button" id="customActionAdd" class="mini-dialog-save custom-action-add">+ Add action</button>
-          </section>
-
-          <!-- Speech to text -->
-          <section class="set-group">
-            <div class="set-label-row">
-              <h3 class="set-label">Speech to text</h3>
-              <button type="button" class="lang-toggle" title="فارسی / English"><span class="lt-to-fa">فارسی</span><span class="lt-to-en">English</span></button>
-            </div>
-            <p class="set-hint help-en">The mic button records from your microphone and inserts the transcribed
-              text at the caret. Persian and English are both supported (auto-detected).</p>
-            <p class="set-hint help-fa" dir="rtl">دکمه‌ی میکروفون صداتو ضبط می‌کنه و متنِ تبدیل‌شده رو سرِ جای
-              مکان‌نما می‌ذاره. فارسی و انگلیسی هر دو پشتیبانی می‌شن (خودکار تشخیص داده می‌شن).</p>
-            <input type="password" id="voiceHfApiKeyInput" class="text-input" placeholder="Hugging Face access token" autocomplete="off" spellcheck="false" />
-            <p class="backup-note help-en">Free (rate-limited) — uses the Whisper large-v3 model, which
-              auto-detects the spoken language. Get a token at
-              <a href="#" class="about-link" data-url="https://huggingface.co/settings/tokens/new?ownUserPermissions=inference.serverless.write&amp;tokenType=fineGrained">huggingface.co/settings/tokens</a>
-              (free account, no card required) with "Make calls to Inference Providers" permission. Stored
-              locally, same as your other preferences.</p>
-            <p class="backup-note help-fa" dir="rtl">رایگان (با محدودیتِ نرخ) — از مدلِ Whisper large-v3 استفاده می‌کنه
-              که خودش زبانِ گفتار رو تشخیص می‌ده. یه توکن بگیر از
-              <a href="#" class="about-link" data-url="https://huggingface.co/settings/tokens/new?ownUserPermissions=inference.serverless.write&amp;tokenType=fineGrained">huggingface.co/settings/tokens</a>
-              (حسابِ رایگان، بدون کارت) با دسترسیِ «Make calls to Inference Providers». روی همین دستگاه ذخیره می‌شه.</p>
-          </section>
-
-          <!-- System -->
-          <section class="set-group">
-            <div class="set-toggle-row">
-              <div class="set-toggle-text">
-                <span>Launch at startup</span>
-                <small id="startupHint">Open PromptPad when Windows starts</small>
+          <div class="settings-pane hidden" data-pane="data" role="tabpanel">
+            <section class="set-group">
+              <h3 class="set-label">Storage</h3>
+              <div class="storage-path-row">
+                <span id="storagePathValue" class="storage-path-value">Loading…</span>
               </div>
-              <label class="switch">
-                <input type="checkbox" id="toggleStartup" />
-                <span class="slider"></span>
-              </label>
-            </div>
-            <div class="set-toggle-row">
-              <div class="set-toggle-text">
-                <span>Auto-check for updates</span>
-                <small>Check GitHub for new versions on launch</small>
+              <div class="storage-btn-row">
+                <button id="changeStorageBtn" class="check-update-btn">
+                  <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><path d="M4 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+                  <span id="changeStorageLabel">Change location…</span>
+                </button>
+                <button id="openStorageBtn" class="check-update-btn">
+                  <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><path d="M3 7a1 1 0 0 1 1-1h4l2 2h9a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+                  Open folder
+                </button>
               </div>
-              <label class="switch">
-                <input type="checkbox" id="toggleAutoUpdate" />
-                <span class="slider"></span>
-              </label>
-            </div>
-            <div class="set-toggle-row">
-              <div class="set-toggle-text">
-                <span>Window opacity</span>
-                <small id="opacityValue">100%</small>
-              </div>
-              <input type="range" id="opacityRange" class="range-input" min="70" max="100" step="5" />
-            </div>
-            <div class="set-toggle-row">
-              <div class="set-toggle-text">
-                <span>Close to tray</span>
-                <small>Keep running in the tray when closed</small>
-              </div>
-              <label class="switch">
-                <input type="checkbox" id="toggleTray" />
-                <span class="slider"></span>
-              </label>
-            </div>
-            <div class="set-toggle-row">
-              <div class="set-toggle-text">
-                <span>Global quick capture</span>
-                <small id="quickCaptureHint">Opens Fast Save from anywhere, even when PromptPad isn’t focused</small>
-              </div>
-              <label class="switch">
-                <input type="checkbox" id="toggleQuickCapture" />
-                <span class="slider"></span>
-              </label>
-            </div>
-            <div class="shortcut-row">
-              <input type="text" id="quickCaptureShortcutInput" class="text-input shortcut-input" readonly placeholder="Click, then press a key combo" />
-              <button class="seg-btn" id="quickCaptureShortcutReset" type="button">Reset</button>
-            </div>
-            <small class="set-hint" id="quickCaptureShortcutHint">Click the box and press your keys. Tip: avoid Ctrl+Shift combos — Windows uses them to switch keyboard layout.</small>
-          </section>
-
-          <!-- Storage -->
-          <section class="set-group">
-            <h3 class="set-label">Storage</h3>
-            <div class="storage-path-row">
-              <span id="storagePathValue" class="storage-path-value">Loading…</span>
-            </div>
-            <div class="storage-btn-row">
-              <button id="changeStorageBtn" class="check-update-btn">
-                <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><path d="M4 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
-                <span id="changeStorageLabel">Change location…</span>
+              <p class="backup-note">Where attached images and files are kept. Changing this moves
+                your existing images/files there — your notes database always stays in the app's own data folder.</p>
+            </section>
+            <section class="set-group">
+              <h3 class="set-label">Backup</h3>
+              <button id="exportDataBtn" class="check-update-btn">
+                <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M4 19h16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                <span id="exportDataLabel">Export all data…</span>
               </button>
-              <button id="openStorageBtn" class="check-update-btn">
-                <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><path d="M3 7a1 1 0 0 1 1-1h4l2 2h9a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
-                Open folder
+              <button id="importDataBtn" class="check-update-btn">
+                <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><path d="M12 15V3M7 8l5-5 5 5M4 19h16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                <span id="importDataLabel">Import backup…</span>
               </button>
-            </div>
-            <p class="backup-note">Where attached images and files are kept. Changing this moves
-              your existing images/files there — your notes database always stays in the app's own data folder.</p>
-          </section>
+              <p class="backup-note">Import replaces all notes and settings — a backup of your
+                current data is saved automatically first. Inserted images are not included.</p>
+            </section>
+            <section class="set-group">
+              <button id="resetBtn" class="reset-btn">Reset settings to defaults</button>
+            </section>
+          </div>
 
-          <!-- Backup -->
-          <section class="set-group">
-            <h3 class="set-label">Backup</h3>
-            <button id="exportDataBtn" class="check-update-btn">
-              <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M4 19h16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-              <span id="exportDataLabel">Export all data…</span>
-            </button>
-            <button id="importDataBtn" class="check-update-btn">
-              <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><path d="M12 15V3M7 8l5-5 5 5M4 19h16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-              <span id="importDataLabel">Import backup…</span>
-            </button>
-            <p class="backup-note">Import replaces all notes and settings — a backup of your
-              current data is saved automatically first. Inserted images are not included.</p>
-          </section>
-
-          <!-- About -->
-          <section class="set-group">
-            <h3 class="set-label">About</h3>
-            <div class="about-box">
-              <div class="about-brand">
-                <span class="brand-dot"></span>
-                <span>PromptPad <em id="aboutVersion">v3.5.0</em></span>
+          <div class="settings-pane hidden" data-pane="about" role="tabpanel">
+            <section class="set-group">
+              <h3 class="set-label">About</h3>
+              <div class="about-box">
+                <div class="about-brand">
+                  <span class="brand-dot"></span>
+                  <span>PromptPad <em id="aboutVersion">v3.6.0</em></span>
+                </div>
+                <p class="about-desc">A compact notepad for writing AI prompts.</p>
+                <div class="about-links">
+                  <a href="#" class="about-link" data-url="https://github.com/raminturne">
+                    <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M12 2C6.48 2 2 6.58 2 12.25c0 4.53 2.87 8.37 6.84 9.73.5.1.68-.22.68-.49v-1.7c-2.78.62-3.37-1.22-3.37-1.22-.45-1.18-1.11-1.49-1.11-1.49-.91-.64.07-.63.07-.63 1 .07 1.53 1.06 1.53 1.06.9 1.57 2.36 1.12 2.94.85.09-.67.35-1.12.63-1.38-2.22-.26-4.55-1.14-4.55-5.07 0-1.12.39-2.03 1.03-2.75-.1-.26-.45-1.31.1-2.72 0 0 .84-.28 2.75 1.05a9.3 9.3 0 0 1 5 0c1.91-1.33 2.75-1.05 2.75-1.05.55 1.41.2 2.46.1 2.72.64.72 1.03 1.63 1.03 2.75 0 3.94-2.34 4.81-4.57 5.06.36.32.68.94.68 1.9v2.82c0 .27.18.6.69.49A10.26 10.26 0 0 0 22 12.25C22 6.58 17.52 2 12 2z"/></svg>
+                    github.com/raminturne
+                  </a>
+                  <a href="#" class="about-link" data-url="https://t.me/fast_amozesh">
+                    <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M21.94 4.3 18.6 20.1c-.25 1.1-.9 1.37-1.83.85l-5.06-3.73-2.44 2.35c-.27.27-.5.5-1.02.5l.36-5.16L17.9 6.1c.41-.36-.09-.56-.63-.2L5.7 13.05.74 11.5c-1.08-.34-1.1-1.08.23-1.6l18.4-7.1c.9-.33 1.69.22 1.4 1.5z"/></svg>
+                    t.me/fast_amozesh
+                  </a>
+                </div>
+                <button id="donateBtn" class="check-update-btn donate-btn">
+                  <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M12 21s-7.5-4.6-9.4-9A5.1 5.1 0 0 1 12 6.3 5.1 5.1 0 0 1 21.4 12c-1.9 4.4-9.4 9-9.4 9z" fill="currentColor"/></svg>
+                  <span>Support PromptPad</span>
+                </button>
+                <button id="checkUpdateBtn" class="check-update-btn">
+                  <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><polyline points="23 4 23 10 17 10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
+                  <span id="checkUpdateLabel">Check for updates</span>
+                </button>
               </div>
-              <p class="about-desc">A compact notepad for writing AI prompts.</p>
-              <div class="about-links">
-                <a href="#" class="about-link" data-url="https://github.com/raminturne">
-                  <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M12 2C6.48 2 2 6.58 2 12.25c0 4.53 2.87 8.37 6.84 9.73.5.1.68-.22.68-.49v-1.7c-2.78.62-3.37-1.22-3.37-1.22-.45-1.18-1.11-1.49-1.11-1.49-.91-.64.07-.63.07-.63 1 .07 1.53 1.06 1.53 1.06.9 1.57 2.36 1.12 2.94.85.09-.67.35-1.12.63-1.38-2.22-.26-4.55-1.14-4.55-5.07 0-1.12.39-2.03 1.03-2.75-.1-.26-.45-1.31.1-2.72 0 0 .84-.28 2.75 1.05a9.3 9.3 0 0 1 5 0c1.91-1.33 2.75-1.05 2.75-1.05.55 1.41.2 2.46.1 2.72.64.72 1.03 1.63 1.03 2.75 0 3.94-2.34 4.81-4.57 5.06.36.32.68.94.68 1.9v2.82c0 .27.18.6.69.49A10.26 10.26 0 0 0 22 12.25C22 6.58 17.52 2 12 2z"/></svg>
-                  github.com/raminturne
-                </a>
-                <a href="#" class="about-link" data-url="https://t.me/fast_amozesh">
-                  <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M21.94 4.3 18.6 20.1c-.25 1.1-.9 1.37-1.83.85l-5.06-3.73-2.44 2.35c-.27.27-.5.5-1.02.5l.36-5.16L17.9 6.1c.41-.36-.09-.56-.63-.2L5.7 13.05.74 11.5c-1.08-.34-1.1-1.08.23-1.6l18.4-7.1c.9-.33 1.69.22 1.4 1.5z"/></svg>
-                  t.me/fast_amozesh
-                </a>
-              </div>
-              <button id="donateBtn" class="check-update-btn donate-btn">
-                <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M12 21s-7.5-4.6-9.4-9A5.1 5.1 0 0 1 12 6.3 5.1 5.1 0 0 1 21.4 12c-1.9 4.4-9.4 9-9.4 9z" fill="currentColor"/></svg>
-                <span>Support PromptPad</span>
-              </button>
-              <button id="checkUpdateBtn" class="check-update-btn">
-                <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><polyline points="23 4 23 10 17 10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
-                <span id="checkUpdateLabel">Check for updates</span>
-              </button>
-            </div>
-          </section>
-
-          <!-- Reset -->
-          <section class="set-group">
-            <button id="resetBtn" class="reset-btn">Reset settings to defaults</button>
-          </section>
+            </section>
+          </div>
         </div>
       </div>
     </div>

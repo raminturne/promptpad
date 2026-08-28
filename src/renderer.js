@@ -2939,7 +2939,8 @@ function aiKeyInputEl() {
 // Shared by every "you have no key yet" path.
 function promptForAiKey() {
   openSettings();
-  setTimeout(() => { const el = aiKeyInputEl(); if (el) el.focus(); }, 60);
+  // The key field for the current provider is only revealed by syncSettingsUI.
+  setTimeout(() => { const el = aiKeyInputEl(); if (el) revealSetting(el).focus(); }, 60);
 }
 
 // Bilingual (English + Persian) onboarding card shown in AI Chat when there are
@@ -4861,13 +4862,11 @@ function setPreviewImageToken(t, filename, targetLine) {
 async function runImageGeneration(btnEl, prompt, targetLine) {
   const provider = settings.imageGen.provider || 'pollinations';
   if (provider === 'gemini' && !settings.imageGen.geminiApiKey) {
-    openSettings();
-    geminiApiKeyInputEl.focus();
+    openSettings(geminiApiKeyInputEl);
     return;
   }
   if (provider === 'huggingface' && !settings.imageGen.hfApiKey) {
-    openSettings();
-    hfApiKeyInputEl.focus();
+    openSettings(hfApiKeyInputEl);
     return;
   }
   const t = activeTab();
@@ -5828,10 +5827,7 @@ aiActionsMenu.addEventListener('click', (e) => {
     runTabAiAction(item.dataset.aiAction, '', range);
   } else if (item.dataset.aiManage) {
     openSettings();
-    setTimeout(() => {
-      const el = document.getElementById('customActionsList');
-      if (el) el.scrollIntoView({ block: 'center' });
-    }, 60);
+    setTimeout(() => revealSetting('customActionsList'), 60);
   } else if (item.dataset.aiRecent) {
     // Same snapshot the row was drawn from, so the index can't have drifted.
     const prompt = aiMenuRecents[Number(item.dataset.aiRecent)];
@@ -6406,8 +6402,7 @@ const aiVoiceSink = {
 async function startVoiceRecording(sink) {
   if (!sink.canStart()) return;
   if (!settings.voice.hfApiKey) {
-    openSettings();
-    voiceHfApiKeyInputEl.focus();
+    openSettings(voiceHfApiKeyInputEl);
     return;
   }
   const btn = sink.btn;
@@ -7142,6 +7137,8 @@ function buildThemeSwatches() {
     const row = document.createElement('div');
     row.className = 'theme-swatches';
     entries.forEach(([key, t]) => {
+      const item = document.createElement('div');
+      item.className = 'theme-item';
       const sw = document.createElement('button');
       sw.className = 'theme-swatch' + (settings.theme === key ? ' active' : '');
       sw.title = t.label;
@@ -7167,7 +7164,12 @@ function buildThemeSwatches() {
         const isGlass = !!t.needsRestart;
         if (wasGlass !== isGlass) showRestartBanner();
       });
-      row.appendChild(sw);
+      const name = document.createElement('span');
+      name.className = 'theme-name';
+      name.textContent = t.label;
+      item.appendChild(sw);
+      item.appendChild(name);
+      row.appendChild(item);
     });
     grp.appendChild(row);
     themeRow.appendChild(grp);
@@ -7293,10 +7295,50 @@ async function refreshStoragePathDisplay() {
   } catch (e) { console.error('get-storage-path failed', e); }
 }
 
-function openSettings() {
+// ---------- Settings tabs ----------
+// The panel is long, so it's split into panes (General / Appearance / …).
+// Whichever pane you were last on is where Settings reopens.
+const settingsTabsEl = document.getElementById('settingsTabs');
+let settingsPane = 'general';
+
+function setSettingsPane(id) {
+  const panes = document.querySelectorAll('.settings-pane');
+  if (!panes.length) return;
+  if (![...panes].some((p) => p.dataset.pane === id)) id = 'general';
+  settingsPane = id;
+  panes.forEach((p) => p.classList.toggle('hidden', p.dataset.pane !== id));
+  document.querySelectorAll('.set-tab').forEach((b) => {
+    b.classList.toggle('active', b.dataset.pane === id);
+  });
+  const body = document.querySelector('.settings-body');
+  if (body) body.scrollTop = 0;
+}
+
+if (settingsTabsEl) settingsTabsEl.addEventListener('click', (e) => {
+  const btn = e.target.closest('.set-tab');
+  if (btn) setSettingsPane(btn.dataset.pane);
+});
+
+// Switches to whichever pane holds `el` and scrolls it into view. Used by the
+// shortcuts into Settings (missing API key, "manage actions", the theme tour).
+function revealSetting(el) {
+  if (typeof el === 'string') el = document.getElementById(el);
+  if (!el) return null;
+  const pane = el.closest('.settings-pane');
+  if (pane) setSettingsPane(pane.dataset.pane);
+  el.scrollIntoView({ block: 'center' });
+  return el;
+}
+
+function openSettings(target) {
   syncSettingsUI();
   refreshStoragePathDisplay();
+  setSettingsPane(settingsPane);
   settingsOverlay.classList.remove('hidden');
+  if (target) {
+    const el = revealSetting(target);
+    if (el && typeof el.focus === 'function') el.focus();
+  }
 }
 
 // Small "فارسی / English" chips next to the AI / Speech help text — now just a
@@ -8605,58 +8647,30 @@ const CURRENT_VERSION = document.getElementById('aboutVersion').textContent.repl
 const WHATS_NEW =
   "What's new in v" + CURRENT_VERSION + " ✨\n" +
   '\n' +
-  '• Write your own AI actions. Select some text, right-click → AI actions →\n' +
-  '   "Custom instruction…", and tell it what you want: "list these lines by\n' +
-  '   topic", "turn this into a table". Tick "Save as action" and it joins the\n' +
-  '   menu for next time. Your saved actions live in Settings.\n' +
-  '• AI actions now respect a selection that spans more than one line. They\n' +
-  '   used to quietly rewrite the whole tab instead — and one Ctrl+Z puts a\n' +
-  '   selection back now, which it didn\'t before.\n' +
-  '• Pick your AI provider: OpenRouter (still free, still the default), OpenAI,\n' +
-  '   Google AI Studio, Anthropic (Claude), or any OpenAI-compatible endpoint —\n' +
-  '   including local ones like Ollama and LM Studio, which need no key at all.\n' +
-  '• Pick your model, too — from the provider\'s real list, not a guess. Press ↻\n' +
-  '   next to Model and PromptPad asks your provider which models your key can\n' +
-  '   use. If a model you\'d chosen has been retired, it says so and drops back\n' +
-  '   to Auto instead of failing later.\n' +
-  '• Busy providers no longer look like broken ones. Google\'s free tier answers\n' +
-  '   "503 overloaded" fairly often; that used to reach you as a failed action.\n' +
-  '   Now it retries, and under Auto moves on to the next model.\n' +
-  '• A note you open has a past. The Ghosts theme used to haunt you with\n' +
-  '   nothing until you typed — it now remembers the words already in the note.\n' +
-  '\n' +
-  'Note on Claude: it needs an API key from console.anthropic.com. A Claude.ai\n' +
-  'Pro/Max subscription is a separate product and issues no key — to try Claude\n' +
-  'cheaply, use OpenRouter and pick an anthropic/claude-… model.\n' +
+  '• Settings has tabs. It used to be one long scroll; everything is sorted\n' +
+  '   now into General, Appearance, Layout, Editor, AI, Data and About, so a\n' +
+  '   setting takes a click to reach instead of a hunt.\n' +
+  '• Themes have their names written under them. You can tell Aurora from\n' +
+  '   Circuit without hovering over every swatch first.\n' +
+  '• A new Pro theme: Starfall. A night sky behind the whole window — a field\n' +
+  '   of stars, each twinkling at its own pace, crossed every few seconds by a\n' +
+  '   comet with a fading tail. Nothing in it reads the keyboard: like a real\n' +
+  '   sky, it is there whether you type or not.\n' +
   '\n' +
   'You can close this tab — it won\'t come back until the next update.\n' +
   '\n' +
   '\n' +
   'تازه‌ها در نسخه ' + CURRENT_VERSION + ' ✨\n' +
   '\n' +
-  '• اکشن‌های دلخواهِ خودت را بنویس. یک متن را انتخاب کن، راست‌کلیک ← AI actions\n' +
-  '   ← «دستور دلخواه…»، و هرچه می‌خواهی بگو: «این خط‌ها را بر اساس موضوع\n' +
-  '   دسته‌بندی کن»، «این را جدول کن». گزینه‌ی «ذخیره به‌عنوان اکشن» را بزن تا\n' +
-  '   دفعه‌ی بعد با یک کلیک در دسترس باشد. اکشن‌های ذخیره‌شده در تنظیمات هستند.\n' +
-  '• اکشن‌های AI حالا انتخابِ چندخطی را درست می‌فهمند. قبلاً بی‌صدا کلِ تب را\n' +
-  '   بازنویسی می‌کردند — و حالا یک Ctrl+Z متنِ انتخاب‌شده را برمی‌گرداند که\n' +
-  '   قبلاً اصلاً برنمی‌گشت.\n' +
-  '• سرویس‌دهنده‌ات را انتخاب کن: OpenRouter (هنوز رایگان و پیش‌فرض)، OpenAI،\n' +
-  '   Google AI Studio، انتروپیک (Claude)، یا هر سرویسِ سازگار با OpenAI —\n' +
-  '   از جمله سرویس‌های محلی مثل Ollama و LM Studio که اصلاً کلید نمی‌خواهند.\n' +
-  '• مدل را هم خودت انتخاب کن — از لیستِ واقعیِ سرویس‌دهنده، نه حدس. کنارِ\n' +
-  '   «مدل» دکمه‌ی ↻ را بزن تا با کلیدِ خودت بپرسد چه مدل‌هایی در دسترست هست.\n' +
-  '   اگر مدلی که انتخاب کرده بودی حذف شده باشد، خبر می‌دهد و به Auto برمی‌گردد\n' +
-  '   به‌جای اینکه بعداً خطا بدهد.\n' +
-  '• سرویسِ شلوغ دیگر شبیهِ سرویسِ خراب نیست. سقفِ رایگانِ گوگل نسبتاً زیاد\n' +
-  '   «۵۰۳ — بیش از حد شلوغ» می‌دهد؛ قبلاً همین به‌صورتِ شکستِ کار به تو\n' +
-  '   می‌رسید. حالا دوباره تلاش می‌کند و در حالتِ Auto سراغِ مدلِ بعدی می‌رود.\n' +
-  '• هر نُتی گذشته‌ای دارد. تم Ghosts قبلاً تا وقتی تایپ نمی‌کردی هیچ‌چیز نشان\n' +
-  '   نمی‌داد — حالا کلماتی را که از قبل در نُت هستند به یاد می‌آورد.\n' +
-  '\n' +
-  'درباره‌ی Claude: به کلیدِ API از console.anthropic.com نیاز دارد. اشتراکِ\n' +
-  'Claude.ai Pro/Max محصولی جداست و کلید نمی‌دهد — برای امتحانِ ارزانِ Claude،\n' +
-  'از OpenRouter استفاده کن و یکی از مدل‌های anthropic/claude-… را بردار.\n' +
+  '• تنظیمات تب‌بندی شد. قبلاً همه‌چیز در یک لیستِ بلند بود؛ حالا در هفت دسته\n' +
+  '   مرتب شده — عمومی، ظاهر، چیدمان، ویرایشگر، AI، داده‌ها و درباره — پس هر\n' +
+  '   تنظیمی با یک کلیک پیدا می‌شود، نه با گشتن.\n' +
+  '• اسمِ تم‌ها زیرشان نوشته شده. دیگر لازم نیست روی تک‌تکِ نمونه‌رنگ‌ها بروی\n' +
+  '   تا بفهمی کدام Aurora است و کدام Circuit.\n' +
+  '• یک تمِ حرفه‌ای تازه: Starfall. یک آسمانِ شب پشتِ کلِ پنجره — ستاره‌هایی که\n' +
+  '   هرکدام با ریتمِ خودشان چشمک می‌زنند و هر چند ثانیه یک شهاب با دمِ محوشونده\n' +
+  '   از آسمان رد می‌شود. به تایپِ تو کاری ندارد؛ مثلِ آسمانِ واقعی، چه بنویسی\n' +
+  '   چه ننویسی همان‌جاست.\n' +
   '\n' +
   'این تب را می‌توانی ببندی — تا آپدیت بعدی دیگر برنمی‌گردد.';
 
@@ -8761,11 +8775,7 @@ function maybeAnnounceProThemes(hadSaved) {
         updateBannerEl.classList.add('hidden');
         openSettings();
         // Land them on the themes, not the top of a long settings page.
-        setTimeout(() => {
-          if (themeRow && themeRow.scrollIntoView) {
-            themeRow.scrollIntoView({ block: 'center', behavior: 'smooth' });
-          }
-        }, 80);
+        setTimeout(() => revealSetting(themeRow), 80);
       }
     );
   }, 1200); // let the window settle before anything slides in

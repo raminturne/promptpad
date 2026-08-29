@@ -145,6 +145,139 @@
       bg: '#080b12', text: '#dce9fb', sidebar: '#050810', elevated: '#101825', elevatedHi: '#182338',
       accent: '#7fc4ff', danger: '#ff7a9c', winBg: '#080b12'
     },
+    pulse: {
+      label: 'Heartbeat', type: 'pro', fx: 'pulse', cssClass: 'fx-pulse',
+      // A cardiac monitor wired to your typing speed. The ECG trace sweeps
+      // behind the panels, so they're translucent — and the palette stays
+      // near-black with the red already in it, the way the wards keep the
+      // lights down so the monitor is the brightest thing in the room.
+      bg: 'rgba(16,9,11,0.66)', text: '#eddadd', sidebar: 'rgba(10,5,7,0.80)',
+      elevated: 'rgba(26,15,18,0.80)', elevatedHi: 'rgba(38,21,25,0.86)',
+      accent: '#ff5c72', danger: '#ff4d4d', winBg: '#10090b'
+    },
+    deep: {
+      label: 'Deep', type: 'pro', fx: 'deep', cssClass: 'fx-deep',
+      // The water is behind everything, so the panels are translucent. This
+      // palette is only where the dive starts: fx.js drives the column and
+      // the accent from lit surface blue down to bioluminescent green as the
+      // note gets longer, which is the whole theme.
+      bg: 'rgba(6,18,28,0.52)', text: '#d6e8f2', sidebar: 'rgba(4,12,20,0.70)',
+      elevated: 'rgba(9,24,36,0.74)', elevatedHi: 'rgba(14,34,50,0.82)',
+      accent: '#7fd8e8', danger: '#ff8fa3', winBg: '#04101a'
+    },
+    kintsugi: {
+      label: 'Kintsugi', type: 'pro', fx: 'kintsugi', cssClass: 'fx-kintsugi',
+      // Black lacquer. The seams sit behind the panels rather than being
+      // painted over them, so the surfaces are translucent — a gold vein has
+      // to read through the window the way it reads through a mended bowl:
+      // as part of the object, not as a line drawn on it.
+      bg: 'rgba(18,14,11,0.62)', text: '#ece2d2', sidebar: 'rgba(12,9,7,0.78)',
+      elevated: 'rgba(28,22,17,0.80)', elevatedHi: 'rgba(40,32,24,0.86)',
+      accent: '#d4a24c', danger: '#d9604a', winBg: '#120e0b'
+    },
+    blueprint: {
+      label: 'Blueprint', type: 'pro', fx: 'blueprint', cssClass: 'fx-blueprint',
+      // Cyanotype: one blue and one cyan, and no third colour — a drawing
+      // that uses a third colour stops reading as a drawing. Opaque, unlike
+      // most of the Pro themes, because a drafting sheet is paper.
+      bg: '#0e2c4b', text: '#c3e6f7', sidebar: '#0b2440', elevated: '#123356',
+      elevatedHi: '#183f66', accent: '#5fd4f5', danger: '#ff9a7a', winBg: '#0e2c4b'
+    },
+    koi: {
+      label: 'Koi', type: 'pro', fx: 'koi', cssClass: 'fx-koi',
+      // Pond water seen from above. The fish swim behind the panels, so every
+      // point of opacity here is a fish you cannot see.
+      bg: 'rgba(10,26,24,0.54)', text: '#dcebe4', sidebar: 'rgba(6,18,17,0.72)',
+      elevated: 'rgba(13,32,29,0.76)', elevatedHi: 'rgba(19,45,40,0.84)',
+      accent: '#e8935c', danger: '#ff7a6b', winBg: '#081716'
+    },
+    tuxedo: {
+      label: 'Tuxedo', type: 'vip', fx: 'tuxedo', cssClass: 'fx-tuxedo',
+      // Black tie: the satin and its gold thread are the only two colours,
+      // and the panels are translucent because the sheen travelling across
+      // the cloth has to run under them, not stop at their edges.
+      bg: 'rgba(10,9,8,0.60)', text: '#efe7d8', sidebar: 'rgba(6,5,4,0.80)',
+      elevated: 'rgba(21,18,15,0.80)', elevatedHi: 'rgba(32,27,22,0.86)',
+      accent: '#d9b45c', danger: '#c8503c', winBg: '#0a0908'
+    },
+    frost: {
+      label: 'Frost', type: 'pro', fx: 'frost', cssClass: 'fx-frost',
+      // The ice grows on top of the window rather than behind it, so unlike
+      // most of these the panels are opaque — the frost has to read as being
+      // on the glass in front of the app, which only works if there is a
+      // solid app behind it.
+      bg: '#0d1620', text: '#dcebf7', sidebar: '#0a111a', elevated: '#152232',
+      elevatedHi: '#1e2f42', accent: '#8fd0f0', danger: '#f08a8a', winBg: '#0d1620'
+    },
+    sundial: {
+      label: 'Sundial', type: 'pro', fx: 'sundial', cssClass: 'fx-sundial',
+      // A window onto the actual sky, so the surfaces are translucent and the
+      // palette is only what the room looks like at dusk. fx.js moves it from
+      // here toward daylight or toward night depending on the clock, and
+      // drives the accent from amber at the ends of the day to cold at noon.
+      bg: 'rgba(16,20,30,0.56)', text: '#e6e9f0', sidebar: 'rgba(10,13,20,0.74)',
+      elevated: 'rgba(22,27,38,0.76)', elevatedHi: 'rgba(32,39,52,0.84)',
+      accent: '#e0a860', danger: '#f0836b', winBg: '#101420'
+    },
+    orrery: {
+      label: 'Orrery', type: 'pro', fx: 'orrery', cssClass: 'fx-orrery',
+      // Walnut and brass — a watch case, not a machine shop. Warm near-black
+      // so the brass has something to be warm against, and translucent panels
+      // because the movement runs underneath the whole window.
+      bg: 'rgba(20,15,10,0.62)', text: '#ecdfc9', sidebar: 'rgba(13,10,6,0.80)',
+      elevated: 'rgba(31,24,16,0.80)', elevatedHi: 'rgba(44,34,22,0.86)',
+      accent: '#d6aa54', danger: '#d0603c', winBg: '#140f0a'
+    },
+    filings: {
+      label: 'Filings', type: 'pro', fx: 'filings', cssClass: 'fx-filings theme-light',
+      // Paper, because that is what the picture in the textbook is on. The
+      // sheet is translucent so the filings arch under the words rather than
+      // being fenced out of the editor.
+      bg: 'rgba(240,238,232,0.62)', text: '#1c1f26', sidebar: 'rgba(226,224,216,0.80)',
+      elevated: 'rgba(250,249,245,0.84)', elevatedHi: 'rgba(220,218,210,0.88)',
+      accent: '#3d5a80', danger: '#a8321f', winBg: '#efede6'
+    },
+
+
+    // === VIP ===
+    // A material each, and the same restraint in all of them: one metal, a
+    // hairline double rule, and the name in wide capitals. Tuxedo (satin,
+    // gold) sits above with the other fx entries — it predates the category.
+    blackcard: {
+      label: 'Black Card', type: 'vip', fx: 'blackcard', cssClass: 'fx-blackcard vip-card',
+      // Machined matte black in platinum, not gold. A second gold theme
+      // beside Tuxedo would make the whole category read as one idea said
+      // twice, and cold metal against warm cloth is what makes it a set.
+      bg: 'rgba(14,15,18,0.62)', text: '#e4e9ef', sidebar: 'rgba(9,10,12,0.80)',
+      elevated: 'rgba(24,26,30,0.80)', elevatedHi: 'rgba(36,39,45,0.86)',
+      accent: '#cbd5e0', danger: '#e0736b', winBg: '#0e0f12'
+    },
+    velvet: {
+      label: 'Velvet', type: 'vip', fx: 'velvet', cssClass: 'fx-velvet vip-suite',
+      // The opera box. The only warm-surfaced theme in the set, and the only
+      // one whose light gathers around the caret rather than sweeping past
+      // it — velvet is brushed by the hand, it does not glint.
+      bg: 'rgba(40,12,22,0.60)', text: '#f2dfd2', sidebar: 'rgba(26,7,14,0.80)',
+      elevated: 'rgba(54,17,30,0.80)', elevatedHi: 'rgba(72,24,40,0.86)',
+      accent: '#d4ac60', danger: '#e2685f', winBg: '#1a070e'
+    },
+    marble: {
+      label: 'Marble', type: 'vip', fx: 'marble', cssClass: 'fx-marble vip-suite theme-light',
+      // Calacatta — white stone with gold in it. The light theme of the set,
+      // and the only static one: a slab that shimmers reads as plastic.
+      bg: 'rgba(250,249,245,0.58)', text: '#26221a', sidebar: 'rgba(240,237,229,0.76)',
+      elevated: 'rgba(255,254,250,0.82)', elevatedHi: 'rgba(233,228,214,0.88)',
+      accent: '#a3822f', danger: '#a8402f', winBg: '#f6f4ee'
+    },
+    cognac: {
+      label: 'Cognac', type: 'vip', fx: 'cognac', cssClass: 'fx-cognac vip-card',
+      // A bound volume: pebbled hide, and gold blocked into it the way a
+      // spine is tooled. Leather absorbs light, so the surfaces here are the
+      // least reflective in the set on purpose.
+      bg: 'rgba(58,34,16,0.58)', text: '#f0e0c8', sidebar: 'rgba(38,22,10,0.78)',
+      elevated: 'rgba(74,44,22,0.78)', elevatedHi: 'rgba(94,58,30,0.86)',
+      accent: '#d8aa60', danger: '#e07a52', winBg: '#2a180b'
+    },
     // Smoke (letters hidden in a puff on typing, revealed as it clears) was
     // tried and pulled — never read as natural enough to keep.
     //

@@ -4189,6 +4189,476 @@ body:has(.app.fx-zen) { background: #eee7d7; }
 .app.fx-zen { position: relative; z-index: 1; border-color: rgba(60, 54, 40, 0.18); }
 .app.fx-zen .editor-area, .app.fx-zen .md-preview { background: transparent; }
 
+/* ── Heartbeat ──────────────────────────────────────────────────────────
+   The ECG trace sweeps in #fxBack; the chrome pulses on every QRS spike via
+   --fx-pulse-level (0–1, written each frame by fx.js on <html>). Read via
+   var(--fx-pulse-level, 0), never redeclared as a static property on .app —
+   see the note above the Music block for why that freezes the whole theme. */
+.fx-pulse-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+body:has(.app.fx-pulse) { background: #10090b; }
+.app.fx-pulse { position: relative; z-index: 1; }
+.app.fx-pulse .editor-area, .app.fx-pulse .md-preview { background: transparent; }
+.app.fx-pulse {
+  border-color: color-mix(in srgb, var(--accent) calc(var(--fx-pulse-level, 0) * 55% + 14%), transparent);
+}
+/* The systole: a ring just inside the window edge, the one surface big
+   enough to read as a whole-body thump without sitting on any text. */
+.app.fx-pulse::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 12px;
+  pointer-events: none;
+  z-index: 5;
+  box-shadow: inset 0 0 calc(var(--fx-pulse-level, 0) * 70px + 4px)
+    color-mix(in srgb, var(--accent) calc(var(--fx-pulse-level, 0) * 26%), transparent);
+}
+/* The brand dot is the monitor's beat lamp. */
+.app.fx-pulse .brand-dot {
+  background: color-mix(in srgb, var(--accent) calc(var(--fx-pulse-level, 0) * 75% + 25%), #3a2228);
+  box-shadow: 0 0 calc(var(--fx-pulse-level, 0) * 12px + 1px)
+    color-mix(in srgb, var(--accent) calc(var(--fx-pulse-level, 0) * 85% + 15%), transparent);
+  transform: scale(calc(var(--fx-pulse-level, 0) * 0.35 + 0.9));
+}
+.app.fx-pulse .tab.active {
+  box-shadow: 0 0 calc(var(--fx-pulse-level, 0) * 14px + 2px)
+    color-mix(in srgb, var(--accent) calc(var(--fx-pulse-level, 0) * 35% + 10%), transparent);
+}
+
+/* ── Deep ───────────────────────────────────────────────────────────────
+   Two canvases in #fxBack: the water column (quarter-scale, stretched by
+   this CSS) and the motes at full resolution. --fx-deep-depth (0–1, taken
+   from the note's own length) is written every frame on <html> by fx.js and
+   read here via var(--fx-deep-depth, 0) — never redeclared as a static
+   property on .app, see the note above the Music block for why that
+   silently pins every rule below it to zero. */
+.fx-deep-water,
+.fx-deep-motes { position: absolute; inset: 0; width: 100%; height: 100%; }
+body:has(.app.fx-deep) { background: #04101a; }
+.app.fx-deep { position: relative; z-index: 1; }
+.app.fx-deep .editor-area,
+.app.fx-deep .md-preview { background: transparent; }
+/* The border loses its light along with the water. */
+.app.fx-deep {
+  border-color: color-mix(in srgb, var(--accent)
+    calc(26% - var(--fx-deep-depth, 0) * 15%), transparent);
+}
+/* Pressure: a vignette that closes in the further down the note goes. */
+.app.fx-deep::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 12px;
+  pointer-events: none;
+  z-index: 5;
+  box-shadow: inset 0 0 calc(var(--fx-deep-depth, 0) * 130px + 10px)
+    rgba(0, 6, 12, calc(var(--fx-deep-depth, 0) * 0.5 + 0.12));
+}
+
+/* ── Kintsugi ───────────────────────────────────────────────────────────
+   Gold seams in #fxBack, read through translucent panels. */
+.fx-kintsugi-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+body:has(.app.fx-kintsugi) { background: #120e0b; }
+.app.fx-kintsugi { position: relative; z-index: 1; border-color: rgba(212, 162, 76, 0.28); }
+.app.fx-kintsugi .editor-area,
+.app.fx-kintsugi .md-preview { background: transparent; }
+/* Lacquer is the one surface here with a sheen — the gold needs something
+   with a highlight of its own to sit against, or it reads as paint. */
+.app.fx-kintsugi .titlebar {
+  background: linear-gradient(180deg, rgba(48,38,28,0.86), rgba(24,19,14,0.86));
+}
+.app.fx-kintsugi .tab.active { box-shadow: inset 2px 0 0 var(--accent); }
+
+/* ── Blueprint ──────────────────────────────────────────────────────────
+   A drafting sheet. Two grids — 8px minor and 40px major — because one
+   spacing on its own reads as graph paper, and it is the pair that says
+   "drawn to scale". Everything is one blue and one cyan: a drawing that
+   uses a third colour stops reading as a drawing. */
+.fx-blueprint-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+body:has(.app.fx-blueprint) { background: #0b2440; }
+.app.fx-blueprint {
+  position: relative;
+  font-family: "Cascadia Mono", Consolas, ui-monospace, monospace;
+  border: 1px solid #4aa8d8;
+  border-radius: 2px;
+  background-color: #0e2c4b;
+  background-image:
+    linear-gradient(rgba(120, 200, 240, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(120, 200, 240, 0.06) 1px, transparent 1px),
+    linear-gradient(rgba(120, 200, 240, 0.13) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(120, 200, 240, 0.13) 1px, transparent 1px);
+  background-size: 8px 8px, 8px 8px, 40px 40px, 40px 40px;
+}
+/* Panels are drawn parts, not surfaces: an outline and the sheet showing
+   through, never a fill. */
+.app.fx-blueprint .rail,
+.app.fx-blueprint .titlebar,
+.app.fx-blueprint .toolbar,
+.app.fx-blueprint .statusbar,
+.app.fx-blueprint .editor-body,
+.app.fx-blueprint .editor-area,
+.app.fx-blueprint .md-preview { background: transparent; }
+.app.fx-blueprint .rail { border-right: 1px solid rgba(95, 212, 245, 0.45); }
+.app.fx-blueprint .titlebar { border-bottom: 1px solid rgba(95, 212, 245, 0.45); }
+.app.fx-blueprint .statusbar { border-top: 1px solid rgba(95, 212, 245, 0.45); }
+.app.fx-blueprint .tab {
+  border: 1px solid rgba(95, 212, 245, 0.26);
+  border-radius: 2px;
+}
+.app.fx-blueprint .tab.active {
+  background: rgba(95, 212, 245, 0.14);
+  border-color: #5fd4f5;
+}
+.app.fx-blueprint .brand-dot { background: #5fd4f5; border-radius: 0; }
+/* Labels on a drawing are stencilled, not typeset. */
+.app.fx-blueprint .brand-name,
+.app.fx-blueprint .statusbar { text-transform: uppercase; letter-spacing: 0.14em; }
+.app.fx-blueprint .add-btn,
+.app.fx-blueprint .templates-btn,
+.app.fx-blueprint .tb-btn {
+  background: transparent;
+  border: 1px solid rgba(95, 212, 245, 0.38);
+  border-radius: 2px;
+}
+.app.fx-blueprint .add-btn:hover,
+.app.fx-blueprint .templates-btn:hover,
+.app.fx-blueprint .tb-btn:hover { background: rgba(95, 212, 245, 0.12); }
+/* The title block goes at the foot of the rail, not across the statusbar.
+   The statusbar shares its row with the toolbar chips, so a centred label
+   there lands on top of the Todo/Improve/Voice buttons; the bottom of the
+   rail is the one part of the sheet that is reliably empty. */
+.app.fx-blueprint .rail { position: relative; }
+.app.fx-blueprint .rail::after {
+  content: 'DWG PP \A SCALE 1:1 \A REV C';
+  white-space: pre;
+  position: absolute;
+  left: 14px;
+  bottom: 12px;
+  pointer-events: none;
+  font-size: 9px;
+  line-height: 1.7;
+  letter-spacing: 0.16em;
+  color: rgba(95, 212, 245, 0.5);
+  border-top: 1px solid rgba(95, 212, 245, 0.3);
+  padding-top: 7px;
+}
+
+/* ── Koi ────────────────────────────────────────────────────────────────
+   The pond is in #fxBack, so the panels have to stay translucent or the
+   fish only ever swim in the margins. */
+.fx-koi-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+body:has(.app.fx-koi) { background: #081716; }
+.app.fx-koi { position: relative; z-index: 1; border-color: rgba(232, 147, 92, 0.22); }
+.app.fx-koi .editor-area,
+.app.fx-koi .md-preview { background: transparent; }
+
+/* ── Tuxedo ─────────────────────────────────────────────────────────────
+   Black tie. Two canvases in #fxBack: the satin weave, drawn once, and the
+   sheen that travels across it. Everything else here is the gold: engraved
+   stationery uses a double rule rather than one thick line, and that pair of
+   hairlines is most of why this reads as expensive rather than as dark. */
+.fx-tux-weave,
+.fx-tux-sheen { position: absolute; inset: 0; width: 100%; height: 100%; }
+body:has(.app.fx-tuxedo) { background: #0a0908; }
+.app.fx-tuxedo {
+  position: relative;
+  z-index: 1;
+  border-color: rgba(217, 180, 92, 0.42);
+}
+.app.fx-tuxedo .editor-area,
+.app.fx-tuxedo .md-preview { background: transparent; }
+/* The inner rule, set in from the border to make the pair. */
+.app.fx-tuxedo::after {
+  content: '';
+  position: absolute;
+  inset: 3px;
+  border: 1px solid rgba(217, 180, 92, 0.2);
+  border-radius: 10px;
+  pointer-events: none;
+  z-index: 5;
+}
+.app.fx-tuxedo .titlebar { border-bottom: 1px solid rgba(217, 180, 92, 0.26); }
+.app.fx-tuxedo .rail { border-right: 1px solid rgba(217, 180, 92, 0.22); }
+.app.fx-tuxedo .statusbar { border-top: 1px solid rgba(217, 180, 92, 0.22); }
+/* Wide letterspacing on the one piece of chrome that carries a name: it is
+   what a dinner invitation does, and it costs nothing. */
+.app.fx-tuxedo .brand-name {
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  font-size: 11px;
+}
+.app.fx-tuxedo .brand-dot {
+  background: var(--accent);
+  box-shadow: 0 0 7px rgba(217, 180, 92, 0.65);
+}
+.app.fx-tuxedo .tab.active {
+  background: rgba(217, 180, 92, 0.1);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+/* ── Frost ──────────────────────────────────────────────────────────────
+   The ice is in #fxLayer, in front of the app, so the panels below it stay
+   opaque. --fx-frost-idle (0–1, how long since the last keystroke) is
+   written on <html> every frame and read via var(--fx-frost-idle, 0) —
+   never redeclared on .app, see the note above the Music block. */
+.fx-frost-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+body:has(.app.fx-frost) { background: #0d1620; }
+.app.fx-frost {
+  position: relative;
+  /* The pane gets colder to the touch the longer you leave it. */
+  border-color: color-mix(in srgb, #cfe8fb
+    calc(var(--fx-frost-idle, 0) * 45% + 12%), transparent);
+}
+.app.fx-frost::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 12px;
+  pointer-events: none;
+  z-index: 5;
+  box-shadow: inset 0 0 calc(var(--fx-frost-idle, 0) * 60px + 4px)
+    rgba(190, 224, 250, calc(var(--fx-frost-idle, 0) * 0.16));
+}
+
+/* ── Sundial ────────────────────────────────────────────────────────────
+   The sky is in #fxBack and the panels are translucent, so the light and
+   the rail's shadow both read through the window. --fx-sun-up (0 at the
+   horizon, 1 at noon) comes from the system clock. */
+.fx-sundial-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+body:has(.app.fx-sundial) { background: #101420; }
+.app.fx-sundial { position: relative; z-index: 1; }
+.app.fx-sundial .editor-area,
+.app.fx-sundial .md-preview { background: transparent; }
+/* Daylight bleaches the window edge; at night the panels are lit by nothing
+   but their own accent, which is what makes three in the morning feel like
+   three in the morning. */
+.app.fx-sundial {
+  border-color: color-mix(in srgb, #ffffff calc(var(--fx-sun-up, 0) * 34% + 8%), transparent);
+}
+.app.fx-sundial::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 12px;
+  pointer-events: none;
+  z-index: 5;
+  box-shadow: inset 0 0 calc(26px - var(--fx-sun-up, 0) * 22px)
+    color-mix(in srgb, var(--accent) calc(22% - var(--fx-sun-up, 0) * 18%), transparent);
+}
+
+/* ── Orrery ─────────────────────────────────────────────────────────────
+   The movement runs in #fxBack under the whole window, so the panels have
+   to be translucent or the gears only show in the margins. */
+.fx-orrery-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+body:has(.app.fx-orrery) { background: #140f0a; }
+.app.fx-orrery { position: relative; z-index: 1; border-color: rgba(214, 170, 84, 0.3); }
+.app.fx-orrery .editor-area,
+.app.fx-orrery .md-preview { background: transparent; }
+.app.fx-orrery .titlebar { border-bottom: 1px solid rgba(214, 170, 84, 0.2); }
+.app.fx-orrery .tab.active { box-shadow: inset 2px 0 0 var(--accent); }
+
+/* ── Filings ────────────────────────────────────────────────────────────
+   Paper with iron on it. Light, so it pairs with theme-light; the sheet is
+   translucent so the field arches under the words instead of stopping at
+   the editor's edge. */
+.fx-filings-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+body:has(.app.fx-filings) { background: #efede6; }
+.app.fx-filings { position: relative; z-index: 1; border-color: rgba(40, 46, 58, 0.22); }
+.app.fx-filings .editor-area,
+.app.fx-filings .md-preview { background: transparent; }
+
+/* ════════════════════════════════════════════════════════════════════════
+   VIP
+   Each of these is a material, not an effect: the app rendered in satin, in
+   platinum, in velvet, in marble, in leather. What actually makes a thing
+   read as expensive is not the texture behind the panels — it is the
+   restraint in the chrome. So every one of them does the same three things
+   and no more: a hairline double rule instead of one heavy border, the name
+   set in wide letterspaced capitals, and a single metal that never appears
+   anywhere it has not earned.
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* Shared VIP chrome. The double rule is engraved-stationery practice — two
+   hairlines set apart read as expensive where one thick line reads as a box
+   — and it is the one gesture all five share. */
+.app.vip-card,
+.app.vip-suite { position: relative; }
+.app.vip-card::after,
+.app.vip-suite::after {
+  content: '';
+  position: absolute;
+  inset: 3px;
+  border: 1px solid var(--vip-rule, rgba(255, 255, 255, 0.14));
+  border-radius: 10px;
+  pointer-events: none;
+  z-index: 5;
+}
+.app.vip-card .brand-name,
+.app.vip-suite .brand-name {
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  font-size: 11px;
+  font-weight: 600;
+}
+.app.vip-card .editor-area,
+.app.vip-card .md-preview,
+.app.vip-suite .editor-area,
+.app.vip-suite .md-preview { background: transparent; }
+.app.vip-card .tab.active,
+.app.vip-suite .tab.active { box-shadow: inset 2px 0 0 var(--accent); }
+
+/* ── Black Card ─────────────────────────────────────────────────────────
+   Machined matte black. Platinum, not gold — a second gold theme beside
+   Tuxedo would make the category read as one idea repeated. Square-ish
+   corners and thin cold rules, because that is what metal is cut into. */
+.fx-card-metal,
+.fx-card-spec { position: absolute; inset: 0; width: 100%; height: 100%; }
+body:has(.app.fx-blackcard) { background: #0a0b0d; }
+.app.fx-blackcard {
+  z-index: 1;
+  --vip-rule: rgba(203, 213, 224, 0.16);
+  border: 1px solid rgba(203, 213, 224, 0.34);
+  border-radius: 6px;
+}
+.app.fx-blackcard::after { border-radius: 4px; }
+.app.fx-blackcard .titlebar { border-bottom: 1px solid rgba(203, 213, 224, 0.16); }
+.app.fx-blackcard .rail { border-right: 1px solid rgba(203, 213, 224, 0.12); }
+.app.fx-blackcard .statusbar {
+  border-top: 1px solid rgba(203, 213, 224, 0.12);
+  letter-spacing: 0.12em;
+  font-size: 10px;
+  text-transform: uppercase;
+}
+/* Laser-etched, so it sits *in* the metal: a dark edge above the glyph and a
+   light one below is the inverse of embossing, and it is what an etched card
+   actually looks like under a lamp. */
+.app.fx-blackcard .brand-name {
+  color: #dbe3ec;
+  text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.8), 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+.app.fx-blackcard .brand-dot {
+  background: linear-gradient(135deg, #f2f6fa, #8d99a6);
+  border-radius: 1px;
+}
+.app.fx-blackcard .tab-name { letter-spacing: 0.05em; }
+/* The serial. Every card has one, and it is always the smallest type on it.
+   Pinned to the rail's foot rather than centred on the statusbar: that row
+   is shared with the toolbar chips (Todo/Improve/Voice), and a centred label
+   there sits on top of them the same way Blueprint's title block once did. */
+.app.fx-blackcard .rail { position: relative; }
+.app.fx-blackcard .rail::after {
+  content: 'NO. 0001\ASINCE 2026';
+  white-space: pre;
+  position: absolute;
+  left: 14px;
+  bottom: 12px;
+  pointer-events: none;
+  font-size: 8.5px;
+  line-height: 1.7;
+  letter-spacing: 0.2em;
+  color: rgba(203, 213, 224, 0.34);
+  border-top: 1px solid rgba(203, 213, 224, 0.14);
+  padding-top: 7px;
+}
+
+/* ── Velvet ─────────────────────────────────────────────────────────────
+   The opera box. Deep burgundy pile, gold rope rules, and the one theme
+   here whose surfaces are warm rather than cold. */
+.fx-velvet-pile,
+.fx-velvet-glow { position: absolute; inset: 0; width: 100%; height: 100%; }
+body:has(.app.fx-velvet) { background: #180810; }
+.app.fx-velvet {
+  z-index: 1;
+  --vip-rule: rgba(212, 172, 96, 0.24);
+  border: 1px solid rgba(212, 172, 96, 0.4);
+  border-radius: 12px;
+}
+.app.fx-velvet .titlebar { border-bottom: 1px solid rgba(212, 172, 96, 0.26); }
+.app.fx-velvet .rail { border-right: 1px solid rgba(212, 172, 96, 0.2); }
+.app.fx-velvet .statusbar { border-top: 1px solid rgba(212, 172, 96, 0.2); }
+.app.fx-velvet .brand-name { color: #f0dcc4; }
+.app.fx-velvet .brand-dot {
+  background: var(--accent);
+  box-shadow: 0 0 8px rgba(212, 172, 96, 0.6);
+}
+.app.fx-velvet .add-btn,
+.app.fx-velvet .templates-btn,
+.app.fx-velvet .copy-btn {
+  background: rgba(58, 18, 32, 0.5);
+  border: 1px solid rgba(212, 172, 96, 0.28);
+}
+.app.fx-velvet .add-btn:hover,
+.app.fx-velvet .templates-btn:hover,
+.app.fx-velvet .copy-btn:hover { border-color: var(--accent); }
+
+/* ── Marble ─────────────────────────────────────────────────────────────
+   Calacatta: white stone with gold in it. The light theme of the set, and
+   the only static one — the slab is drawn once and then left alone. */
+.fx-marble-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+body:has(.app.fx-marble) { background: #f2f0ea; }
+.app.fx-marble {
+  z-index: 1;
+  --vip-rule: rgba(160, 128, 58, 0.3);
+  border: 1px solid rgba(160, 128, 58, 0.42);
+  border-radius: 8px;
+}
+.app.fx-marble .titlebar { border-bottom: 1px solid rgba(160, 128, 58, 0.26); }
+.app.fx-marble .rail { border-right: 1px solid rgba(160, 128, 58, 0.22); }
+.app.fx-marble .statusbar { border-top: 1px solid rgba(160, 128, 58, 0.22); }
+/* Chiselled, which on a light ground is the mirror of the etching used on
+   the Black Card: the highlight goes above and the shadow below. */
+.app.fx-marble .brand-name {
+  color: #6b5520;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.9), 0 -1px 0 rgba(0, 0, 0, 0.16);
+}
+.app.fx-marble .brand-dot { background: linear-gradient(135deg, #e0c274, #a3822f); }
+.app.fx-marble .tab.active { background: rgba(160, 128, 58, 0.12); }
+
+/* ── Cognac ─────────────────────────────────────────────────────────────
+   A bound volume. Pebbled hide behind the panels and gold blocking on the
+   chrome, the way a spine is tooled. */
+.fx-cognac-hide,
+.fx-cognac-sheen { position: absolute; inset: 0; width: 100%; height: 100%; }
+body:has(.app.fx-cognac) { background: #241407; }
+.app.fx-cognac {
+  z-index: 1;
+  --vip-rule: rgba(216, 170, 96, 0.26);
+  border: 1px solid rgba(216, 170, 96, 0.42);
+  border-radius: 5px;
+}
+.app.fx-cognac::after { border-radius: 3px; }
+.app.fx-cognac .titlebar { border-bottom: 1px solid rgba(216, 170, 96, 0.28); }
+.app.fx-cognac .rail { border-right: 1px solid rgba(216, 170, 96, 0.2); }
+.app.fx-cognac .statusbar { border-top: 1px solid rgba(216, 170, 96, 0.2); }
+/* Gold blocking is pressed into the leather, so it carries a shadow under
+   it rather than a glow around it. */
+.app.fx-cognac .brand-name {
+  color: #e8c078;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.75);
+}
+.app.fx-cognac .brand-dot {
+  background: linear-gradient(135deg, #f0d193, #b3873c);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+.app.fx-cognac .add-btn,
+.app.fx-cognac .templates-btn,
+.app.fx-cognac .copy-btn {
+  background: rgba(58, 34, 16, 0.5);
+  border: 1px solid rgba(216, 170, 96, 0.26);
+}
+.app.fx-cognac .add-btn:hover,
+.app.fx-cognac .templates-btn:hover,
+.app.fx-cognac .copy-btn:hover { border-color: var(--accent); }
+
+/* Tuxedo predates the category and already had its own double rule; it
+   joins the shared chrome here rather than keeping a private copy. */
+.app.fx-tuxedo { --vip-rule: rgba(217, 180, 92, 0.2); }
+
+
+
+
+
+
 /* ── Blackout ───────────────────────────────────────────────────────────
    The layer takes light away rather than adding it, so it has to be above
    the UI; the pool around the caret is cut back out of it. */

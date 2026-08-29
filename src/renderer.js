@@ -7177,9 +7177,17 @@ function buildThemeSwatches() {
   const dark = Object.entries(THEMES).filter(([, t]) => t.type === 'dark');
   const light = Object.entries(THEMES).filter(([, t]) => t.type === 'light');
   const pro = Object.entries(THEMES).filter(([, t]) => t.type === 'pro');
+  // VIP is split out of Pro rather than added beside it: Pro had grown to two
+  // dozen entries and half of them were not the same kind of thing. A Pro theme
+  // runs a physics of its own behind the glass. A VIP theme is a material — the
+  // app rendered in satin, platinum, velvet, marble or leather — and it rewrites
+  // the chrome to match, because what makes a thing read as expensive is the
+  // hairline rules and the letterspacing, not the effect behind them.
+  const vip = Object.entries(THEMES).filter(([, t]) => t.type === 'vip');
   makeGroup('Dark', dark);
   makeGroup('Light', light);
   if (pro.length) makeGroup('Pro', pro);
+  if (vip.length) makeGroup('VIP', vip);
 }
 
 function buildFontPicker() {

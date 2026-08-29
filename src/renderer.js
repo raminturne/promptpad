@@ -8655,30 +8655,34 @@ const CURRENT_VERSION = document.getElementById('aboutVersion').textContent.repl
 const WHATS_NEW =
   "What's new in v" + CURRENT_VERSION + " ✨\n" +
   '\n' +
-  '• Settings has tabs. It used to be one long scroll; everything is sorted\n' +
-  '   now into General, Appearance, Layout, Editor, AI, Data and About, so a\n' +
-  '   setting takes a click to reach instead of a hunt.\n' +
-  '• Themes have their names written under them. You can tell Aurora from\n' +
-  '   Circuit without hovering over every swatch first.\n' +
-  '• A new Pro theme: Starfall. A night sky behind the whole window — a field\n' +
-  '   of stars, each twinkling at its own pace, crossed every few seconds by a\n' +
-  '   comet with a fading tail. Nothing in it reads the keyboard: like a real\n' +
-  '   sky, it is there whether you type or not.\n' +
+  '• Ten new Pro themes, each reading something different: Heartbeat (an ECG\n' +
+  '   trace paced by your typing speed), Deep (the window sinks as the note\n' +
+  '   gets longer), Kintsugi (a real deletion leaves a gold seam that stays\n' +
+  '   for the session), Koi (fish that come to wherever you are writing),\n' +
+  '   Frost (ice grows in from the edges while you sit still), Sundial (the\n' +
+  '   sky behind the window is the real time of day), Orrery (brass gears\n' +
+  '   that idle and race with your typing), Filings, and Blueprint.\n' +
+  '• A new VIP category: five themes rendered as a material rather than an\n' +
+  '   effect — Tuxedo (black satin and gold thread), Black Card (brushed\n' +
+  '   platinum), Velvet, Marble and Cognac. Same double hairline rule and\n' +
+  '   letterspaced chrome across all five, so the set reads as one idea.\n' +
   '\n' +
   'You can close this tab — it won\'t come back until the next update.\n' +
   '\n' +
   '\n' +
   'تازه‌ها در نسخه ' + CURRENT_VERSION + ' ✨\n' +
   '\n' +
-  '• تنظیمات تب‌بندی شد. قبلاً همه‌چیز در یک لیستِ بلند بود؛ حالا در هفت دسته\n' +
-  '   مرتب شده — عمومی، ظاهر، چیدمان، ویرایشگر، AI، داده‌ها و درباره — پس هر\n' +
-  '   تنظیمی با یک کلیک پیدا می‌شود، نه با گشتن.\n' +
-  '• اسمِ تم‌ها زیرشان نوشته شده. دیگر لازم نیست روی تک‌تکِ نمونه‌رنگ‌ها بروی\n' +
-  '   تا بفهمی کدام Aurora است و کدام Circuit.\n' +
-  '• یک تمِ حرفه‌ای تازه: Starfall. یک آسمانِ شب پشتِ کلِ پنجره — ستاره‌هایی که\n' +
-  '   هرکدام با ریتمِ خودشان چشمک می‌زنند و هر چند ثانیه یک شهاب با دمِ محوشونده\n' +
-  '   از آسمان رد می‌شود. به تایپِ تو کاری ندارد؛ مثلِ آسمانِ واقعی، چه بنویسی\n' +
-  '   چه ننویسی همان‌جاست.\n' +
+  '• ده تمِ حرفه‌ای تازه، هرکدام یک چیزِ متفاوت را می‌خوانند: Heartbeat (نوارِ\n' +
+  '   قلب که با سرعتِ تایپِ تو ضربان می‌زند)، Deep (پنجره هرچه نوت بلندتر شود\n' +
+  '   بیشتر در آب فرو می‌رود)، Kintsugi (حذفِ واقعی یک درزِ طلا می‌گذارد که\n' +
+  '   تا آخرِ نشست می‌ماند)، Koi (ماهی‌هایی که به سراغِ جایی می‌آیند که\n' +
+  '   می‌نویسی)، Frost (دست که برداری یخ از لبه‌ها می‌خزد تو)، Sundial (آسمانِ\n' +
+  '   پشتِ پنجره ساعتِ واقعیِ روز است)، Orrery (چرخ‌دنده‌های برنجی که با\n' +
+  '   ریتمِ تایپِ تو کند و تند می‌شوند)، به‌علاوه‌ی Filings و Blueprint.\n' +
+  '• یک دسته‌بندیِ تازه به اسمِ VIP: پنج تم که هرکدام یک متریالِ گران‌قیمت را\n' +
+  '   شبیه‌سازی می‌کنند نه یک افکت را — Tuxedo (ساتنِ مشکی و نخِ طلا)، Black\n' +
+  '   Card (پلاتینِ برُس‌خورده)، Velvet، Marble و Cognac. هر پنج‌تا یک قابِ\n' +
+  '   دوخطی و حروفِ فاصله‌دارِ مشترک دارند، پس مجموعه یک حسِ واحد می‌دهد.\n' +
   '\n' +
   'این تب را می‌توانی ببندی — تا آپدیت بعدی دیگر برنمی‌گردد.';
 

@@ -25,6 +25,7 @@ let handyNormalBounds = null;   // expanded/normal bounds (updated when the user
 let handyPrevAlwaysOnTop = null;
 let handyPrevOpacity = 1;       // window opacity to restore when the panel opens/exits
 let handyAnimTimer = null;
+let handyAnimDone = null;  // `done` of the in-flight animation, so an interrupted one still finishes
 let handyAccel = null;          // currently-registered global show/hide shortcut
 const HANDY_HANDLE_W = 168;
 const HANDY_HANDLE_H = 40;      // deterministic, easy hover target (above Windows' ~39px clamp)
@@ -146,13 +147,36 @@ function profileRegistry(data) {
 // whole file synchronously just to merge one key. It's also the single choke
 // point where the profile migration runs, exactly once per process.
 let dataCache = null;
+// Set once the data file has been found unreadable in this process, so the
+// damaged bytes are copied aside exactly once and the doomed parse isn't
+// retried on every subsequent read.
+let dataUnreadable = false;
 
 function readData() {
   if (dataCache) return dataCache;
+  if (dataUnreadable) return null;
+  let raw = null;
   try {
-    const raw = fs.readFileSync(DATA_FILE, 'utf-8');
-    dataCache = migrateProfiles(JSON.parse(raw));
+    raw = fs.readFileSync(DATA_FILE, 'utf-8');
   } catch {
+    // No file yet (fresh install) — nothing to recover, nothing to warn about.
+    dataCache = null;
+    return dataCache;
+  }
+  try {
+    dataCache = migrateProfiles(JSON.parse(raw));
+  } catch (err) {
+    // The file EXISTS but won't parse. ensureData() is about to hand callers a
+    // blank workspace and the next writeData() would overwrite the damaged
+    // bytes for good, so keep a copy first — a truncated file is usually still
+    // 99% recoverable by hand, an overwritten one never is.
+    console.error('data file is unreadable, quarantining it:', err);
+    dataUnreadable = true;
+    try {
+      fs.writeFileSync(DATA_FILE.replace(/\.json$/, '') + '.corrupt-' + Date.now() + '.json', raw);
+    } catch (e2) {
+      console.error('could not quarantine the damaged data file', e2);
+    }
     dataCache = null;
   }
   return dataCache;
@@ -171,13 +195,26 @@ function ensureData() {
   return dataCache;
 }
 
+// Write through a temp file and rename into place. writeFileSync straight onto
+// DATA_FILE truncates it first, so a crash / power cut / full disk during the
+// write left a half-written file behind and the whole workspace was gone. A
+// rename is atomic on both NTFS and POSIX, so the file on disk is always either
+// the previous save or the complete new one.
+//
+// The payload is also written compactly rather than with 2-space indentation:
+// this file is rewritten on a 350ms debounce while you type, and the pretty
+// printing was adding ~30-40% to the bytes and to the stringify cost of every
+// one of those writes. Exports (which a human may read) stay indented.
 function writeData(data) {
   dataCache = data;
+  const tmp = DATA_FILE + '.tmp';
   try {
-    fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2), 'utf-8');
+    fs.writeFileSync(tmp, JSON.stringify(data), 'utf-8');
+    fs.renameSync(tmp, DATA_FILE);
     return true;
   } catch (err) {
     console.error('Failed to save data:', err);
+    try { fs.unlinkSync(tmp); } catch {}
     return false;
   }
 }
@@ -366,6 +403,12 @@ if (!app.requestSingleInstanceLock()) {
 
   // ---- IPC ----
   ipcMain.handle('copy-image-clipboard', (_e, filename) => {
+    // Same whitelist download-image / reveal-image use. Without it a crafted
+    // name ("../../…") would read a file from outside IMAGES_DIR onto the
+    // clipboard.
+    if (typeof filename !== 'string' || !/^[a-z0-9._-]+$/i.test(filename) || filename.includes('..')) {
+      return false;
+    }
     try {
       const img = nativeImage.createFromPath(path.join(IMAGES_DIR, filename));
       if (img.isEmpty()) return false;
@@ -668,15 +711,31 @@ if (!app.requestSingleInstanceLock()) {
 
   // Manual bounds animation — Electron's setBounds({animate}) is macOS-only, so
   // we step x/y/width/height (and opacity) ourselves with an easeOutCubic curve.
+  //
+  // An animation that is superseded before it finishes still has to run its
+  // `done` bookkeeping. handy-exit puts the whole teardown (restore the minimum
+  // size, the always-on-top flag, the opacity, and clear handyActive) in that
+  // callback, so silently dropping it on interruption left the window stuck in
+  // handy state — 1x1 minimum size, forced always-on-top, and every later
+  // handy-* call believing a dock that is no longer there is still active.
+  function flushHandyAnim() {
+    if (!handyAnimTimer) return;
+    clearInterval(handyAnimTimer);
+    handyAnimTimer = null;
+    const pending = handyAnimDone;
+    handyAnimDone = null;
+    if (pending) pending();
+  }
+
   function animateHandyTo(to, duration, done, opacityTo) {
     if (!mainWindow) return;
-    if (handyAnimTimer) { clearInterval(handyAnimTimer); handyAnimTimer = null; }
+    flushHandyAnim();
     const from = mainWindow.getBounds();
     const fromOp = mainWindow.getOpacity();
     const start = Date.now();
     const ease = (t) => 1 - Math.pow(1 - t, 3);
     handyAnimTimer = setInterval(() => {
-      if (!mainWindow) { clearInterval(handyAnimTimer); handyAnimTimer = null; return; }
+      if (!mainWindow) { clearInterval(handyAnimTimer); handyAnimTimer = null; handyAnimDone = null; return; }
       const t = Math.min(1, (Date.now() - start) / (duration || 220));
       const e = ease(t);
       mainWindow.setBounds({
@@ -686,12 +745,21 @@ if (!app.requestSingleInstanceLock()) {
         height: Math.max(1, Math.round(from.height + (to.height - from.height) * e))
       });
       if (typeof opacityTo === 'number') mainWindow.setOpacity(fromOp + (opacityTo - fromOp) * e);
-      if (t >= 1) { clearInterval(handyAnimTimer); handyAnimTimer = null; if (done) done(); }
+      if (t >= 1) {
+        clearInterval(handyAnimTimer);
+        handyAnimTimer = null;
+        handyAnimDone = null;
+        if (done) done();
+      }
     }, 16);
+    handyAnimDone = done || null;
   }
 
   ipcMain.handle('handy-enter', (_e, position) => {
     if (!mainWindow) return false;
+    // Settle an exit animation that may still be mid-flight, so its teardown
+    // runs BEFORE this enter re-arms handy state rather than after it.
+    flushHandyAnim();
     // A maximized window ignores setBounds on Windows, so the dock would never
     // shrink to its sliver. Drop back to the restored size first.
     if (mainWindow.isMaximized()) mainWindow.unmaximize();

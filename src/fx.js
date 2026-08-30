@@ -443,6 +443,36 @@
       // The blade lands where the caret is; the drip starts under its line.
       const caretPoint = caretRect;
 
+      // Lines close enough to the caret to plausibly be on screen. Only these
+      // ever need protecting from a cut — nothing off-screen can be crossed by
+      // one, since the canvas is the whole window. Walking outward from
+      // .caret-line (kept live by the renderer) costs nothing but pointer
+      // chasing, unlike querying every line in the note: a 6000-line note
+      // measured in full took 14-17ms of synchronous work on the keydown that
+      // refreshed the cache below — over a full frame, and felt as a stutter
+      // right in the middle of typing. Capped at a fixed count either side,
+      // so the cost stays flat no matter how long the note grows.
+      const NEARBY_MARGIN = 80;
+      function nearbyLineNodes() {
+        const anchor = document.querySelector('.editor-area .caret-line');
+        if (anchor) {
+          const out = [anchor];
+          let p = anchor;
+          let n = anchor;
+          for (let i = 0; i < NEARBY_MARGIN && (p || n); i++) {
+            if (p) { p = p.previousElementSibling; if (p) out.push(p); }
+            if (n) { n = n.nextElementSibling; if (n) out.push(n); }
+          }
+          return out;
+        }
+        // No live caret line (e.g. editing inside the markdown preview, which
+        // has no caret-line concept) — fall back to a capped scan. Preview
+        // blocks are usually far fewer than raw editor lines, so this rarely
+        // bites, but the cap keeps it bounded either way.
+        return Array.from(document.querySelectorAll('.editor-area .ln, .md-preview [data-line]'))
+          .slice(0, NEARBY_MARGIN * 2 + 1);
+      }
+
       // Every rectangle on screen that has words in it. Cuts steer around
       // these: a slash across the line you are typing hides the one thing you
       // need to see. Measured with a Range, not the element box, so an RTL
@@ -456,7 +486,7 @@
         if (rectCache && now - rectCacheAt < 400) return rectCache;
         const out = [];
         const range = document.createRange();
-        document.querySelectorAll('.editor-area .ln, .md-preview [data-line]').forEach((el) => {
+        nearbyLineNodes().forEach((el) => {
           if (!el.textContent.trim()) return;
           try {
             range.selectNodeContents(el);

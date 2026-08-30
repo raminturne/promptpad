@@ -976,8 +976,27 @@ function updateLineDirs() {
   if (changed) void editorEl.offsetHeight;
 }
 
+// Bails on the first line that has any text, so the usual answer costs one
+// property read. getEditorText() joined every line in the note into one string
+// just to compare it with '' — on a long note that was a full copy of the text
+// on every keystroke, on top of the copy handleEditorChanged already makes.
+function editorIsEmpty() {
+  // Mirrors getEditorText() === '' exactly: two blank lines join to '\\n',
+  // which is NOT empty, so the line count matters as much as the text.
+  let lines = 0;
+  for (const n of editorEl.childNodes) {
+    if (n.nodeType === 3) {
+      if (n.textContent !== '') return false; // stray text
+    } else if (n.nodeType === 1) {
+      if (++lines > 1) return false;
+      if (n.textContent !== '') return false;
+    }
+  }
+  return true;
+}
+
 function updateEmptyState() {
-  editorEl.classList.toggle('is-empty', getEditorText() === '');
+  editorEl.classList.toggle('is-empty', editorIsEmpty());
 }
 
 // kept as a single entry point used around the app
@@ -1023,7 +1042,9 @@ function updateActiveTabName(tab) {
 // Rough token estimate (~4 chars per token)
 function estimateTokens(text) {
   if (!text) return 0;
-  return Math.max(Math.ceil(text.trim().length / 4), text.trim() ? 1 : 0);
+  // One trim, not two — this runs on every keystroke against the whole note.
+  const len = text.trim().length;
+  return len ? Math.max(Math.ceil(len / 4), 1) : 0;
 }
 
 function updateCounts() {
@@ -4164,11 +4185,15 @@ async function loadState() {
 function handleEditorChanged() {
   if (_previewToken) return; // skip sync while live-previewing a placeholder
   updateLineDirs();
-  updateEmptyState();
+  // One read of the editor per keystroke. This used to call getEditorText()
+  // twice — once through updateEmptyState() and once for t.content — which on a
+  // long note meant building the entire text twice for every character typed.
+  const text = getEditorText();
+  editorEl.classList.toggle('is-empty', text === '');
   const t = activeTab();
   if (t) {
     const prevContent = t.content;
-    t.content = getEditorText();
+    t.content = text;
     if (t.content !== prevContent) noteEditForUndo(t, prevContent);
     // Shared note: push this keystroke out on its own (short) debounce rather
     // than waiting for the 350ms autosave to notice.
@@ -8143,41 +8168,48 @@ function clearFindHL() {
   if (_curHL) _curHL.clear();
 }
 
+// Flat char-by-char index of the editor: map[k] is the { textNode, offset }
+// rendering character k of `text` (null for the newline between two lines).
+// The text is accumulated here, one text node at a time, instead of being
+// rebuilt from the map afterwards — that second pass allocated a
+// one-character string per character in the note on every keystroke in the
+// find box.
 function buildPosMap() {
   const map = [];
+  let text = '';
+  const scan = (root) => {
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    while (walker.nextNode()) {
+      const n = walker.currentNode;
+      const nodeText = n.textContent;
+      text += nodeText;
+      for (let i = 0; i < nodeText.length; i++) map.push({ n, i });
+    }
+  };
   const lines = [...editorEl.children].filter((c) => c.tagName === 'DIV');
   if (!lines.length) {
-    const walker = document.createTreeWalker(editorEl, NodeFilter.SHOW_TEXT);
-    while (walker.nextNode()) {
-      const n = walker.currentNode;
-      for (let i = 0; i < n.textContent.length; i++) map.push({ n, i });
-    }
-    return map;
+    scan(editorEl);
+    return { map, text };
   }
   for (let d = 0; d < lines.length; d++) {
-    if (d > 0) map.push(null); // newline between divs
-    const walker = document.createTreeWalker(lines[d], NodeFilter.SHOW_TEXT);
-    while (walker.nextNode()) {
-      const n = walker.currentNode;
-      for (let i = 0; i < n.textContent.length; i++) map.push({ n, i });
-    }
+    if (d > 0) { map.push(null); text += '\n'; } // newline between divs
+    scan(lines[d]);
   }
-  return map;
+  return { map, text };
 }
 
+// posMap is indexed by exactly the character offsets the search runs on, so
+// both ends are a direct lookup. This used to walk the whole map once per
+// match: typing one common letter into the find box on a long note cost
+// (matches x characters) iterations — hundreds of millions of steps, and a
+// multi-second freeze on every keystroke.
 function makeRange(posMap, pos, len) {
-  let count = 0, startE = null, endE = null;
-  for (let i = 0; i < posMap.length; i++) {
-    const e = posMap[i];
-    if (e === null) { count++; continue; }
-    if (count === pos && !startE) startE = e;
-    if (count === pos + len - 1) { endE = { n: e.n, i: e.i + 1 }; break; }
-    count++;
-  }
-  if (!startE || !endE) return null;
+  const startE = posMap[pos];
+  const endE = posMap[pos + len - 1];
+  if (!startE || !endE) return null; // a match starting or ending on a newline
   const r = new Range();
   r.setStart(startE.n, startE.i);
-  r.setEnd(endE.n, endE.i);
+  r.setEnd(endE.n, endE.i + 1);
   return r;
 }
 
@@ -8189,8 +8221,7 @@ function runFind() {
   renderFindResults(q);
   if (!q) { findCountEl.textContent = ''; return; }
 
-  const posMap = buildPosMap();
-  const fullText = posMap.map((e) => e === null ? '\n' : e.n.textContent[e.i]).join('');
+  const { map: posMap, text: fullText } = buildPosMap();
   const lower = fullText.toLowerCase();
   const qLower = q.toLowerCase();
   let p = 0;
@@ -8204,12 +8235,19 @@ function runFind() {
   if (findIdx >= findMatches.length) findIdx = 0;
 
   if (_findHL && _curHL) {
-    for (let i = 0; i < findMatches.length; i++) {
+    // Handing CSS.highlights tens of thousands of ranges costs more in repaint
+    // than the marks are worth (searching "e" in a long note). Paint a generous
+    // prefix plus the current match; the counter and Enter / Shift+Enter
+    // navigation still see every match.
+    const HL_LIMIT = 3000;
+    const painted = Math.min(findMatches.length, HL_LIMIT);
+    for (let i = 0; i < painted; i++) {
+      if (i === findIdx) continue;
       const r = makeRange(posMap, findMatches[i], q.length);
-      if (!r) continue;
-      if (i === findIdx) _curHL.add(r);
-      else _findHL.add(r);
+      if (r) _findHL.add(r);
     }
+    const cur = makeRange(posMap, findMatches[findIdx], q.length);
+    if (cur) _curHL.add(cur);
   }
 
   const curRange = makeRange(posMap, findMatches[findIdx], q.length);
@@ -8596,10 +8634,22 @@ function doReplaceOne() {
   const t = activeTab();
   if (!t) return;
   const q = findInputEl.value;
+  if (!q) return;
   const repl = replaceInputEl.value;
   const pos = findMatches[findIdx];
-  const newContent = t.content.slice(0, pos) + repl + t.content.slice(pos + q.length);
+  const prev = t.content;
+  // findMatches are offsets into the EDITOR's text. That is normally the same
+  // string as t.content, but not while the markdown preview owns the note
+  // (syncEditorToState deliberately skips a tab in md mode, so edits made in
+  // the preview never reach the hidden editor). Splicing a stale offset into
+  // t.content would cut the note in the wrong place, so re-check first and
+  // just refresh the search when it no longer lines up.
+  if (prev.substr(pos, q.length).toLowerCase() !== q.toLowerCase()) { runFind(); return; }
+  const newContent = prev.slice(0, pos) + repl + prev.slice(pos + q.length);
   t.content = newContent;
+  // Without this the replacement is invisible to Ctrl+Z: setEditorText fires no
+  // input event, so nothing else on this path ever pushes an undo step.
+  noteEditForUndo(t, prev);
   setEditorText(newContent);
   updateCounts();
   updatePlaceholderPanel();
@@ -8611,9 +8661,10 @@ function doReplaceAll() {
   if (!findMatches.length) return;
   const t = activeTab();
   if (!t) return;
-  takeSnapshot(t, true);
   const q = findInputEl.value;
+  if (!q) return;
   const repl = replaceInputEl.value;
+  const prev = t.content;
   const lower = t.content.toLowerCase();
   const qLower = q.toLowerCase();
   let result = '', last = 0, p = 0;
@@ -8622,7 +8673,10 @@ function doReplaceAll() {
     last = p + q.length;
   }
   result += t.content.slice(last);
+  if (result === prev) return;
+  takeSnapshot(t, true); // only once we know something actually changes
   t.content = result;
+  noteEditForUndo(t, prev); // same reason as doReplaceOne — make it undoable
   setEditorText(result);
   updateCounts();
   updatePlaceholderPanel();
@@ -8655,34 +8709,35 @@ const CURRENT_VERSION = document.getElementById('aboutVersion').textContent.repl
 const WHATS_NEW =
   "What's new in v" + CURRENT_VERSION + " ✨\n" +
   '\n' +
-  '• Ten new Pro themes, each reading something different: Heartbeat (an ECG\n' +
-  '   trace paced by your typing speed), Deep (the window sinks as the note\n' +
-  '   gets longer), Kintsugi (a real deletion leaves a gold seam that stays\n' +
-  '   for the session), Koi (fish that come to wherever you are writing),\n' +
-  '   Frost (ice grows in from the edges while you sit still), Sundial (the\n' +
-  '   sky behind the window is the real time of day), Orrery (brass gears\n' +
-  '   that idle and race with your typing), Filings, and Blueprint.\n' +
-  '• A new VIP category: five themes rendered as a material rather than an\n' +
-  '   effect — Tuxedo (black satin and gold thread), Black Card (brushed\n' +
-  '   platinum), Velvet, Marble and Cognac. Same double hairline rule and\n' +
-  '   letterspaced chrome across all five, so the set reads as one idea.\n' +
+  '• Fixed: typing could stutter in the Wounds theme on longer notes — it was\n' +
+  '   re-measuring every line in the note on a timer to keep its cuts off your\n' +
+  '   text; now it only checks the nearby lines. No visual change, just fast\n' +
+  '   again on notes of any length.\n' +
+  '• Fixed: a crash or power loss during autosave could corrupt or lose the\n' +
+  '   whole workspace. Saves are now atomic, and a damaged data file is backed\n' +
+  '   up instead of silently overwritten.\n' +
+  '• Fixed: Find & replace could freeze for several seconds on long notes, and\n' +
+  '   a replacement wasn\'t undoable with Ctrl+Z — both fixed.\n' +
+  '• Fixed: a rare stuck state in Handy (peek) mode, a path-safety gap in\n' +
+  '   "copy image to clipboard", and a crash merging very large shared notes.\n' +
   '\n' +
   'You can close this tab — it won\'t come back until the next update.\n' +
   '\n' +
   '\n' +
   'تازه‌ها در نسخه ' + CURRENT_VERSION + ' ✨\n' +
   '\n' +
-  '• ده تمِ حرفه‌ای تازه، هرکدام یک چیزِ متفاوت را می‌خوانند: Heartbeat (نوارِ\n' +
-  '   قلب که با سرعتِ تایپِ تو ضربان می‌زند)، Deep (پنجره هرچه نوت بلندتر شود\n' +
-  '   بیشتر در آب فرو می‌رود)، Kintsugi (حذفِ واقعی یک درزِ طلا می‌گذارد که\n' +
-  '   تا آخرِ نشست می‌ماند)، Koi (ماهی‌هایی که به سراغِ جایی می‌آیند که\n' +
-  '   می‌نویسی)، Frost (دست که برداری یخ از لبه‌ها می‌خزد تو)، Sundial (آسمانِ\n' +
-  '   پشتِ پنجره ساعتِ واقعیِ روز است)، Orrery (چرخ‌دنده‌های برنجی که با\n' +
-  '   ریتمِ تایپِ تو کند و تند می‌شوند)، به‌علاوه‌ی Filings و Blueprint.\n' +
-  '• یک دسته‌بندیِ تازه به اسمِ VIP: پنج تم که هرکدام یک متریالِ گران‌قیمت را\n' +
-  '   شبیه‌سازی می‌کنند نه یک افکت را — Tuxedo (ساتنِ مشکی و نخِ طلا)، Black\n' +
-  '   Card (پلاتینِ برُس‌خورده)، Velvet، Marble و Cognac. هر پنج‌تا یک قابِ\n' +
-  '   دوخطی و حروفِ فاصله‌دارِ مشترک دارند، پس مجموعه یک حسِ واحد می‌دهد.\n' +
+  '• رفعِ باگ: تایپ روی نوت‌های بلند در تمِ Wounds گاهی کند می‌شد — چون برای\n' +
+  '   دورنگه‌داشتنِ برش‌ها از رویِ متن، هر بار همه‌ی خط‌های نوت را دوباره\n' +
+  '   اندازه می‌گرفت؛ حالا فقط خط‌های نزدیک بررسی می‌شوند. ظاهرِ افکت هیچ\n' +
+  '   تغییری نکرده، فقط روی نوت‌های هر اندازه دوباره سریع شده.\n' +
+  '• رفعِ باگ: قطعِ برق یا کرش هنگامِ ذخیره‌ی خودکار می‌توانست کل فضایِ کاری\n' +
+  '   را خراب یا نابود کند. حالا ذخیره‌سازی اتمیک است، و فایلِ آسیب‌دیده\n' +
+  '   به‌جایِ جایگزینیِ خاموش، پشتیبان‌گیری می‌شود.\n' +
+  '• رفعِ باگ: پیدا کردن و جایگزینی روی نوت‌های بلند گاهی چند ثانیه هنگ\n' +
+  '   می‌کرد، و جایگزینی با Ctrl+Z قابلِ بازگشت نبود — هر دو رفع شدند.\n' +
+  '• رفعِ باگ: یک گیرِ نادر در حالتِ دم‌دستی، یک نقطه‌ضعفِ امنیتیِ کوچک در\n' +
+  '   «کپیِ عکس در کلیپ‌بورد»، و یک کرش هنگامِ ادغامِ نوت‌های اشتراکیِ بسیار\n' +
+  '   بزرگ.\n' +
   '\n' +
   'این تب را می‌توانی ببندی — تا آپدیت بعدی دیگر برنمی‌گردد.';
 
@@ -11041,6 +11096,15 @@ function shMerge3(baseTxt, mineTxt, theirsTxt, preferMine) {
     .concat(shRegions(base, theirsTxt.split('\n')).map((r) => ({ ...r, mine: false })))
     .sort((x, y) => x.lo - y.lo || x.hi - y.hi);
 
+  // `out.push(...arr)` throws RangeError once arr passes the engine's argument
+  // limit (~65k), so a merge on a note with more lines than that — a pasted log,
+  // an exported chat — blew up instead of syncing. Push in bounded chunks.
+  const pushAll = (dest, arr) => {
+    const CHUNK = 8192;
+    if (arr.length <= CHUNK) { dest.push(...arr); return; }
+    for (let i = 0; i < arr.length; i += CHUNK) dest.push(...arr.slice(i, i + CHUNK));
+  };
+
   const out = [];
   let cursor = 0;
   let k = 0;
@@ -11058,19 +11122,19 @@ function shMerge3(baseTxt, mineTxt, theirsTxt, preferMine) {
     const clash = cluster.some((r) => r.mine) && cluster.some((r) => !r.mine);
     const keepMine = clash && !!preferMine(lo, hi);
 
-    out.push(...base.slice(cursor, lo));
+    pushAll(out, base.slice(cursor, lo));
     let at = lo;
     for (const r of cluster) {
       if (clash && r.mine !== keepMine) continue;
-      out.push(...base.slice(at, r.lo));
-      out.push(...r.lines);
+      pushAll(out, base.slice(at, r.lo));
+      pushAll(out, r.lines);
       at = Math.max(at, r.hi);
     }
-    out.push(...base.slice(at, hi));
+    pushAll(out, base.slice(at, hi));
     cursor = hi;
     k = end;
   }
-  out.push(...base.slice(cursor));
+  pushAll(out, base.slice(cursor));
   return out.join('\n');
 }
 
@@ -12000,7 +12064,20 @@ window.addEventListener('focus', () => {
 });
 
 // ---------- Init ----------
+// Boot is one long await chain over IPC, DOM wiring and the network. A throw
+// anywhere in it used to reject silently and leave the window half-built with
+// no clue why, so every stage is reported and the app is still left usable
+// (settings and notes that did load are on screen; the rest degrades).
 (async function init() {
+  try {
+    await bootstrap();
+  } catch (err) {
+    console.error('PromptPad failed to start cleanly', err);
+    try { showToast('Something went wrong while starting up.'); } catch {}
+  }
+})();
+
+async function bootstrap() {
   // Platform-specific copy — the setting/shortcut itself already works
   // cross-platform, only the wording was hardcoded to Windows.
   if (window.api.platform === 'darwin') {
@@ -12150,4 +12227,4 @@ window.addEventListener('focus', () => {
   if (settings.autoCheckUpdates) {
     setTimeout(() => checkForUpdates(true), 3000);
   }
-})();
+}

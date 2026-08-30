@@ -310,16 +310,46 @@
             i++;
           }
           const cls = (n) => (align[n] ? ' class="md-a' + align[n][0] + '"' : '');
+          // Every real cell (not a +/- control cell) carries a contenteditable
+          // INNER span for its text, deliberately not the cell element itself
+          // — a header cell also holds the delete-column button as a sibling,
+          // and making the whole <th> editable put that button inside the
+          // editable surface too: selecting the header text and typing over
+          // it could delete the button outright, and reading the cell's own
+          // textContent back to save picked up the button's "×" along with
+          // it. Keeping the button OUTSIDE the editable span avoids both.
+          // data-col identifies which cell for both that and for the column
+          // +/- rail below. Every table also gets a live +/- rail: a delete
+          // button riding inside each header cell, one extra header cell
+          // that adds a column, one extra cell per body row that deletes it,
+          // and a final full-width row that adds one. All of this is app
+          // chrome, not document content — exportRenderPayload() strips it
+          // (.md-table-ctlcell / -delcol / -addrow-row) before a note is
+          // ever saved as HTML/PDF/PNG.
           let html = '<table' + at(start, i - 1) + '><thead><tr>';
-          head.forEach((c, n) => { html += '<th' + cls(n) + '>' + inline(c.trim(), io) + '</th>'; });
+          head.forEach((c, n) => {
+            html += '<th' + cls(n) + ' data-col="' + n + '">' +
+              '<span class="md-table-celltext" contenteditable="true">' + inline(c.trim(), io) + '</span>' +
+              '<button type="button" class="md-table-delcol" data-col="' + n +
+              '" title="Remove column" tabindex="-1">×</button></th>';
+          });
+          html += '<th class="md-table-ctlcell">' +
+            '<button type="button" class="md-table-addcol" title="Add column" tabindex="-1">+</button></th>';
           html += '</tr></thead><tbody>';
-          for (const row of body) {
-            html += '<tr>';
+          body.forEach((row, r) => {
+            html += '<tr data-row="' + r + '">';
             for (let n = 0; n < head.length; n++) {
-              html += '<td' + cls(n) + '>' + inline((row[n] || '').trim(), io) + '</td>';
+              html += '<td' + cls(n) + ' data-col="' + n + '">' +
+                '<span class="md-table-celltext" contenteditable="true">' +
+                inline((row[n] || '').trim(), io) + '</span></td>';
             }
-            html += '</tr>';
-          }
+            html += '<td class="md-table-ctlcell">' +
+              '<button type="button" class="md-table-delrow" data-row="' + r +
+              '" title="Remove row" tabindex="-1">×</button></td></tr>';
+          });
+          html += '<tr class="md-table-addrow-row"><td class="md-table-ctlcell" colspan="' +
+            (head.length + 1) + '">' +
+            '<button type="button" class="md-table-addrow" title="Add row" tabindex="-1">+ Row</button></td></tr>';
           out.push(html + '</tbody></table>');
           continue;
         }

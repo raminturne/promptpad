@@ -3927,73 +3927,116 @@
     }
   };
 
-  // Cognac — bound leather. Pebbled grain, and gold foil tooling along the
-  // edges the way a good binding is blocked. The grain is static; what moves
-  // is a warm sheen, because leather is the least reflective thing here and
-  // over-lighting it turns it into vinyl immediately.
-  RUNTIMES.cognac = {
+  // Nightvision — a tactical HUD taking a hit. Corner targeting brackets and
+  // a scanline sweep sit over everything all the time; every keystroke (and
+  // the odd unprompted hiccup) throws a burst of torn, RGB-split scanlines
+  // and a scatter of static, like a comms link losing sync for a moment.
+  //
+  // Everything here draws into #fxLayer (over the UI, not behind it) — a HUD
+  // overlay belongs on top of what it's reading, the same reasoning Wounds
+  // and CRT use. The per-keystroke handler only ever pushes a few plain
+  // objects onto bounded arrays and queries nothing — a keydown handler is
+  // on the input path, and Wounds once cost 14-17ms per recompute on a long
+  // note by scanning every line in the note from exactly this kind of hook.
+  RUNTIMES.nightvision = {
     start() {
-      const b = back();
-      if (!b) return;
-      const hide = makeCanvas(b, 'fx-cognac-hide', 0.5);
-      const lit = makeCanvas(b, 'fx-cognac-sheen', 0.35);
-      const hctx = hide.ctx;
-      const lctx = lit.ctx;
+      const l = layer();
+      if (!l) return;
 
-      const drawHide = () => {
-        const w = hide.w;
-        const h = hide.h;
-        const g = hctx.createLinearGradient(0, 0, w * 0.4, h);
-        g.addColorStop(0, '#4a2a15');
-        g.addColorStop(0.5, '#38200f');
-        g.addColorStop(1, '#2a180b');
-        hctx.fillStyle = g;
-        hctx.fillRect(0, 0, w, h);
-        // Pebbling: overlapping soft cells, each lit on one side and shaded
-        // on the other. Drawn as pairs of offset arcs, which is cheap and
-        // reads correctly as grain at any distance you would look at it.
-        for (let i = 0; i < 1500; i++) {
-          const x = Math.random() * w;
-          const y = Math.random() * h;
-          const r = 2.5 + Math.random() * 6;
-          hctx.strokeStyle = 'rgba(255,206,150,0.055)';
-          hctx.lineWidth = 1;
-          hctx.beginPath();
-          hctx.arc(x, y, r, Math.PI * 1.05, Math.PI * 1.95);
-          hctx.stroke();
-          hctx.strokeStyle = 'rgba(0,0,0,0.10)';
-          hctx.beginPath();
-          hctx.arc(x, y, r, Math.PI * 0.05, Math.PI * 0.95);
-          hctx.stroke();
-        }
-      };
-      const resize = () => { hide.resize(); lit.resize(); drawHide(); };
+      // Corner brackets are static chrome, not per-frame drawing — plain
+      // elements cost nothing to keep on screen, unlike redrawing them into
+      // a canvas 60 times a second for no visual gain.
+      const brackets = ['tl', 'tr', 'bl', 'br'].map((pos) => {
+        const d = document.createElement('div');
+        d.className = 'fx-nv-bracket fx-nv-' + pos;
+        l.appendChild(d);
+        return d;
+      });
+      this._brackets = brackets;
+
+      const c = makeCanvas(l, 'fx-nv-canvas');
+      const ctx = c.ctx;
+      const resize = () => c.resize();
       resize();
       window.addEventListener('resize', resize);
       this._resize = resize;
 
-      let t = 0;
+      let scan = 0;      // scanline scroll phase, px
+      let glitch = 0;     // 0..1, decays — how hard the signal is glitching right now
+      let bands = [];     // active tear bands: { y, h, dx, life }
+      let nextAmbientAt = performance.now() + 4000 + Math.random() * 5000;
+
+      const burst = (power) => {
+        glitch = Math.min(1, glitch + power);
+        const n = 1 + (Math.random() * 3 | 0);
+        for (let i = 0; i < n; i++) {
+          bands.push({ y: Math.random() * c.h, h: 3 + Math.random() * 14,
+            dx: (Math.random() - 0.5) * 40 * power, life: 1 });
+        }
+        if (bands.length > 24) bands.splice(0, bands.length - 24);
+      };
+
+      let lastKey = 0;
+      const onKey = (e) => {
+        if (!e.key || (e.key.length !== 1 && e.key !== 'Enter' && e.key !== 'Backspace')) return;
+        const now = performance.now();
+        if (now - lastKey < 60) return;
+        lastKey = now;
+        burst(e.key === 'Enter' ? 0.9 : 0.45 + Math.random() * 0.3);
+      };
+      document.addEventListener('keydown', onKey, true);
+      this._onKey = onKey;
+
       let last = performance.now();
       const tick = (now) => {
         const dt = Math.min((now - last) / 1000, 0.05);
         last = now;
-        t += dt;
-        const w = lit.w;
-        const h = lit.h;
-        lctx.clearRect(0, 0, w, h);
-        lctx.globalCompositeOperation = 'lighter';
-        // One slow warm pool, and that is all. Leather's whole character is
-        // that it absorbs light rather than throwing it back.
-        const x = w * (0.35 + Math.sin(t * 0.10) * 0.28);
-        const y = h * (0.3 + Math.cos(t * 0.07) * 0.18);
-        const r = Math.max(w, h) * 0.62;
-        const g = lctx.createRadialGradient(x, y, 0, x, y, r);
-        g.addColorStop(0, 'rgba(214,150,72,0.15)');
-        g.addColorStop(0.5, 'rgba(180,116,52,0.06)');
-        g.addColorStop(1, 'rgba(150,96,40,0)');
-        lctx.fillStyle = g;
-        lctx.fillRect(0, 0, w, h);
-        lctx.globalCompositeOperation = 'source-over';
+
+        // A HUD left alone still hiccups now and then — dead-still reads as
+        // broken, not as calm.
+        if (now >= nextAmbientAt) {
+          burst(0.25 + Math.random() * 0.2);
+          nextAmbientAt = now + 5000 + Math.random() * 9000;
+        }
+
+        glitch = Math.max(0, glitch - dt * 1.8);
+        scan = (scan + dt * 40) % 28;
+
+        ctx.clearRect(0, 0, c.w, c.h);
+
+        // Persistent scanlines — always faintly there, brighter while
+        // glitching so a burst reads as the *same* signal breaking up.
+        ctx.strokeStyle = 'rgba(60,240,190,' + (0.05 + glitch * 0.10).toFixed(3) + ')';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        for (let y = -28 + scan; y < c.h; y += 4) { ctx.moveTo(0, y); ctx.lineTo(c.w, y); }
+        ctx.stroke();
+
+        // Torn bands: a strip that has slipped sideways, with red/cyan
+        // fringes either side of the pale core — RGB-split edges are what
+        // sell a signal fault instead of a plain drawn stripe.
+        for (const bnd of bands) {
+          const a = bnd.life;
+          ctx.fillStyle = 'rgba(255,50,90,' + (0.10 * a).toFixed(3) + ')';
+          ctx.fillRect(bnd.dx - 2, bnd.y, c.w, bnd.h);
+          ctx.fillStyle = 'rgba(60,240,255,' + (0.10 * a).toFixed(3) + ')';
+          ctx.fillRect(bnd.dx + 2, bnd.y, c.w, bnd.h);
+          ctx.fillStyle = 'rgba(180,255,220,' + (0.14 * a).toFixed(3) + ')';
+          ctx.fillRect(bnd.dx, bnd.y, c.w, bnd.h);
+        }
+        for (const bnd of bands) bnd.life -= dt * 3.2;
+        bands = bands.filter((bnd) => bnd.life > 0);
+
+        // A scatter of static, only while actively glitching — a few dozen
+        // points, not a full-frame noise fill.
+        if (glitch > 0.03) {
+          const n = Math.round(glitch * 90);
+          ctx.fillStyle = 'rgba(200,255,230,0.5)';
+          for (let i = 0; i < n; i++) ctx.fillRect(Math.random() * c.w, Math.random() * c.h, 1.5, 1.5);
+        }
+
+        brackets.forEach((d) => { d.style.opacity = (0.55 + glitch * 0.45).toFixed(2); });
+
         rafId = requestAnimationFrame(tick);
       };
       rafId = requestAnimationFrame(tick);
@@ -4001,7 +4044,11 @@
     stop() {
       stopRaf();
       if (this._resize) window.removeEventListener('resize', this._resize);
+      if (this._onKey) document.removeEventListener('keydown', this._onKey, true);
+      if (this._brackets) this._brackets.forEach((d) => d.remove());
       this._resize = null;
+      this._onKey = null;
+      this._brackets = null;
     }
   };
 

@@ -162,6 +162,16 @@ body {
 .app.maximized { border-radius: 0; border-color: transparent; }
 .app.handy-mode #maxBtn { display: none; }
 
+/* Fullscreen: same one-button-two-glyphs pattern as Maximize/restore above. */
+#fullscreenBtn .fs-exit-icon,
+.app.is-fullscreen #fullscreenBtn .fs-icon { display: none; }
+.app.is-fullscreen #fullscreenBtn .fs-exit-icon { display: block; }
+/* Real fullscreen covers the taskbar too, so the rounded corners and border
+   read as a stray frame floating on the desktop — drop them the same way
+   Maximize does. Handy mode owns its own bounds and never goes fullscreen. */
+.app.is-fullscreen { border-radius: 0; border-color: transparent; }
+.app.handy-mode #fullscreenBtn { display: none; }
+
 .win-btn {
   width: 30px;
   height: 26px;
@@ -945,6 +955,14 @@ body {
   max-width: 100%;
   font-size: 0.95em;
 }
+/* A wide table's own horizontal scrollbar, themed the same way every other
+   scrolling pane in the app is (.editor-area, .md-preview itself, etc.) —
+   left unstyled it renders as the native OS scrollbar, which clashes with
+   a dark theme. The scrollbar-button rule at the top of this file already
+   removes the directional arrow buttons everywhere. */
+.md-preview table::-webkit-scrollbar { height: 8px; }
+.md-preview table::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 8px; }
+.md-preview table::-webkit-scrollbar-thumb:hover { background: var(--muted); }
 .md-preview th, .md-preview td {
   border: 1px solid var(--border);
   padding: 4px 9px;
@@ -957,6 +975,68 @@ body {
 .md-preview .md-al { text-align: left; }
 .md-preview .md-ac { text-align: center; }
 .md-preview .md-ar { text-align: right; }
+
+/* Table +/- controls (markdown.js emits these on every table; stripped out
+   again in exportRenderPayload() since they're app chrome, not content). */
+.md-preview th { position: relative; padding-inline-end: 20px; }
+.md-table-delcol {
+  position: absolute;
+  top: 2px; inset-inline-end: 2px;
+  width: 15px; height: 15px;
+  line-height: 13px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.md-preview th:hover .md-table-delcol { opacity: 1; }
+.md-table-delcol:hover { background: var(--danger); color: var(--bg); }
+.md-table-ctlcell {
+  border: none !important;
+  background: transparent !important;
+  padding: 0 !important;
+  width: 22px;
+  text-align: center;
+}
+.md-table-addcol,
+.md-table-addrow {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  opacity: 0.45;
+  transition: opacity 0.12s, color 0.12s;
+}
+.md-table-addcol:hover,
+.md-table-addrow:hover { opacity: 1; color: var(--accent); }
+.md-table-addcol { font-size: 13px; font-weight: 600; padding: 0 5px; }
+.md-table-addrow-row td.md-table-ctlcell {
+  width: auto;
+  text-align: start;
+  padding: 2px 4px !important;
+}
+.md-table-addrow { font-size: 11px; padding: 2px 6px; border-radius: 4px; }
+.md-table-addrow:hover { background: var(--elevated); }
+.md-preview tbody tr:hover .md-table-delrow { opacity: 1; }
+.md-table-delrow {
+  width: 15px; height: 15px;
+  line-height: 13px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.md-table-delrow:hover { background: var(--danger); color: var(--bg); }
 
 /* Definition lists */
 .md-preview dl { margin: 0.4em 0; }
@@ -1863,6 +1943,28 @@ body {
 }
 .mini-dialog input:focus,
 .mini-dialog textarea:focus { border-color: var(--accent); }
+
+/* Two side-by-side labeled fields (used by the table-insert dialog). */
+.mini-dialog-row { display: flex; gap: 10px; }
+.mini-dialog-field {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 0.3px;
+}
+.mini-dialog-field input { text-align: center; }
+/* The native up/down spin buttons on a number input render in the OS's own
+   light-gray style — there's no way to recolor the arrows themselves to
+   match a dark theme, only hide them. Up/Down arrow keys still increment
+   the value with the visual buttons gone. */
+.mini-dialog-field input[type="number"]::-webkit-inner-spin-button,
+.mini-dialog-field input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
 
 .mini-dialog-actions {
   display: flex;
@@ -4614,41 +4716,39 @@ body:has(.app.fx-marble) { background: #f2f0ea; }
 .app.fx-marble .brand-dot { background: linear-gradient(135deg, #e0c274, #a3822f); }
 .app.fx-marble .tab.active { background: rgba(160, 128, 58, 0.12); }
 
-/* ── Cognac ─────────────────────────────────────────────────────────────
-   A bound volume. Pebbled hide behind the panels and gold blocking on the
-   chrome, the way a spine is tooled. */
-.fx-cognac-hide,
-.fx-cognac-sheen { position: absolute; inset: 0; width: 100%; height: 100%; }
-body:has(.app.fx-cognac) { background: #241407; }
-.app.fx-cognac {
-  z-index: 1;
-  --vip-rule: rgba(216, 170, 96, 0.26);
-  border: 1px solid rgba(216, 170, 96, 0.42);
-  border-radius: 5px;
+/* ── Nightvision ────────────────────────────────────────────────────────
+   A tactical HUD: static corner brackets always on screen, a canvas layer
+   over the UI for the scanline sweep and glitch bursts. An effect, not a
+   material, so it stays a plain Pro theme — no VIP double hairline. */
+.fx-nv-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+body:has(.app.fx-nightvision) { background: #020806; }
+.app.fx-nightvision { position: relative; z-index: 1; border-color: rgba(34, 230, 184, 0.24); }
+.app.fx-nightvision .editor-area, .app.fx-nightvision .md-preview { background: transparent; }
+.app.fx-nightvision .titlebar { border-bottom: 1px solid rgba(34, 230, 184, 0.2); }
+.app.fx-nightvision .rail { border-right: 1px solid rgba(34, 230, 184, 0.16); }
+.app.fx-nightvision .statusbar { border-top: 1px solid rgba(34, 230, 184, 0.16); }
+.app.fx-nightvision .brand-name {
+  color: #7dffd6;
+  text-shadow: 0 0 6px rgba(34, 230, 184, 0.5);
 }
-.app.fx-cognac::after { border-radius: 3px; }
-.app.fx-cognac .titlebar { border-bottom: 1px solid rgba(216, 170, 96, 0.28); }
-.app.fx-cognac .rail { border-right: 1px solid rgba(216, 170, 96, 0.2); }
-.app.fx-cognac .statusbar { border-top: 1px solid rgba(216, 170, 96, 0.2); }
-/* Gold blocking is pressed into the leather, so it carries a shadow under
-   it rather than a glow around it. */
-.app.fx-cognac .brand-name {
-  color: #e8c078;
-  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.75);
+.app.fx-nightvision .brand-dot {
+  background: #22e6b8;
+  box-shadow: 0 0 8px rgba(34, 230, 184, 0.8);
 }
-.app.fx-cognac .brand-dot {
-  background: linear-gradient(135deg, #f0d193, #b3873c);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+.fx-nv-bracket {
+  position: absolute;
+  width: 26px;
+  height: 26px;
+  border: 2px solid rgba(34, 230, 184, 0.6);
+  filter: drop-shadow(0 0 3px rgba(34, 230, 184, 0.5));
+  opacity: 0.55;
+  pointer-events: none;
+  transition: opacity 0.15s linear;
 }
-.app.fx-cognac .add-btn,
-.app.fx-cognac .templates-btn,
-.app.fx-cognac .copy-btn {
-  background: rgba(58, 34, 16, 0.5);
-  border: 1px solid rgba(216, 170, 96, 0.26);
-}
-.app.fx-cognac .add-btn:hover,
-.app.fx-cognac .templates-btn:hover,
-.app.fx-cognac .copy-btn:hover { border-color: var(--accent); }
+.fx-nv-tl { top: 10px; left: 10px; border-right: none; border-bottom: none; }
+.fx-nv-tr { top: 10px; right: 10px; border-left: none; border-bottom: none; }
+.fx-nv-bl { bottom: 10px; left: 10px; border-right: none; border-top: none; }
+.fx-nv-br { bottom: 10px; right: 10px; border-left: none; border-top: none; }
 
 /* Tuxedo predates the category and already had its own double rule; it
    joins the shared chrome here rather than keeping a private copy. */

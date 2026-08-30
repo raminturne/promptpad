@@ -252,7 +252,7 @@ function createWindow(BrowserWindow) {
     alwaysOnTop: win.alwaysOnTop !== undefined ? win.alwaysOnTop : true,
     skipTaskbar: false,
     resizable: true,
-    fullscreenable: false,
+    fullscreenable: true,
     title: 'PromptPad',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -294,6 +294,26 @@ function createWindow(BrowserWindow) {
   };
   mainWindow.on('maximize', sendMaxState);
   mainWindow.on('unmaximize', sendMaxState);
+
+  // Real (OS-level) fullscreen, distinct from Maximize — it also covers the
+  // taskbar, which Maximize deliberately leaves visible. Can also be entered
+  // outside the app (macOS green-button, a window-manager shortcut), so the
+  // renderer's glyph has to follow these events rather than only its own
+  // toggle call, same reasoning as sendMaxState above.
+  //
+  // The state is taken from which event fired, NOT from re-reading
+  // mainWindow.isFullScreen() inside the handler — on this platform that
+  // getter hasn't caught up to the transition yet at the moment 'enter-
+  // full-screen' fires, so it verifiably still reads false right as the
+  // window enters fullscreen. The event name already says which way the
+  // transition went, so there is nothing to look up.
+  const sendFullscreenState = (isFull) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('fullscreen-change', isFull);
+    }
+  };
+  mainWindow.on('enter-full-screen', () => sendFullscreenState(true));
+  mainWindow.on('leave-full-screen', () => sendFullscreenState(false));
 
   let boundsTimer = null;
   const persistBounds = () => {
@@ -547,6 +567,15 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   ipcMain.handle('is-maximized', () => (mainWindow ? mainWindow.isMaximized() : false));
+
+  ipcMain.handle('toggle-fullscreen', () => {
+    if (!mainWindow) return false;
+    const next = !mainWindow.isFullScreen();
+    mainWindow.setFullScreen(next);
+    return next;
+  });
+
+  ipcMain.handle('is-fullscreen', () => (mainWindow ? mainWindow.isFullScreen() : false));
 
   ipcMain.handle('toggle-always-on-top', () => {
     if (!mainWindow) return false;

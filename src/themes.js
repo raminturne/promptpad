@@ -269,14 +269,15 @@
       elevated: 'rgba(255,254,250,0.82)', elevatedHi: 'rgba(233,228,214,0.88)',
       accent: '#a3822f', danger: '#a8402f', winBg: '#f6f4ee'
     },
-    cognac: {
-      label: 'Cognac', type: 'vip', fx: 'cognac', cssClass: 'fx-cognac vip-card',
-      // A bound volume: pebbled hide, and gold blocked into it the way a
-      // spine is tooled. Leather absorbs light, so the surfaces here are the
-      // least reflective in the set on purpose.
-      bg: 'rgba(58,34,16,0.58)', text: '#f0e0c8', sidebar: 'rgba(38,22,10,0.78)',
-      elevated: 'rgba(74,44,22,0.78)', elevatedHi: 'rgba(94,58,30,0.86)',
-      accent: '#d8aa60', danger: '#e07a52', winBg: '#2a180b'
+    nightvision: {
+      label: 'Nightvision', type: 'pro', fx: 'nightvision', cssClass: 'fx-nightvision',
+      // A tactical HUD: green leaning to blue, a signal that never quite
+      // holds still. This is an effect, not a material, so — unlike its
+      // VIP neighbours — the panels stay plainly translucent with no double
+      // hairline, and it reads through them the way an optic overlay would.
+      bg: 'rgba(4,14,12,0.58)', text: '#c9f5e6', sidebar: 'rgba(2,9,8,0.76)',
+      elevated: 'rgba(6,20,17,0.76)', elevatedHi: 'rgba(10,30,25,0.84)',
+      accent: '#22e6b8', danger: '#ff4d6a', winBg: '#020806'
     },
     // Smoke (letters hidden in a puff on typing, revealed as it clears) was
     // tried and pulled — never read as natural enough to keep.

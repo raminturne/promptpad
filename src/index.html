@@ -85,6 +85,21 @@
             <line x1="12" y1="17" x2="12" y2="22" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
           </svg>
         </button>
+        <!-- Diagonal-arrow glyph (not the bracket outline zenBtn already uses
+             above, which reads the same at this size) — expand/collapse along
+             the corners, standard "maximize-2/minimize-2" shape. -->
+        <button id="fullscreenBtn" class="win-btn" title="Fullscreen (F11)">
+          <svg class="fs-icon" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+            <path d="M15 3h6v6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M9 21H3v-6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M21 3l-7 7M3 21l7-7" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+          </svg>
+          <svg class="fs-exit-icon" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+            <path d="M4 14h6v6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M20 10h-6V4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M14 10l7-7M10 14l-7 7" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+          </svg>
+        </button>
         <button id="minBtn" class="win-btn" title="Minimize">
           <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
             <line x1="5" y1="12" x2="19" y2="12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
@@ -471,6 +486,15 @@
                 <path d="M4 17.5l4.5-4.5 3.5 3.5 3-3 5 5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
               </svg>
               <span class="btn-label">Image</span>
+            </button>
+            <button id="tableBtn" class="copy-btn" title="Insert table">
+              <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
+                <rect x="3" y="4" width="18" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/>
+                <line x1="3" y1="9.5" x2="21" y2="9.5" stroke="currentColor" stroke-width="1.6"/>
+                <line x1="9.3" y1="4" x2="9.3" y2="20" stroke="currentColor" stroke-width="1.6"/>
+                <line x1="15.6" y1="4" x2="15.6" y2="20" stroke="currentColor" stroke-width="1.6"/>
+              </svg>
+              <span class="btn-label">Table</span>
             </button>
             <button id="filesBtn" class="copy-btn copy-btn--wide" title="Files attached to this tab">
               <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
@@ -1081,7 +1105,7 @@
               <div class="about-box">
                 <div class="about-brand">
                   <span class="brand-dot"></span>
-                  <span>PromptPad <em id="aboutVersion">v3.7.1</em></span>
+                  <span>PromptPad <em id="aboutVersion">v3.8.0</em></span>
                 </div>
                 <p class="about-desc">A compact notepad for writing AI prompts.</p>
                 <div class="about-links">
@@ -1381,6 +1405,24 @@
       <div class="mini-dialog-actions">
         <button id="linkCancel" class="mini-dialog-cancel">Cancel</button>
         <button id="linkSave" class="mini-dialog-save">Insert</button>
+      </div>
+    </div>
+
+    <div id="tableDialog" class="mini-dialog hidden">
+      <span class="mini-dialog-label">Insert table</span>
+      <div class="mini-dialog-row">
+        <label class="mini-dialog-field">
+          <span>Rows</span>
+          <input id="tableRowsInput" type="number" min="1" max="100" value="2" />
+        </label>
+        <label class="mini-dialog-field">
+          <span>Columns</span>
+          <input id="tableColsInput" type="number" min="1" max="20" value="2" />
+        </label>
+      </div>
+      <div class="mini-dialog-actions">
+        <button id="tableCancel" class="mini-dialog-cancel">Cancel</button>
+        <button id="tableSave" class="mini-dialog-save">Insert</button>
       </div>
     </div>
 

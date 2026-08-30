@@ -106,7 +106,7 @@ const DEFAULT_SETTINGS = {
   // which status-bar buttons are shown (toggle in Settings → Toolbar)
   toolbar: {
     todo: true, emoji: true, link: true, justify: true, clean: true, improve: true, voice: true,
-    md: true, paste: true, copy: true, img: true, genimg: true, files: true
+    md: true, paste: true, copy: true, img: true, table: true, genimg: true, files: true
   },
   imageGen: { provider: 'pollinations', geminiApiKey: '', hfApiKey: '' },
   seenFeatures: {}, // { improve: true, aiChat: true, ... } — clears each button's "New" badge once used
@@ -172,6 +172,7 @@ const tokenCountEl = document.getElementById('tokenCount');
 const copyBtn = document.getElementById('copyBtn');
 const addBtn = document.getElementById('addBtn');
 const pinBtn = document.getElementById('pinBtn');
+const fullscreenBtn = document.getElementById('fullscreenBtn');
 const minBtn = document.getElementById('minBtn');
 const maxBtn = document.getElementById('maxBtn');
 const closeBtn = document.getElementById('closeBtn');
@@ -409,6 +410,12 @@ const linkTextInput = document.getElementById('linkTextInput');
 const linkUrlInput = document.getElementById('linkUrlInput');
 const linkCancel = document.getElementById('linkCancel');
 const linkSave = document.getElementById('linkSave');
+const tableBtn = document.getElementById('tableBtn');
+const tableDialog = document.getElementById('tableDialog');
+const tableRowsInput = document.getElementById('tableRowsInput');
+const tableColsInput = document.getElementById('tableColsInput');
+const tableCancel = document.getElementById('tableCancel');
+const tableSave = document.getElementById('tableSave');
 // image context menu
 const imgContextMenu = document.getElementById('imgContextMenu');
 const textContextMenu = document.getElementById('textContextMenu');
@@ -1005,7 +1012,20 @@ function applyEditorDir() {
   updateEmptyState();
 }
 
+// Delegates to placeCaretInLine on the last .ln rather than collapsing a
+// range selected over editorEl itself. The two look equivalent, but they are
+// not: selectNodeContents(editorEl) + collapse(false) leaves the Range's
+// container at the EDITOR level (offset = editorEl.childNodes.length), not
+// inside the last line's text. currentLineSelection() cannot resolve a line
+// from that container-level point and silently returns null — which every
+// caller here happens to tolerate (the two/three lines below fall back to
+// currentLine(), or to appending at the end), but a feature that reads the
+// caret to decide what to insert (Insert table, splitting text around it)
+// silently lost that information the moment the caret was placed this way.
 function placeCaretEnd() {
+  const lines = editorLines();
+  const last = lines[lines.length - 1];
+  if (last) { placeCaretInLine(last, last.textContent.length); return; }
   const r = document.createRange();
   r.selectNodeContents(editorEl);
   r.collapse(false);
@@ -4992,9 +5012,167 @@ function toggleTodoLineInContent(lineIdx) {
   renderMdPreview();
 }
 
+// ---------- Markdown table editing (+/- rows & columns) ----------
+// Cells are re-split and re-joined on every edit rather than surgically
+// patched — a table is a handful of short lines, and regenerating them
+// canonically stays correct (escaped pipes included) without trying to
+// preserve the original spacing byte-for-byte.
+function splitTableRow(line) {
+  const cells = [];
+  let cur = '';
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (c === '\\' && line[i + 1] === '|') { cur += '\\|'; i++; continue; }
+    if (c === '|') { cells.push(cur); cur = ''; continue; }
+    cur += c;
+  }
+  cells.push(cur);
+  if (cells.length && !cells[0].trim()) cells.shift();
+  if (cells.length && !cells[cells.length - 1].trim()) cells.pop();
+  return cells;
+}
+function joinTableRow(cells) {
+  return '| ' + cells.map((c) => c.trim() || ' ').join(' | ') + ' |';
+}
+
+// A table's own data-line/data-end-line (see markdown.js's `at()`) span its
+// header row through its last body row (or the alignment row, if it has no
+// body rows yet) — exactly the range every edit here rewrites wholesale.
+function tableLineRange(tableEl) {
+  const t = activeTab();
+  if (!t || !tableEl || tableEl.dataset.line === undefined) return null;
+  const start = Number(tableEl.dataset.line);
+  const end = Number(tableEl.dataset.endLine);
+  const lines = t.content.split('\n');
+  if (!(start >= 0 && end >= start && end < lines.length)) return null;
+  return { t, lines, start, end };
+}
+
+function commitTableEdit(t, lines, start, end, newRows) {
+  const prev = t.content;
+  lines.splice(start, end - start + 1, ...newRows);
+  t.content = lines.join('\n');
+  noteEditForUndo(t, prev);
+  setEditorText(t.content); // keep the hidden editor in step with the note
+  updateCounts();
+  updatePlaceholderPanel();
+  scheduleSave();
+  renderMdPreview();
+}
+
+function tableEditColumn(tableEl, col, action) {
+  commitMdBlockEdit();
+  const ctx = tableLineRange(tableEl);
+  if (!ctx) return;
+  const { t, lines, start, end } = ctx;
+  const header = splitTableRow(lines[start]);
+  const alignRow = splitTableRow(lines[start + 1]);
+  const bodyRows = lines.slice(start + 2, end + 1).map(splitTableRow);
+  if (action === 'add') {
+    header.push('Column ' + (header.length + 1));
+    alignRow.push('---');
+    bodyRows.forEach((r) => r.push(''));
+  } else {
+    if (header.length <= 1) { showToast(tr('table.needCol', 'A table needs at least one column')); return; }
+    header.splice(col, 1);
+    alignRow.splice(col, 1);
+    bodyRows.forEach((r) => r.splice(col, 1));
+  }
+  commitTableEdit(t, lines, start, end,
+    [joinTableRow(header), joinTableRow(alignRow), ...bodyRows.map(joinTableRow)]);
+}
+
+function tableEditRow(tableEl, row, action) {
+  commitMdBlockEdit();
+  const ctx = tableLineRange(tableEl);
+  if (!ctx) return;
+  const { t, lines, start, end } = ctx;
+  const header = lines[start];
+  const alignRow = lines[start + 1];
+  const bodyRows = lines.slice(start + 2, end + 1);
+  if (action === 'add') {
+    const cols = splitTableRow(header).length;
+    bodyRows.push(joinTableRow(Array(cols).fill('')));
+  } else {
+    if (row < 0 || row >= bodyRows.length) return;
+    bodyRows.splice(row, 1);
+  }
+  commitTableEdit(t, lines, start, end, [header, alignRow, ...bodyRows]);
+}
+
+// Editing a cell's own text — click it (its inner .md-table-celltext span is
+// contenteditable, NOT the cell itself, which also holds the delete-column
+// button as a sibling — an editable cell including its own delete button let
+// selecting-and-typing over the header delete the button, and let the
+// button's own "×" leak into the saved text). Blur or Enter commits it back
+// to the note. Escapes a literal "|" the user typed so it round-trips as one
+// cell rather than splitting into two on the next parse; a pasted newline is
+// folded to a space since a table row is exactly one source line.
+function commitTableCellEdit(textEl) {
+  const cellEl = textEl.closest('th, td');
+  const table = textEl.closest('table');
+  const ctx = tableLineRange(table);
+  if (!ctx || !cellEl) return;
+  const { t, lines, start, end } = ctx;
+  const col = Number(cellEl.dataset.col);
+  const isHeader = cellEl.tagName === 'TH';
+  const tr = cellEl.closest('tr');
+  const lineIdx = isHeader ? start : start + 2 + Number(tr && tr.dataset.row);
+  if (!(lineIdx >= start && lineIdx <= end)) return;
+  const cells = splitTableRow(lines[lineIdx]);
+  if (!(col >= 0 && col < cells.length)) return;
+  const newText = textEl.textContent.replace(/[\r\n]+/g, ' ').replace(/\|/g, '\\|');
+  if (cells[col].trim() === newText.trim()) return; // no real change — skip a no-op undo step
+  cells[col] = newText;
+  const newLine = joinTableRow(cells);
+  if (newLine === lines[lineIdx]) return;
+  const prev = t.content;
+  lines[lineIdx] = newLine;
+  t.content = lines.join('\n');
+  noteEditForUndo(t, prev);
+  setEditorText(t.content); // keep the hidden editor in step with the note
+  updateCounts();
+  updatePlaceholderPanel();
+  scheduleSave();
+  // Deliberately no renderMdPreview() here: this fires on blur, often because
+  // the user just clicked into the NEXT cell to keep typing — replacing the
+  // whole table's DOM at that moment would yank focus away from the cell
+  // they meant to land in. The note and the cell's own displayed text already
+  // match; the next unrelated render (tab switch, another edit) catches up
+  // anything like a **bold** marker typed here that wants re-rendering.
+}
+
+// blur doesn't bubble, so this needs the capture phase to reach mdPreviewEl.
+mdPreviewEl.addEventListener('blur', (e) => {
+  const cell = e.target;
+  if (cell instanceof Element && cell.matches('.md-table-celltext')) {
+    commitTableCellEdit(cell);
+  }
+}, true);
+
+// Enter commits a cell instead of inserting a line break — a table row is
+// one source line, and every other line-oriented control in this app (Tab,
+// list continuation) already treats Enter as "done", not "newline".
+mdPreviewEl.addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter') return;
+  const cell = e.target;
+  if (cell instanceof Element && cell.matches('.md-table-celltext')) {
+    e.preventDefault();
+    cell.blur();
+  }
+});
+
 mdPreviewEl.addEventListener('click', (e) => {
   const t = e.target;
   if (!(t instanceof Element)) return;
+  const delCol = t.closest('.md-table-delcol');
+  if (delCol) { tableEditColumn(delCol.closest('table'), Number(delCol.dataset.col), 'delete'); return; }
+  const addCol = t.closest('.md-table-addcol');
+  if (addCol) { tableEditColumn(addCol.closest('table'), null, 'add'); return; }
+  const delRow = t.closest('.md-table-delrow');
+  if (delRow) { tableEditRow(delRow.closest('table'), Number(delRow.dataset.row), 'delete'); return; }
+  const addRow = t.closest('.md-table-addrow');
+  if (addRow) { tableEditRow(addRow.closest('table'), null, 'add'); return; }
   const copyCodeBtn = t.closest('.md-code-copy');
   if (copyCodeBtn) {
     const codeEl = copyCodeBtn.closest('.md-codeblock').querySelector('code');
@@ -5397,6 +5575,90 @@ linkUrlInput.addEventListener('keydown', (e) => {
 linkTextInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') { e.preventDefault(); linkUrlInput.focus(); }
   if (e.key === 'Escape') { closeLinkDialog(); }
+});
+
+// ---------- Table insertion ----------
+// Builds a GFM table (header + alignment row + N empty body rows) and drops
+// it in at the caret via the same execCommand path Paste uses — that fires
+// the real 'input' pipeline (multi-line split into separate .ln divs,
+// per-line RTL, undo), which a raw DOM write would not.
+function buildTableMarkdown(rows, cols) {
+  const header = Array.from({ length: cols }, (_, i) => 'Column ' + (i + 1));
+  const alignRow = Array(cols).fill('---');
+  const body = Array.from({ length: rows }, () => Array(cols).fill(''));
+  return [joinTableRow(header), joinTableRow(alignRow), ...body.map(joinTableRow)].join('\n');
+}
+
+// Clicking the toolbar button moves focus off the contenteditable before the
+// click handler runs (and the dialog's own number inputs take it again once
+// open) — same problem Link insertion solves, and the same fix: the range is
+// captured on mousedown, before any of that happens, and restored right
+// before the text is actually inserted.
+let tableSavedRange = null;
+let pendingTableSel = null;
+
+tableBtn.addEventListener('mousedown', () => {
+  const sel = window.getSelection();
+  tableSavedRange = (sel && sel.rangeCount && editorEl.contains(sel.anchorNode))
+    ? sel.getRangeAt(0).cloneRange() : null;
+});
+
+function restoreTableRange() {
+  if (!tableSavedRange || !editorEl.contains(tableSavedRange.commonAncestorContainer)) return false;
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  try { sel.addRange(tableSavedRange); return true; } catch { return false; }
+}
+
+function openTableDialog() {
+  if (mdOn() || fsActive()) return;
+  restoreTableRange();
+  pendingTableSel = currentLineSelection();
+  tableDialog.classList.remove('hidden');
+  tableRowsInput.focus();
+  tableRowsInput.select();
+}
+function closeTableDialog() {
+  tableDialog.classList.add('hidden');
+  tableSavedRange = null;
+  pendingTableSel = null;
+}
+function confirmTable() {
+  const rows = Math.max(1, Math.min(100, Number(tableRowsInput.value) || 1));
+  const cols = Math.max(1, Math.min(20, Number(tableColsInput.value) || 1));
+  const s = pendingTableSel;
+  const hadRange = restoreTableRange(); // live selection back before the dialog closes and focus moves
+  closeTableDialog();
+  editorEl.focus();
+  const md = buildTableMarkdown(rows, cols);
+  // A table needs its own lines: if the caret sits mid-line, split whatever
+  // is there onto its own line before/after the table rather than gluing
+  // text onto the table's header or last row.
+  let insertText = md;
+  if (s && editorEl.contains(s.line)) {
+    const text = s.line.textContent;
+    if (text.slice(0, s.start).trim()) insertText = '\n' + insertText;
+    if (text.slice(s.end).trim()) insertText += '\n';
+  }
+  const ok = hadRange && document.execCommand('insertText', false, insertText);
+  if (!ok) {
+    insertAtCaret(insertText);
+    updateLineDirs();
+    handleEditorChanged();
+  }
+  // Stays raw pipe text in the plain editor — inserting a table must not
+  // flip the whole note into Markdown preview on its own. It renders as a
+  // real table (with its cells directly editable) the moment the user turns
+  // Markdown preview on themselves, same as any other table already there.
+}
+tableBtn.addEventListener('click', openTableDialog);
+tableCancel.addEventListener('click', closeTableDialog);
+tableSave.addEventListener('click', confirmTable);
+[tableRowsInput, tableColsInput].forEach((el) => {
+  el.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); confirmTable(); }
+    if (e.key === 'Escape') { closeTableDialog(); }
+  });
 });
 
 // ---------- Text alignment ----------
@@ -6008,8 +6270,17 @@ function exportRenderPayload(content) {
   // Same per-block direction pass the preview does — without it an exported
   // Persian note comes out left-aligned with its list markers on the wrong side.
   applyBlockDirs(holder, forced, content);
-  // The preview's buttons are app chrome, not content.
-  holder.querySelectorAll('.md-code-copy, .md-code-improve, .md-code-genimg').forEach((b) => b.remove());
+  // The preview's buttons are app chrome, not content — same reasoning
+  // covers a table's +/- rail (the delete button riding inside each header
+  // cell, the whole extra add-column/delete-row cells, and the add-row row).
+  holder.querySelectorAll(
+    '.md-code-copy, .md-code-improve, .md-code-genimg, ' +
+    '.md-table-delcol, .md-table-ctlcell, .md-table-addrow-row'
+  ).forEach((b) => b.remove());
+  // Table cells are contenteditable in the live preview so you can click and
+  // type into them — a static export must not carry that into the saved
+  // document, or opening the HTML in a browser would let you "edit" it.
+  holder.querySelectorAll('[contenteditable]').forEach((el) => el.removeAttribute('contenteditable'));
   return {
     body: holder.innerHTML,
     dir: forced || detectDir(content),
@@ -6679,6 +6950,27 @@ maxBtn.addEventListener('click', async () => {
 window.api.onMaximizeChange(applyMaximized);
 closeBtn.addEventListener('click', () => window.api.close());
 
+// Real (OS-level) fullscreen — also covers the taskbar, unlike Maximize.
+// Same source-of-truth reasoning as applyMaximized: it can be entered outside
+// the app too (macOS green button, a window-manager shortcut).
+let isFullscreen = false;
+function applyFullscreen(on) {
+  isFullscreen = !!on;
+  appEl.classList.toggle('is-fullscreen', isFullscreen);
+  fullscreenBtn.title = (isFullscreen ? tr('fullscreen.exit', 'Exit fullscreen') : tr('fullscreen.enter', 'Fullscreen')) + ' (F11)';
+}
+async function toggleFullscreen() {
+  if (settings.handyMode) return; // handy mode owns the window bounds
+  applyFullscreen(await window.api.toggleFullscreen());
+}
+fullscreenBtn.addEventListener('click', toggleFullscreen);
+window.api.onFullscreenChange(applyFullscreen);
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'F11') return;
+  e.preventDefault();
+  toggleFullscreen();
+});
+
 // keyboard shortcuts — use e.code (physical key) so they work on any
 // keyboard layout, including Persian.
 document.addEventListener('keydown', (e) => {
@@ -6962,6 +7254,7 @@ const TOOLBAR_BUTTONS = [
   { key: 'paste', label: 'Paste', el: () => pasteBtn },
   { key: 'copy', label: 'Copy', el: () => copyBtn },
   { key: 'img', label: 'Image', el: () => imgBtn },
+  { key: 'table', label: 'Table', el: () => tableBtn },
   // genImgBtn intentionally omitted — image generation is hidden for now,
   // see index.html; leaving it out of this list keeps it from being
   // re-shown via the Settings → Toolbar buttons chips.
@@ -8433,8 +8726,11 @@ mdPreviewEl.addEventListener('dblclick', (e) => {
   const target = e.target;
   if (!(target instanceof Element)) return;
   if (target.closest('.md-block-edit')) return;
-  // these already have their own click behaviour
-  if (target.closest('.md-code-copy, .md-code-improve, .md-code-genimg, .md-img, .md-link, .md-todo-box')) return;
+  // these already have their own click behaviour — a table's cells are
+  // directly editable now, so double-clicking one to select a word must not
+  // swap the whole table for the raw-markdown textarea underneath it.
+  if (target.closest('.md-code-copy, .md-code-improve, .md-code-genimg, .md-img, .md-link, .md-todo-box, ' +
+    '.md-table-delcol, .md-table-addcol, .md-table-delrow, .md-table-addrow, table')) return;
   const block = target.closest('[data-line]');
   if (!block || !mdPreviewEl.contains(block)) return;
   e.preventDefault();
@@ -8709,35 +9005,30 @@ const CURRENT_VERSION = document.getElementById('aboutVersion').textContent.repl
 const WHATS_NEW =
   "What's new in v" + CURRENT_VERSION + " ✨\n" +
   '\n' +
-  '• Fixed: typing could stutter in the Wounds theme on longer notes — it was\n' +
-  '   re-measuring every line in the note on a timer to keep its cuts off your\n' +
-  '   text; now it only checks the nearby lines. No visual change, just fast\n' +
-  '   again on notes of any length.\n' +
-  '• Fixed: a crash or power loss during autosave could corrupt or lose the\n' +
-  '   whole workspace. Saves are now atomic, and a damaged data file is backed\n' +
-  '   up instead of silently overwritten.\n' +
-  '• Fixed: Find & replace could freeze for several seconds on long notes, and\n' +
-  '   a replacement wasn\'t undoable with Ctrl+Z — both fixed.\n' +
-  '• Fixed: a rare stuck state in Handy (peek) mode, a path-safety gap in\n' +
-  '   "copy image to clipboard", and a crash merging very large shared notes.\n' +
+  '• Real fullscreen — a new titlebar button (and F11) that hides the taskbar\n' +
+  '   too, not just Maximize.\n' +
+  '• Insert Table: a new toolbar button builds a markdown table at your\n' +
+  '   cursor. Turn on Markdown preview to see it rendered for real, click any\n' +
+  '   cell to type straight into it, and use the +/- controls on the table\n' +
+  '   itself to add or remove rows and columns.\n' +
+  '• Cognac is gone; in its place, Nightvision — a tactical HUD theme, green\n' +
+  '   leaning to blue, with a scanline sweep, corner targeting brackets, and\n' +
+  '   a burst of signal glitch on every keystroke.\n' +
   '\n' +
   'You can close this tab — it won\'t come back until the next update.\n' +
   '\n' +
   '\n' +
   'تازه‌ها در نسخه ' + CURRENT_VERSION + ' ✨\n' +
   '\n' +
-  '• رفعِ باگ: تایپ روی نوت‌های بلند در تمِ Wounds گاهی کند می‌شد — چون برای\n' +
-  '   دورنگه‌داشتنِ برش‌ها از رویِ متن، هر بار همه‌ی خط‌های نوت را دوباره\n' +
-  '   اندازه می‌گرفت؛ حالا فقط خط‌های نزدیک بررسی می‌شوند. ظاهرِ افکت هیچ\n' +
-  '   تغییری نکرده، فقط روی نوت‌های هر اندازه دوباره سریع شده.\n' +
-  '• رفعِ باگ: قطعِ برق یا کرش هنگامِ ذخیره‌ی خودکار می‌توانست کل فضایِ کاری\n' +
-  '   را خراب یا نابود کند. حالا ذخیره‌سازی اتمیک است، و فایلِ آسیب‌دیده\n' +
-  '   به‌جایِ جایگزینیِ خاموش، پشتیبان‌گیری می‌شود.\n' +
-  '• رفعِ باگ: پیدا کردن و جایگزینی روی نوت‌های بلند گاهی چند ثانیه هنگ\n' +
-  '   می‌کرد، و جایگزینی با Ctrl+Z قابلِ بازگشت نبود — هر دو رفع شدند.\n' +
-  '• رفعِ باگ: یک گیرِ نادر در حالتِ دم‌دستی، یک نقطه‌ضعفِ امنیتیِ کوچک در\n' +
-  '   «کپیِ عکس در کلیپ‌بورد»، و یک کرش هنگامِ ادغامِ نوت‌های اشتراکیِ بسیار\n' +
-  '   بزرگ.\n' +
+  '• تمام‌صفحه‌ی واقعی — یک دکمه‌ی تازه در نوار عنوان (و کلید F11) که این‌بار\n' +
+  '   نوار وظیفه‌ی ویندوز را هم پنهان می‌کند، نه فقط بزرگ کردن پنجره.\n' +
+  '• درج جدول: یک دکمه‌ی تازه در نوار ابزار یک جدول مارک‌داون درست همان‌جا\n' +
+  '   که مکان‌نما هست می‌سازد. پیش‌نمایش مارک‌داون را روشن کن تا جدول را\n' +
+  '   واقعاً رندرشده ببینی، روی هر سلول کلیک کن و مستقیم توش بنویس، و با\n' +
+  '   دکمه‌های +/- روی خودِ جدول ردیف یا ستون اضافه یا حذف کن.\n' +
+  '• تمِ Cognac رفت؛ به‌جایش Nightvision آمد — یک تمِ نظامیِ HUD، سبزِ مایل\n' +
+  '   به آبی، با یک خطِ اسکنِ همیشگی، براکت‌های نشانه‌گیری در گوشه‌ها، و یک\n' +
+  '   موجِ اختلالِ سیگنال روی هر ضربه‌ی کیبورد.\n' +
   '\n' +
   'این تب را می‌توانی ببندی — تا آپدیت بعدی دیگر برنمی‌گردد.';
 
@@ -12147,6 +12438,7 @@ async function bootstrap() {
   pinBtn.classList.toggle('active', onTop);
 
   try { applyMaximized(await window.api.isMaximized()); } catch {}
+  try { applyFullscreen(await window.api.isFullscreen()); } catch {}
 
   buildCtxColorRow();
 
@@ -12196,6 +12488,7 @@ async function bootstrap() {
     if (!aiActionsMenu.classList.contains('hidden')) { hideAiActionsMenu(); return; }
     if (!mdCommandsMenu.classList.contains('hidden')) { hideMdCommandsMenu(); return; }
     if (settings.zenMode) { toggleZen(false); return; }
+    if (isFullscreen) { toggleFullscreen(); return; }
     if (!emojiPanel.classList.contains('hidden')) { hideEmojiPanel(); return; }
     if (!imgContextMenu.classList.contains('hidden')) { hideImgContextMenu(); return; }
     if (!textContextMenu.classList.contains('hidden')) { hideTextContextMenu(); return; }
@@ -12206,6 +12499,7 @@ async function bootstrap() {
     if (!galleryOverlay.classList.contains('hidden')) { closeGallery(); return; }
     if (!filesOverlay.classList.contains('hidden')) { closeFilesPanel(); return; }
     if (!linkDialog.classList.contains('hidden')) { closeLinkDialog(); return; }
+    if (!tableDialog.classList.contains('hidden')) { closeTableDialog(); return; }
     if (!multiRenameDialog.classList.contains('hidden')) { multiRenameDialog.classList.add('hidden'); return; }
     if (!ctxMenuEl.classList.contains('hidden')) { hideCtxMenu(); return; }
     if (!importConfirmDialog.classList.contains('hidden')) { closeImportConfirm(); return; }

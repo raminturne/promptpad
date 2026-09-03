@@ -315,6 +315,35 @@ function createWindow(BrowserWindow) {
   mainWindow.on('enter-full-screen', () => sendFullscreenState(true));
   mainWindow.on('leave-full-screen', () => sendFullscreenState(false));
 
+  // Window motion, forwarded so a theme can react to the window being dragged
+  // — water slopes and slops, a scene rocks on its springs.
+  //
+  // Sent as a velocity, not a position. The renderer would otherwise have to
+  // keep the previous position and the timestamp to difference them, and it
+  // would get it wrong the first time the window is moved after a pause: the
+  // gap since the last event would produce one enormous phantom shove. That
+  // is what the 260ms guard below is for — a move that arrives long after the
+  // last one starts a fresh drag rather than continuing an old one.
+  //
+  // Scaled to pixels per frame at 60Hz (dt in ms, times 16) so the effects can
+  // treat it as a per-frame impulse without knowing anything about wall time.
+  let lastMove = null;
+  mainWindow.on('move', () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    let x, y;
+    try { [x, y] = mainWindow.getPosition(); } catch (err) { return; }
+    const now = Date.now();
+    if (lastMove && now - lastMove.t < 260) {
+      const dt = Math.max(1, now - lastMove.t);
+      const dx = (x - lastMove.x) * 16 / dt;
+      const dy = (y - lastMove.y) * 16 / dt;
+      if (Math.abs(dx) > 0.4 || Math.abs(dy) > 0.4) {
+        mainWindow.webContents.send('window-shove', { dx, dy });
+      }
+    }
+    lastMove = { x, y, t: now };
+  });
+
   let boundsTimer = null;
   const persistBounds = () => {
     if (handyActive) return; // handy-mode drives the bounds; don't save the sliver
@@ -674,6 +703,7 @@ if (!app.requestSingleInstanceLock()) {
   // macOS can't auto-update unsigned, and dev builds can't either — those fall
   // back to the GitHub-API notify flow (check-update → open the release page). ----
   let autoUpdater = null;
+  let lastUpdaterError = null;
   try { ({ autoUpdater } = require('electron-updater')); } catch {}
   const updaterSupported = !!(autoUpdater && app.isPackaged && process.platform !== 'darwin');
   if (updaterSupported) {
@@ -694,11 +724,19 @@ if (!app.requestSingleInstanceLock()) {
     autoUpdater.on('update-not-available', () => send({ type: 'none' }));
     autoUpdater.on('download-progress', (p) => send({ type: 'progress', percent: Math.round((p && p.percent) || 0) }));
     autoUpdater.on('update-downloaded', (i) => send({ type: 'downloaded', version: i && i.version }));
-    autoUpdater.on('error', (e) => send({ type: 'error', message: String((e && e.message) || e) }));
+    autoUpdater.on('error', (e) => {
+      lastUpdaterError = String((e && e.message) || e);
+      send({ type: 'error', message: lastUpdaterError });
+    });
 
     ipcMain.handle('updater-check', async () => {
-      try { const r = await autoUpdater.checkForUpdates(); return { ok: true, version: r && r.updateInfo && r.updateInfo.version }; }
-      catch (e) { return { ok: false, error: String((e && e.message) || e) }; }
+      try {
+        const r = await autoUpdater.checkForUpdates();
+        return { ok: true, version: r && r.updateInfo && r.updateInfo.version };
+      } catch (e) {
+        lastUpdaterError = String((e && e.message) || e);
+        return { ok: false, error: lastUpdaterError };
+      }
     });
     ipcMain.handle('updater-download', async () => {
       try { await autoUpdater.downloadUpdate(); return { ok: true }; }
@@ -710,6 +748,21 @@ if (!app.requestSingleInstanceLock()) {
     ipcMain.handle('updater-download', async () => ({ ok: false, error: 'unsupported' }));
     ipcMain.handle('updater-install', () => {});
   }
+
+  // Why the in-app updater is or isn't running, so "it just opens GitHub" can
+  // be answered from inside the app instead of guessed at. Two very different
+  // situations produce the same visible behaviour — a build that can never
+  // self-update (macOS, unpackaged) and one that tried and failed — and
+  // without this they are indistinguishable to the person reporting it.
+  ipcMain.handle('updater-status', () => ({
+    supported: updaterSupported,
+    reason: !autoUpdater ? 'module-missing'
+      : !app.isPackaged ? 'dev-build'
+        : process.platform === 'darwin' ? 'macos-unsigned'
+          : null,
+    platform: process.platform,
+    lastError: lastUpdaterError
+  }));
 
   ipcMain.on('set-opacity', (_e, v) => {
     if (!mainWindow) return;
@@ -783,6 +836,66 @@ if (!app.requestSingleInstanceLock()) {
     }, 16);
     handyAnimDone = done || null;
   }
+
+  // ---- Temporary window growth ----
+  // The theme board wants columns, and a 500x440 window can only show two. It
+  // grows while the board is open and goes back the moment it is closed, so
+  // nobody ends up with a resized window they did not ask for.
+  //
+  // Deliberately not reusing animateHandyTo: that one owns handyAnimTimer and
+  // handyAnimDone, and a growth animation finishing would clear the teardown
+  // callback a dock transition was relying on.
+  let growSaved = null;
+  let growTimer = null;
+
+  function animateBoundsTo(to, duration) {
+    if (!mainWindow) return;
+    if (growTimer) { clearInterval(growTimer); growTimer = null; }
+    const from = mainWindow.getBounds();
+    const start = Date.now();
+    const ease = (t) => 1 - Math.pow(1 - t, 3);
+    growTimer = setInterval(() => {
+      if (!mainWindow) { clearInterval(growTimer); growTimer = null; return; }
+      const t = Math.min(1, (Date.now() - start) / (duration || 220));
+      const e = ease(t);
+      mainWindow.setBounds({
+        x: Math.round(from.x + (to.x - from.x) * e),
+        y: Math.round(from.y + (to.y - from.y) * e),
+        width: Math.max(1, Math.round(from.width + (to.width - from.width) * e)),
+        height: Math.max(1, Math.round(from.height + (to.height - from.height) * e))
+      });
+      if (t >= 1) { clearInterval(growTimer); growTimer = null; }
+    }, 16);
+  }
+
+  ipcMain.handle('grow-window', (_e, wantW, wantH) => {
+    // Never fight the dock, a maximised window, or full screen — in all three
+    // the size is not ours to change.
+    if (!mainWindow || handyActive || mainWindow.isMaximized() || mainWindow.isFullScreen()) return false;
+    const cur = mainWindow.getBounds();
+    if (cur.width >= wantW && cur.height >= wantH) return false;   // already big enough
+    const area = screen.getDisplayNearestPoint(cur).workArea;
+    const w = Math.min(Math.max(cur.width, wantW), area.width);
+    const h = Math.min(Math.max(cur.height, wantH), area.height);
+    // Grow around the window's own centre, then push it back inside the screen
+    // rather than letting it hang off an edge.
+    let x = Math.round(cur.x + (cur.width - w) / 2);
+    let y = Math.round(cur.y + (cur.height - h) / 2);
+    x = Math.min(Math.max(x, area.x), area.x + area.width - w);
+    y = Math.min(Math.max(y, area.y), area.y + area.height - h);
+    if (!growSaved) growSaved = cur;
+    animateBoundsTo({ x, y, width: w, height: h }, 200);
+    return true;
+  });
+
+  ipcMain.handle('restore-window', () => {
+    if (!mainWindow || !growSaved) return false;
+    const to = growSaved;
+    growSaved = null;
+    if (handyActive || mainWindow.isMaximized() || mainWindow.isFullScreen()) return false;
+    animateBoundsTo(to, 200);
+    return true;
+  });
 
   ipcMain.handle('handy-enter', (_e, position) => {
     if (!mainWindow) return false;
@@ -1004,274 +1117,18 @@ if (!app.requestSingleInstanceLock()) {
   // exactly which shape it comes back in (steps[].content[], interaction.
   // output_image, legacy inlineData, ...) — this API surface has changed
   // shape more than once, so match structurally instead of one fixed path.
-  function findImagePart(node) {
-    if (!node || typeof node !== 'object') return null;
-    if (Array.isArray(node)) {
-      for (const item of node) {
-        const found = findImagePart(item);
-        if (found) return found;
-      }
-      return null;
-    }
-    const data = node.data || (node.inlineData && node.inlineData.data);
-    const mime = node.mime_type || node.mimeType ||
-      (node.inlineData && (node.inlineData.mime_type || node.inlineData.mimeType));
-    if (typeof data === 'string' && data.length > 100 && typeof mime === 'string' && mime.startsWith('image/')) {
-      return { data, mimeType: mime };
-    }
-    for (const key of Object.keys(node)) {
-      const found = findImagePart(node[key]);
-      if (found) return found;
-    }
-    return null;
-  }
-
-  function extFromMime(mime) {
-    if (mime === 'image/png') return 'png';
-    if (mime === 'image/webp') return 'webp';
-    if (mime === 'image/gif') return 'gif';
-    return 'jpg';
-  }
-
-  // Free, keyless image API — GET returns raw image bytes directly.
-  // private=true keeps generations out of Pollinations' public feed.
-  function fetchPollinationsImage(prompt) {
-    return new Promise((resolve) => {
-      let settled = false;
-      let timer;
-      const finish = (result) => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
-        resolve(result);
-      };
-
-      const url = 'https://image.pollinations.ai/prompt/' + encodeURIComponent(prompt) +
-        '?width=1024&height=1024&nologo=true&private=true';
-
-      let req;
-      try {
-        req = net.request({ method: 'GET', url });
-      } catch (err) {
-        return finish({ ok: false, error: 'Could not start the request.' });
-      }
-
-      timer = setTimeout(() => { try { req.abort(); } catch {} }, 30_000);
-
-      let bufs = [];
-      let total = 0;
-
-      req.on('response', (res) => {
-        const statusCode = res.statusCode;
-        const contentType = res.headers['content-type'] || res.headers['Content-Type'] || '';
-        res.on('data', (chunk) => {
-          total += chunk.length;
-          if (total > 10_000_000) {
-            finish({ ok: false, error: 'Response was too large.' });
-            try { req.abort(); } catch {}
-            return;
-          }
-          bufs.push(chunk);
-        });
-        res.on('end', () => {
-          if (settled) return;
-          if (statusCode === 429) {
-            return finish({ ok: false, error: 'Rate limited — wait a bit before generating another image.' });
-          }
-          if (statusCode >= 400) {
-            return finish({ ok: false, error: 'Image request failed (status ' + statusCode + ').' });
-          }
-          const mime = Array.isArray(contentType) ? contentType[0] : String(contentType);
-          finish({ ok: true, buffer: Buffer.concat(bufs), ext: extFromMime(mime.split(';')[0].trim()) });
-        });
-      });
-
-      req.on('abort', () => finish({ ok: false, error: 'Request timed out.' }));
-      req.on('error', (err) => finish({ ok: false, error: err.message || 'Network error.' }));
-      req.end();
-    });
-  }
-
-  // Free (rate-limited) serverless inference — good-quality FLUX.1-schnell,
-  // notably stronger than Pollinations' anonymous/fast tier. Needs a free
-  // Hugging Face token with "Inference Providers" permission.
-  function fetchHuggingFaceImage(prompt, apiKey) {
-    return new Promise((resolve) => {
-      let settled = false;
-      let timer;
-      const finish = (result) => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
-        resolve(result);
-      };
-
-      let req;
-      try {
-        req = net.request({
-          method: 'POST',
-          url: 'https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-schnell',
-          headers: { Authorization: 'Bearer ' + apiKey, 'Content-Type': 'application/json' }
-        });
-      } catch (err) {
-        return finish({ ok: false, error: 'Could not start the request.' });
-      }
-
-      // Cold starts on the free tier can take a while the first time a
-      // model spins up — give this one more room than the others.
-      timer = setTimeout(() => { try { req.abort(); } catch {} }, 60_000);
-
-      let bufs = [];
-      let total = 0;
-
-      req.on('response', (res) => {
-        const statusCode = res.statusCode;
-        const contentType = String(res.headers['content-type'] || res.headers['Content-Type'] || '');
-        res.on('data', (chunk) => {
-          total += chunk.length;
-          if (total > 10_000_000) {
-            finish({ ok: false, error: 'Response was too large.' });
-            try { req.abort(); } catch {}
-            return;
-          }
-          bufs.push(chunk);
-        });
-        res.on('end', () => {
-          if (settled) return;
-          if (statusCode >= 400) {
-            let apiMsg = null;
-            try { apiMsg = JSON.parse(Buffer.concat(bufs).toString('utf8')).error; } catch {}
-            if (statusCode === 401 || statusCode === 403) {
-              return finish({ ok: false, error: 'Hugging Face rejected the API token — check it in Settings.' });
-            }
-            if (statusCode === 503) {
-              return finish({ ok: false, error: (apiMsg || 'Model is still loading') + ' — try again in a few seconds.' });
-            }
-            if (statusCode === 429) {
-              return finish({ ok: false, error: 'Hugging Face rate limit hit — try again later.' });
-            }
-            return finish({ ok: false, error: apiMsg ? String(apiMsg).slice(0, 300) : 'Request failed (status ' + statusCode + ').' });
-          }
-          if (!contentType.startsWith('image/')) {
-            return finish({ ok: false, error: 'Hugging Face returned an unexpected response.' });
-          }
-          finish({ ok: true, buffer: Buffer.concat(bufs), ext: extFromMime(contentType.split(';')[0].trim()) });
-        });
-      });
-
-      req.on('abort', () => finish({ ok: false, error: 'Request timed out.' }));
-      req.on('error', (err) => finish({ ok: false, error: err.message || 'Network error.' }));
-
-      req.write(JSON.stringify({ inputs: prompt, parameters: { width: 1024, height: 1024 } }));
-      req.end();
-    });
-  }
-
-  function fetchGeminiImage(prompt, apiKey) {
-    return new Promise((resolve) => {
-      let settled = false;
-      let timer;
-      const finish = (result) => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
-        resolve(result);
-      };
-
-      let req;
-      try {
-        req = net.request({
-          method: 'POST',
-          url: 'https://generativelanguage.googleapis.com/v1beta/interactions',
-          headers: { 'x-goog-api-key': apiKey, 'Content-Type': 'application/json' }
-        });
-      } catch (err) {
-        return finish({ ok: false, error: 'Could not start the request.' });
-      }
-
-      timer = setTimeout(() => { try { req.abort(); } catch {} }, 30_000);
-
-      let bufs = [];
-      let total = 0;
-
-      req.on('response', (res) => {
-        const statusCode = res.statusCode;
-        res.on('data', (chunk) => {
-          total += chunk.length;
-          if (total > 10_000_000) {
-            finish({ ok: false, error: 'Gemini response was too large.' });
-            try { req.abort(); } catch {}
-            return;
-          }
-          bufs.push(chunk);
-        });
-        res.on('end', () => {
-          if (settled) return;
-          let json = null;
-          try { json = JSON.parse(Buffer.concat(bufs).toString('utf8')); } catch {}
-          if (statusCode >= 400) {
-            // Surface Gemini's own message where we have one (e.g. "quota
-            // exceeded ... check your plan and billing details") instead of
-            // a generic label — it's usually the only clue the user gets
-            // for why a key that "should" be free just failed.
-            const apiMsg = json && json.error && json.error.message;
-            if (statusCode === 401 || statusCode === 403) {
-              return finish({ ok: false, error: 'Gemini rejected the API key — check it in Settings.' });
-            }
-            if (apiMsg) {
-              return finish({ ok: false, error: String(apiMsg).split('\n')[0].slice(0, 300) });
-            }
-            return finish({ ok: false, error: 'Gemini request failed (status ' + statusCode + ').' });
-          }
-          if (!json) {
-            return finish({ ok: false, error: 'Gemini returned an unexpected response.' });
-          }
-          const part = findImagePart(json);
-          if (!part) {
-            return finish({ ok: false, error: "No image came back — the prompt may have been blocked by Gemini's safety filters." });
-          }
-          finish({ ok: true, buffer: Buffer.from(part.data, 'base64'), ext: extFromMime(part.mimeType) });
-        });
-      });
-
-      req.on('abort', () => finish({ ok: false, error: 'Request timed out.' }));
-      req.on('error', (err) => finish({ ok: false, error: err.message || 'Network error.' }));
-
-      req.write(JSON.stringify({
-        model: 'gemini-3.1-flash-image',
-        input: [{ type: 'text', text: prompt }],
-        response_format: { type: 'image', mime_type: 'image/jpeg', aspect_ratio: '1:1' }
-      }));
-      req.end();
-    });
-  }
-
-  ipcMain.handle('generate-image', async (_e, prompt, opts) => {
-    prompt = String(prompt || '').trim().slice(0, 4000);
-    if (!prompt) return { ok: false, error: 'Prompt is empty.' };
-    const provider = opts && opts.provider;
-    let res;
-    if (provider === 'gemini') {
-      const apiKey = String((opts && opts.geminiApiKey) || '').trim();
-      if (!apiKey) return { ok: false, error: 'Add your Gemini API key in Settings first.' };
-      res = await fetchGeminiImage(prompt, apiKey);
-    } else if (provider === 'huggingface') {
-      const apiKey = String((opts && opts.hfApiKey) || '').trim();
-      if (!apiKey) return { ok: false, error: 'Add your Hugging Face token in Settings first.' };
-      res = await fetchHuggingFaceImage(prompt, apiKey);
-    } else {
-      res = await fetchPollinationsImage(prompt);
-    }
-    if (!res.ok) return res;
-    try {
-      const name = newImageName(res.ext);
-      fs.writeFileSync(path.join(IMAGES_DIR, name), res.buffer);
-      return { ok: true, filename: name };
-    } catch (err) {
-      console.error('generate-image save failed', err);
-      return { ok: false, error: 'Could not save the generated image.' };
-    }
-  });
+  // Image generation was removed in 3.9.
+  //
+  // Three back ends had been wired up and none of them could be relied on.
+  // Hugging Face's hf-inference retired the only model the app called and
+  // began answering 410. Google's image models return a hard 429 on a free
+  // key — every quota they violate is named "-FreeTier", including the daily
+  // one, so the allowance is zero rather than spent and no amount of waiting
+  // helps. Pollinations worked but sends the prompt to a third party.
+  //
+  // Inserting, pasting and storing images is untouched — that is a different
+  // feature and a working one. What has gone is only the part that asked a
+  // remote service to invent a picture.
 
   // Chat completion via the user's own key — each user brings their own
   // (Settings → AI), so everyone gets their own rate limits. Backs Improve,

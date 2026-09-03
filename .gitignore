@@ -29,3 +29,8 @@ android/.kotlin/
 Thumbs.db
 .vscode/
 .idea/
+
+# throwaway drivers keep their working screenshots next to them; the drivers
+# themselves are worth having in the repo, the eighty PNGs they produce are not
+tools/*.png
+tools/*.jpg

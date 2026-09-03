@@ -85,7 +85,7 @@ body {
   display: flex; align-items: center; gap: 6px;
   max-width: 150px; height: 24px; padding: 0 7px 0 4px;
   border: 1px solid var(--border-strong);
-  border-radius: 999px;
+  border-radius: 6px;
   background: transparent;
   color: var(--muted-2);
   font-family: var(--font); font-size: 11px;
@@ -126,7 +126,23 @@ body {
 
 /* Zen hides .win-controls children; the chip lives outside that container.
    Handy mode hides the whole titlebar already. */
-.app.zen-mode .profile-chip { display: none; }
+/* The profile chip goes the same way as the title-bar buttons. */
+.app.zen-mode .profile-chip {
+  width: 0;
+  max-width: 0;
+  padding-left: 0;
+  padding-right: 0;
+  border-width: 0;
+  opacity: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.profile-chip {
+  transition: background 0.15s, color 0.15s, border-color 0.15s,
+              max-width .22s cubic-bezier(.22, .8, .3, 1),
+              padding .22s cubic-bezier(.22, .8, .3, 1),
+              opacity .14s ease;
+}
 
 .brand-dot {
   width: 9px;
@@ -465,15 +481,83 @@ body {
 .app.resize-off .rail-resizer { display: none; }
 
 /* ---------- Hide tab rail ---------- */
-.app.rail-hidden .rail,
+/* The rail closes by narrowing to nothing, not by leaving the layout in one
+   frame. overflow:hidden lets its contents be clipped on the way rather than
+   reflowing into a 0px column. */
+.rail {
+  overflow: hidden;
+  transition: width .2s cubic-bezier(.22, .8, .3, 1),
+              padding .2s cubic-bezier(.22, .8, .3, 1),
+              opacity .15s ease,
+              border-right-width .2s;
+}
+.app.rail-hidden .rail {
+  width: 0;
+  padding-left: 0;
+  padding-right: 0;
+  border-right-width: 0;
+  opacity: 0;
+}
 .app.rail-hidden .rail-resizer { display: none; }
 .app.rail-hidden #railToggleBtn svg { transform: scaleX(-1); }
 
-/* ---------- Focus / Zen mode ---------- */
-.app.zen-mode .rail,
-.app.zen-mode .rail-resizer,
-.app.zen-mode .statusbar,
-.app.zen-mode .win-controls > *:not(#zenBtn) { display: none; }
+/* ---------- Focus / Zen mode ----------
+   The chrome retracts rather than vanishing. This used to be one
+   `display: none` for the lot, which cannot be transitioned and gave a hard
+   cut in both directions — the harshest moment in the app, and on a mode you
+   enter precisely because you want it calm.
+
+   Everything here collapses along the axis it occupies: the rail narrows to
+   nothing exactly as the rail toggle already made it do, the status bar loses
+   its height, and the title-bar buttons close up towards the corner so the
+   focus button ends at the window edge. Nothing is `display: none` except the
+   5px resizer, which has no size worth animating.
+
+   The Motion setting is handled for free — `html.no-anim` collapses every
+   transition duration to a millisecond, so with animations off this is the
+   instant switch it always was. */
+.app.zen-mode .rail {
+  width: 0;
+  padding-left: 0;
+  padding-right: 0;
+  border-right-width: 0;
+  opacity: 0;
+}
+.app.zen-mode .rail-resizer { display: none; }
+
+.statusbar {
+  overflow: hidden;
+  transition: height .22s cubic-bezier(.22, .8, .3, 1),
+              padding .22s cubic-bezier(.22, .8, .3, 1),
+              opacity .16s ease,
+              border-top-width .22s;
+}
+.app.zen-mode .statusbar {
+  height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  border-top-width: 0;
+  opacity: 0;
+}
+
+/* The negative margin cancels the flex `gap`, which a zero-width button would
+   otherwise still be paid — ten of them leave twenty pixels of nothing beside
+   the focus button. */
+.win-controls > * {
+  overflow: hidden;
+  flex-shrink: 0;
+  transition: width .22s cubic-bezier(.22, .8, .3, 1),
+              margin .22s cubic-bezier(.22, .8, .3, 1),
+              opacity .14s ease,
+              transform .22s cubic-bezier(.22, .8, .3, 1);
+}
+.app.zen-mode .win-controls > *:not(#zenBtn) {
+  width: 0;
+  margin-left: -2px;
+  opacity: 0;
+  transform: scale(.72);
+  pointer-events: none;
+}
 .app.zen-mode #zenBtn { color: var(--accent); }
 
 .zen-exit-hint {
@@ -866,8 +950,6 @@ body {
   white-space: nowrap;
 }
 .copy-btn.dragging { opacity: 0.35; }
-/* genImgBtn stays icon-only — hidden/dormant, never got a label */
-#genImgBtn { padding: 0 6px; }
 .btn-label { white-space: nowrap; }
 /* copy: show a check while "copied" instead of a text label */
 #copyBtn .copy-check { display: none; }
@@ -1130,26 +1212,6 @@ body {
 
 /* Generate-image button, same box as the copy button, one slot further right */
 /* Hidden for now — image generation feature disabled, see index.html */
-.md-code-genimg {
-  display: none;
-  position: absolute;
-  top: 6px; left: 66px;
-  align-items: center;
-  justify-content: center;
-  width: 24px; height: 24px;
-  border: 1px solid var(--border-strong);
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--elevated) 80%, transparent);
-  color: var(--muted-2);
-  cursor: pointer;
-  opacity: 0.75;
-  transition: opacity 0.14s, color 0.14s, border-color 0.14s, background 0.14s;
-}
-.md-codeblock:hover .md-code-genimg { opacity: 1; }
-.md-code-genimg:hover { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
-.md-code-genimg.generating { color: var(--accent); border-color: var(--accent); opacity: 1; cursor: default; }
-.md-code-genimg.generating svg { animation: pp-spin 0.9s linear infinite; }
-.md-code-genimg.failed { color: var(--danger); border-color: var(--danger); opacity: 1; }
 .md-preview blockquote {
   border-inline-start: 3px solid var(--accent);
   background: var(--accent-soft);
@@ -1181,7 +1243,11 @@ body {
 .overlay {
   position: absolute;
   inset: 0;
-  z-index: 50;
+  /* Above .fx-layer (60), not below it. Every theme that draws over the app —
+     the web, the strings, the firelight — was painting straight across the
+     settings panel and the guide, because a dialog at 50 sits under an effect
+     at 60. Menus and mini-dialogs were already above both. */
+  z-index: 70;
   display: flex;
   align-items: flex-start;
   justify-content: center;
@@ -1196,6 +1262,12 @@ body {
 .settings-card {
   width: 100%;
   max-width: 430px;
+  /* The theme board wants columns; every other pane is a single stack of rows
+     and gets no wider. */
+  transition: max-width .22s cubic-bezier(.22, .8, .3, 1);
+}
+.settings-card:has(.settings-pane--flush:not(.hidden)) { max-width: 620px; }
+.settings-card {
   max-height: 100%;
   display: flex;
   flex-direction: column;
@@ -1204,7 +1276,16 @@ body {
   border-radius: 12px;
   box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5);
   overflow: hidden;
-  animation: pop 0.18s cubic-bezier(0.2, 0.8, 0.3, 1);
+  /* Settings is the one panel people open to change something and then read,
+     so it eases rather than pops: it comes up from slightly below at almost
+     full size, which reads as a panel sliding into place instead of a dialog
+     being thrown at you. */
+  animation: settings-in .26s cubic-bezier(.16, 1, .3, 1);
+}
+
+@keyframes settings-in {
+  from { opacity: 0; transform: translateY(10px) scale(.985); }
+  to   { opacity: 1; transform: none; }
 }
 
 @keyframes pop {
@@ -1233,20 +1314,35 @@ body {
    body scrolls only the active pane. */
 .settings-tabs {
   display: flex;
-  flex-wrap: wrap;
+  /* One line, always. Wrapping put "About" on a row of its own, which read as
+     a layout accident rather than a second row of tabs. Eight of them do not
+     fit a narrow window, so the strip scrolls sideways instead. */
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
   gap: 2px;
   padding: 8px 10px;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
+.settings-tabs::-webkit-scrollbar { display: none; }
+/* When it does have to scroll, the last tab fades out rather than being sliced
+   in half — otherwise a cut-off "Abo" reads as a rendering fault. */
+.settings-tabs {
+  mask-image: linear-gradient(to right, #000 calc(100% - 18px), transparent);
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 18px), transparent);
+}
+.set-tab { flex: 0 0 auto; white-space: nowrap; }
 
 .set-tab {
   -webkit-app-region: no-drag;
   font-family: var(--font);
-  font-size: 10.5px;
-  letter-spacing: 0.2px;
-  padding: 4px 8px;
-  border-radius: 999px;
+  /* Tightened so all eight fit a 430px panel on one row. Past that the strip
+     scrolls rather than wrapping — see .settings-tabs. */
+  font-size: 10px;
+  letter-spacing: 0;
+  padding: 4px 6px;
+  border-radius: 6px;
   border: 1px solid transparent;
   background: transparent;
   color: var(--muted-2);
@@ -1306,7 +1402,7 @@ body {
   font-family: var(--font);
   font-size: 10px;
   padding: 3px 11px;
-  border-radius: 999px;
+  border-radius: 6px;
   border: 1px solid var(--border-strong);
   background: transparent;
   color: var(--muted-2);
@@ -1402,6 +1498,18 @@ body {
   justify-content: space-between;
   gap: 12px;
   padding: 7px 0;
+  flex-wrap: wrap;
+}
+/* A three-way segmented control has no room beside its own label in a 430px
+   panel, so the row wraps and the control ends up alone on a half-empty line.
+   Given the whole width and told to share it between its buttons, the same
+   wrap reads as a deliberate stack. Two-way controls still fit on the right
+   and are left alone. */
+.set-toggle-row > .seg:has(> .seg-btn:nth-child(3)) { flex: 1 1 100%; }
+.set-toggle-row > .seg:has(> .seg-btn:nth-child(3)) .seg-btn {
+  flex: 1;
+  text-align: center;
+  padding-inline: 6px;
 }
 .set-toggle-text { display: flex; flex-direction: column; gap: 2px; }
 .set-toggle-text span { font-size: 12.5px; color: var(--text); }
@@ -2225,8 +2333,34 @@ body {
 .placeholder-bar.pos-right .placeholder-collapse svg { transform: rotate(-90deg); }
 .placeholder-bar.pos-right.collapsed .placeholder-collapse svg { transform: rotate(90deg); }
 
-.placeholder-bar.collapsed .placeholder-fields { display: none; }
+/* The collapse actually slides.
+   The two positions collapse along different axes, so they animate different
+   properties: the side panel narrows (both widths are known, so CSS can own
+   it outright) and the top bar shortens (its open height depends on how many
+   fields there are, so applyPlaceholderCollapsed measures it and drives
+   max-height from script).
+   `display: none` on the fields is deliberately not used — it cannot be
+   transitioned, and it was the reason the panel used to snap. */
+.placeholder-bar {
+  transition: width .24s cubic-bezier(.22, .8, .3, 1),
+              padding .24s cubic-bezier(.22, .8, .3, 1);
+}
+.placeholder-fields {
+  transition: opacity .16s ease, max-height .24s cubic-bezier(.22, .8, .3, 1);
+}
+.placeholder-bar.collapsed .placeholder-fields {
+  opacity: 0;
+  pointer-events: none;
+}
+/* Clipped only while collapsed: open, the side panel needs its own scrollbar. */
+.placeholder-bar.collapsed { overflow: hidden; }
+.placeholder-bar:not(.pos-right) .placeholder-fields { overflow: hidden; }
 .placeholder-bar.collapsed { padding-top: 5px; padding-bottom: 5px; }
+
+/* Dragging the resizer writes a new width every mousemove. With the transition
+   live, the panel chases the pointer a fifth of a second behind. */
+.editor-body.ph-resizing .placeholder-bar { transition: none; }
+
 /* Right side panel collapses to a slim vertical strip with just the arrow. */
 .placeholder-bar.pos-right.collapsed {
   width: 26px;
@@ -2236,6 +2370,9 @@ body {
 }
 .placeholder-bar.pos-right.collapsed .placeholder-head { margin-bottom: 0; }
 .placeholder-bar.pos-right.collapsed .placeholder-count { display: none; }
+/* 26px has room for the arrow and nothing else — the presets button was
+   being squeezed in beside it and pushing the strip out of shape. */
+.placeholder-bar.collapsed .ph-preset-btn { display: none; }
 .editor-body.ph-collapsed .placeholder-resizer {
   display: none;
 }
@@ -3106,7 +3243,7 @@ body {
 .toolbar-chip {
   padding: 5px 11px;
   border: 1px solid var(--border-strong);
-  border-radius: 999px;
+  border-radius: 6px;
   background: transparent;
   color: var(--muted-2);
   font-family: var(--font);
@@ -3429,12 +3566,12 @@ body {
 .dc-search { width: 100%; }
 .dc-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .dc-chip {
-  padding: 4px 11px; border-radius: 20px; cursor: pointer;
+  padding: 4px 11px; border-radius: 6px; cursor: pointer;
   background: var(--elevated); border: 1px solid var(--border-strong);
   color: var(--muted-2); font-family: var(--font); font-size: 11px;
 }
 .dc-chip.active { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
-.dc-sort { display: inline-flex; margin-left: auto; border: 1px solid var(--border-strong); border-radius: 20px; overflow: hidden; align-self: center; }
+.dc-sort { display: inline-flex; margin-left: auto; border: 1px solid var(--border-strong); border-radius: 6px; overflow: hidden; align-self: center; }
 .dc-sort-btn {
   background: transparent; border: none; cursor: pointer; color: var(--muted-2);
   font-family: var(--font); font-size: 11px; padding: 4px 12px;
@@ -4470,15 +4607,6 @@ body:has(.app.fx-tuxedo) { background: #0a0908; }
 .app.fx-tuxedo .editor-area,
 .app.fx-tuxedo .md-preview { background: transparent; }
 /* The inner rule, set in from the border to make the pair. */
-.app.fx-tuxedo::after {
-  content: '';
-  position: absolute;
-  inset: 3px;
-  border: 1px solid rgba(217, 180, 92, 0.2);
-  border-radius: 10px;
-  pointer-events: none;
-  z-index: 5;
-}
 .app.fx-tuxedo .titlebar { border-bottom: 1px solid rgba(217, 180, 92, 0.26); }
 .app.fx-tuxedo .rail { border-right: 1px solid rgba(217, 180, 92, 0.22); }
 .app.fx-tuxedo .statusbar { border-top: 1px solid rgba(217, 180, 92, 0.22); }
@@ -4548,17 +4676,6 @@ body:has(.app.fx-sundial) { background: #101420; }
     color-mix(in srgb, var(--accent) calc(22% - var(--fx-sun-up, 0) * 18%), transparent);
 }
 
-/* ── Orrery ─────────────────────────────────────────────────────────────
-   The movement runs in #fxBack under the whole window, so the panels have
-   to be translucent or the gears only show in the margins. */
-.fx-orrery-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
-body:has(.app.fx-orrery) { background: #140f0a; }
-.app.fx-orrery { position: relative; z-index: 1; border-color: rgba(214, 170, 84, 0.3); }
-.app.fx-orrery .editor-area,
-.app.fx-orrery .md-preview { background: transparent; }
-.app.fx-orrery .titlebar { border-bottom: 1px solid rgba(214, 170, 84, 0.2); }
-.app.fx-orrery .tab.active { box-shadow: inset 2px 0 0 var(--accent); }
-
 /* ── Filings ────────────────────────────────────────────────────────────
    Paper with iron on it. Light, so it pairs with theme-light; the sheet is
    translucent so the field arches under the words instead of stopping at
@@ -4583,18 +4700,13 @@ body:has(.app.fx-filings) { background: #efede6; }
 /* Shared VIP chrome. The double rule is engraved-stationery practice — two
    hairlines set apart read as expensive where one thick line reads as a box
    — and it is the one gesture all five share. */
+/* The inset hairline that used to frame every VIP theme is gone. On paper an
+   engraved double rule reads as expensive; on a frameless window that already
+   has its own rounded border it just read as a second border drawn inside the
+   first, and it was the first thing anyone noticed. The letterspaced name and
+   the single metal are carrying the category on their own now. */
 .app.vip-card,
 .app.vip-suite { position: relative; }
-.app.vip-card::after,
-.app.vip-suite::after {
-  content: '';
-  position: absolute;
-  inset: 3px;
-  border: 1px solid var(--vip-rule, rgba(255, 255, 255, 0.14));
-  border-radius: 10px;
-  pointer-events: none;
-  z-index: 5;
-}
 .app.vip-card .brand-name,
 .app.vip-suite .brand-name {
   letter-spacing: 0.3em;
@@ -4622,7 +4734,6 @@ body:has(.app.fx-blackcard) { background: #0a0b0d; }
   border: 1px solid rgba(203, 213, 224, 0.34);
   border-radius: 6px;
 }
-.app.fx-blackcard::after { border-radius: 4px; }
 .app.fx-blackcard .titlebar { border-bottom: 1px solid rgba(203, 213, 224, 0.16); }
 .app.fx-blackcard .rail { border-right: 1px solid rgba(203, 213, 224, 0.12); }
 .app.fx-blackcard .statusbar {
@@ -4925,3 +5036,924 @@ body:has(.app.fx-blackout) { background: #14100c; }
 }
 .ctx-mini-btn:hover { background: var(--elevated-hi); color: var(--text); }
 .ctx-mini-btn.js-pin:hover { color: var(--accent); }
+
+/* =========================================================
+   INLINE TRIGGER POPUP  ("@" blocks / "/" commands)
+   =========================================================
+   Anchored to the caret rather than centred like the command palette, so it
+   reads as part of the line you're typing. Fixed-positioned at the top level:
+   the editor is contenteditable, and anything inside it would be treated as
+   note content by the line walker. */
+.inline-pop {
+  position: fixed;
+  z-index: 10001;
+  width: 250px;
+  background: var(--elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: 9px;
+  box-shadow: 0 12px 34px rgba(0, 0, 0, .5);
+  overflow: hidden;
+  animation: pop 0.1s cubic-bezier(0.2, 0.8, 0.3, 1);
+}
+.inline-pop.hidden { display: none; }
+.inline-pop-list { max-height: 208px; overflow-y: auto; padding: 4px; }
+.inline-pop-list::-webkit-scrollbar { width: 7px; }
+.inline-pop-list::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 7px; }
+.ip-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 9px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.ip-row.active { background: var(--accent-soft); }
+/* The name is what you are picking, so it gets the width it needs first and
+   the preview lives on whatever is left. Capped rather than unbounded so one
+   long block name can't push the preview out entirely. */
+.ip-row-name {
+  font-size: 12.5px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 0 0 auto;
+  max-width: 62%;
+}
+/* The body preview only earns space once the name has what it needs, and it
+   never wraps — a two-line row in a list you're scanning with the arrow keys
+   costs more than the preview is worth. */
+.ip-row-hint {
+  font-size: 10.5px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1 1 0;
+  min-width: 0;
+  text-align: right;
+}
+.ip-row-kind {
+  font-size: 9px;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  color: var(--muted);
+  opacity: .7;
+  flex: 0 0 auto;
+}
+.inline-pop-foot {
+  padding: 5px 9px;
+  border-top: 1px solid var(--border);
+  font-size: 10px;
+  color: var(--muted);
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.ip-empty { padding: 9px 10px; font-size: 11.5px; color: var(--muted); }
+
+/* The block body is the one multi-line field in a mini-dialog that people
+   actually paste paragraphs into, so it gets a monospace face and room. */
+.block-body-input {
+  font-family: var(--font);
+  line-height: 1.5;
+  resize: vertical;
+  min-height: 76px;
+}
+
+/* Presets button in the fill bar's header. Sits at the far end of the row so
+   the count keeps the position it has always had. */
+.ph-preset-btn {
+  margin-inline-start: auto;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px; height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.ph-preset-btn:hover { background: var(--elevated-hi); color: var(--text); }
+.ph-preset-btn.hidden { display: none; }
+
+/* A placeholder that carries its own list renders as a select rather than a
+   text box; it has to match the input beside it exactly or the bar looks
+   ragged with both kinds in it. */
+.placeholder-field select {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 11.5px;
+  padding: 4px 6px;
+  outline: none;
+}
+.placeholder-field select:focus { border-color: var(--accent); }
+
+/* A menu row that is only there to say the list is empty. */
+.ctx-item--disabled { opacity: .5; pointer-events: none; }
+
+/* =========================================================
+   NOTE LOCK
+   =========================================================
+   The lock pane replaces the editor rather than covering it: when the vault is
+   shut the note's text is not in memory at all, so there is nothing underneath
+   to hide. */
+.lock-pane {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  padding: 20px;
+  text-align: center;
+  color: var(--muted);
+}
+.lock-pane.hidden { display: none; }
+.lock-pane-title { font-size: 13px; color: var(--text); margin: 0; }
+.lock-pane-text { font-size: 11px; margin: 0; max-width: 240px; line-height: 1.5; }
+
+.pin-error { color: var(--danger); }
+.pin-forgot {
+  align-self: flex-start;
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: var(--font);
+  font-size: 10.5px;
+  color: var(--muted);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.pin-forgot:hover { color: var(--accent); }
+
+/* The recovery code is meant to be copied onto paper, so it is set large and
+   grouped — this is the one string in the app where a misread character costs
+   the user their notes. */
+.recovery-code {
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  padding: 10px;
+  font-family: var(--font);
+  font-size: 14px;
+  letter-spacing: 0.1em;
+  line-height: 1.7;
+  text-align: center;
+  color: var(--text);
+  user-select: all;
+  word-spacing: 0.35em;
+}
+.recovery-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* A locked tab keeps its place in the rail with a padlock where the colour
+   stripe would be, so the list doesn't reshuffle when a note is locked. */
+.tab-lock { flex: 0 0 auto; opacity: .55; display: inline-flex; align-items: center; }
+
+/* With the note sealed there is no text in memory for the toolbar to act on,
+   so every button that edits or reads it would silently operate on an empty
+   string. The whole row goes inert rather than each button learning about the
+   lock. The placeholder bar goes with it — a sealed note has no placeholders. */
+.app.note-sealed .statusbar .toolbar-main,
+.app.note-sealed .statusbar .toolbar-overflow-btn,
+.app.note-sealed .placeholder-bar,
+.app.note-sealed .placeholder-resizer {
+  pointer-events: none;
+  opacity: .35;
+}
+
+/* ── Fountain (VIP) ─────────────────────────────────────────────────────
+   The basin is a grid of simulation cells a quarter the window's size,
+   stretched to fill it — the browser's own smoothing is doing the last mile
+   of the render, which is why it is left on rather than pixelated. */
+.fx-fountain-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.fx-fountain-spray { position: absolute; inset: 0; width: 100%; height: 100%; }
+/* Gold, and a shade warmer than the other suites' rules — it is the rim of
+   the basin catching the same light the water is. */
+.app.fx-fountain { --vip-rule: rgba(214, 170, 92, 0.24); }
+.app.fx-fountain .tab.active { box-shadow: inset 2px 0 0 var(--accent); }
+
+/* ── Sandbox (Playable) ─────────────────────────────────────────────────
+   One canvas pixel is one grain, stretched up by CSS. Smoothing is off on
+   purpose: a blurred grain is a smudge, and the whole read of the effect is
+   that the heap is made of countable pieces. */
+.fx-sandbox-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+}
+
+/* ── Almanac (Live) ─────────────────────────────────────────────────────
+   Whatever the calendar says is falling, falls behind the panels. */
+.fx-almanac-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+/* ── Mechanical (Sound) ─────────────────────────────────────────────────
+   The keycap outlines are over the app, at the caret — the only thing this
+   theme draws. */
+.fx-mechanical-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+/* =========================================================
+   THEME BROWSER
+   =========================================================
+   With three dozen themes a 34px swatch can only say "dark, roughly". The
+   browser takes the whole settings body — not a drawer, because the window is
+   500px wide by default and a side drawer would leave less room than the grid
+   it replaced — and every card is the app itself in miniature, drawn from
+   that theme's own seven variables. Nothing here is a picture: add a theme
+   and its card builds itself. */
+.theme-browser {
+  flex: 1;
+  min-height: 0;
+  /* Two rows of cards is not a board you can browse. This is as tall as the
+     settings card will go before the window itself becomes the limit. */
+  max-height: min(76vh, 640px);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+/* The theme pane is the one pane that fills its box rather than flowing: its
+   grid scrolls on its own, so the settings body must not scroll it as well. */
+.settings-pane--flush {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+.settings-pane--flush.hidden { display: none; }
+.settings-body:has(.settings-pane--flush:not(.hidden)) { overflow: hidden; }
+
+.tb-head { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+.tb-search {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 11.5px;
+  padding: 4px 8px;
+  outline: none;
+}
+.tb-search:focus { border-color: var(--accent); }
+
+.tb-filters { display: flex; gap: 4px; flex-wrap: wrap; flex: 0 0 auto; }
+.tb-chip {
+  border: 1px solid var(--border-strong);
+  background: transparent;
+  color: var(--muted);
+  font-family: var(--font);
+  font-size: 10px;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.tb-chip:hover { color: var(--text); }
+.tb-chip.active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+
+.tb-grid {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
+  /* Explicit, because the grid has a definite height from `flex: 1` and the
+     cards clip their own overflow — which drops their automatic minimum size
+     to zero and lets the implicit rows be squeezed to share that height.
+     Sixteen rows of card became sixteen rows of 9px. */
+  grid-auto-rows: max-content;
+  gap: 8px;
+  padding: 2px;
+  align-content: start;
+}
+.tb-grid::-webkit-scrollbar { width: 8px; }
+.tb-grid::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 8px; }
+
+.tb-card {
+  border: 1px solid var(--border-strong);
+  border-radius: 9px;
+  overflow: hidden;
+  cursor: pointer;
+  background: var(--elevated);
+  transition: border-color .12s, transform .12s;
+}
+.tb-card:hover { transform: translateY(-1px); }
+.tb-card.active { border-color: var(--accent); }
+
+/* The miniature: the app at its real proportions, sized entirely in container
+   units so it simply fills whatever the fluid grid gives the card. It used to
+   be laid out in pixels and scaled by script after each render — which wrote a
+   height, reflowed the grid, and slid the cards under a stationary cursor,
+   firing mouseenter and starting previews nobody asked for. */
+.tb-mini {
+  container-type: inline-size;
+  aspect-ratio: 300 / 196;
+  overflow: hidden;
+  pointer-events: none;
+}
+.tb-mini-app {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  font-family: var(--font);
+}
+.tb-mini-bar {
+  height: 13.3%;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 2cqw;
+  padding: 0 3cqw;
+}
+.tb-mini-dot { width: 2cqw; height: 2cqw; border-radius: 50%; flex: 0 0 auto; }
+.tb-mini-brand { font-size: 3.2cqw; letter-spacing: .09em; opacity: .85; }
+.tb-mini-wins { margin-left: auto; display: flex; gap: 1.7cqw; }
+.tb-mini-wins i { width: 2.3cqw; height: 1px; opacity: .5; }
+
+.tb-mini-body { flex: 1; min-height: 0; display: flex; }
+.tb-mini-rail {
+  width: 29.3%;
+  flex: 0 0 auto;
+  padding: 2.4cqw 2cqw;
+  display: flex;
+  flex-direction: column;
+  gap: 1.7cqw;
+}
+.tb-mini-pill {
+  font-size: 2.9cqw;
+  padding: 1.3cqw 2cqw;
+  border-radius: 1.6cqw;
+  opacity: .62;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tb-mini-pill--on { opacity: 1; border-color: transparent !important; }
+.tb-mini-note {
+  flex: 1;
+  min-width: 0;
+  padding: 3cqw 3.3cqw;
+  font-size: 3.2cqw;
+  line-height: 1.55;
+  overflow: hidden;
+}
+.tb-mini-caret {
+  display: inline-block;
+  width: 1px;
+  height: 3.2cqw;
+  vertical-align: -0.4cqw;
+  margin-left: 0.4cqw;
+}
+.tb-mini-foot {
+  height: 12.2%;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 1.7cqw;
+  padding: 0 2.6cqw;
+}
+.tb-mini-btn {
+  font-size: 2.6cqw;
+  padding: 1cqw 1.7cqw;
+  border-radius: 1.3cqw;
+  opacity: .7;
+}
+
+.tb-card-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 5px;
+  padding: 5px 7px;
+  border-top: 1px solid var(--border);
+  background: var(--elevated);
+}
+.tb-card-name {
+  font-size: 11px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tb-card-star {
+  flex: 0 0 auto;
+  border: none;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  color: var(--muted);
+  line-height: 0;
+}
+.tb-card-star:hover { color: var(--accent); }
+.tb-card-star.on { color: var(--accent); }
+
+.tb-foot { flex: 0 0 auto; font-size: 10px; color: var(--muted); min-height: 13px; }
+.tb-empty { grid-column: 1 / -1; padding: 16px 4px; font-size: 11.5px; color: var(--muted); }
+
+/* A theme this user has not seen before. Sits between the name and the star,
+   and disappears for good the first time the pane is opened. */
+.tb-card-new {
+  flex: 0 0 auto;
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: .08em;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--accent);
+  color: var(--sidebar);
+}
+/* The volume row belongs to the sound themes, so it lives under the grid. */
+#fxVolumeRow { flex: 0 0 auto; margin-top: 2px; }
+#fxVolumeRow.hidden { display: none; }
+
+/* =========================================================
+   MOTION
+   =========================================================
+   Small, short, and only where something actually changed state. The rule of
+   thumb throughout: 120-240ms, one property, and nothing that has to finish
+   before you can carry on typing. Anything longer starts costing time on the
+   tenth repetition, which for a notepad is about four minutes in. */
+
+/* A note arriving. Switching tabs used to be a hard cut between two blocks of
+   text, which is most of why it read as the app reloading rather than as one
+   note replacing another. */
+@keyframes note-in {
+  from { opacity: 0; transform: translateY(3px); }
+  to   { opacity: 1; transform: none; }
+}
+.editor-area.note-entering,
+.md-preview.note-entering { animation: note-in .16s cubic-bezier(.22, .8, .3, 1); }
+
+/* A whole view arriving — Fast Save, AI Chat, Discover, the Prompt Lab, the
+   editor coming back. Same idea as a note switch, a touch longer because the
+   thing being replaced is the size of the window. */
+@keyframes view-in {
+  from { opacity: 0; transform: translateY(5px); }
+  to   { opacity: 1; transform: none; }
+}
+.view-entering { animation: view-in .2s cubic-bezier(.22, .8, .3, 1); }
+
+/* A new tab pushing into the rail, rather than appearing already there. */
+@keyframes tab-in {
+  from { opacity: 0; transform: translateX(-6px); }
+  to   { opacity: 1; transform: none; }
+}
+.tab.tab-entering { animation: tab-in .18s cubic-bezier(.22, .8, .3, 1); }
+
+/* The find bar drops out of the top edge instead of shoving the editor down in
+   one frame. max-height rather than height because the replace row makes it
+   two different sizes. */
+@keyframes bar-drop {
+  from { max-height: 0; opacity: 0; }
+  to   { max-height: 90px; opacity: 1; }
+}
+.find-bar:not(.hidden) { animation: bar-drop .18s cubic-bezier(.22, .8, .3, 1); overflow: hidden; }
+
+/* The active tab's accent edge slides into place rather than jumping between
+   rows. Colour and shadow only — never position, or dragging a tab fights it. */
+.tab { transition: background .14s ease, box-shadow .16s ease, color .14s ease; }
+
+/* The dimmed backdrop behind a dialog fades in with it, instead of the whole
+   screen darkening in one frame. The cards themselves already pop. */
+@keyframes overlay-in { from { opacity: 0; } to { opacity: 1; } }
+.overlay:not(.hidden) { animation: overlay-in .14s ease; }
+
+/* Someone who has asked their system for less movement gets none of it. */
+@media (prefers-reduced-motion: reduce) {
+  .editor-area.note-entering,
+  .md-preview.note-entering,
+  .tab.tab-entering,
+  .find-bar:not(.hidden),
+  .overlay:not(.hidden),
+  .templates-card,
+  .settings-card,
+  .ctx-menu,
+  .view-entering,
+  .mini-dialog { animation: none; }
+  .settings-card { transition: none; }
+  .placeholder-bar,
+  .placeholder-fields { transition: none; }
+}
+
+/* ---- Exit animations ----
+   Everything that slides in has to slide out. A panel that animates open and
+   then blinks out of existence reads as a bug, which is exactly what the find
+   bar was doing. The JS helper adds `closing`, waits for the animation, and
+   only then sets `hidden`. */
+@keyframes bar-lift {
+  from { max-height: 90px; opacity: 1; }
+  to   { max-height: 0; opacity: 0; }
+}
+.find-bar.closing { animation: bar-lift .16s ease forwards; overflow: hidden; }
+
+@keyframes overlay-out { from { opacity: 1; } to { opacity: 0; } }
+.overlay.closing { animation: overlay-out .15s ease forwards; }
+
+@keyframes card-out {
+  from { opacity: 1; transform: none; }
+  to   { opacity: 0; transform: translateY(8px) scale(.985); }
+}
+.overlay.closing .settings-card,
+.overlay.closing .templates-card { animation: card-out .17s cubic-bezier(.4, 0, 1, 1) forwards; }
+
+@keyframes dialog-out {
+  from { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  to   { opacity: 0; transform: translate(-50%, -50%) scale(.96); }
+}
+.mini-dialog.closing { animation: dialog-out .14s ease forwards; }
+
+/* The master switch (Settings -> General -> Motion). Durations are collapsed
+   rather than set to `none` so animationend still fires and the helpers above
+   don't sit waiting for an event that never comes. */
+html.no-anim *,
+html.no-anim *::before,
+html.no-anim *::after {
+  animation-duration: .001s !important;
+  animation-delay: 0s !important;
+  transition-duration: .001s !important;
+  transition-delay: 0s !important;
+}
+
+/* ── Nostalgia ─────────────────────────────────────────────────────────
+   Nearest-neighbour is the whole point: one canvas pixel becomes a visible
+   five-pixel square, which is what the dithering is drawn for. */
+.fx-retro-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+}
+/* Rounded corners and soft edges are from a later decade. Everything that can
+   be square, is — and images in a note are scaled the same way the scene is. */
+.app.fx-retro .tab,
+.app.fx-retro .add-btn,
+.app.fx-retro .templates-btn,
+.app.fx-retro .copy-btn,
+.app.fx-retro .seg,
+.app.fx-retro .seg-btn,
+.app.fx-retro .placeholder-field input,
+.app.fx-retro .placeholder-field select { border-radius: 0; }
+.app.fx-retro .pp-img,
+.app.fx-retro .md-preview img { image-rendering: pixelated; }
+.app.fx-retro .editor-area,
+.app.fx-retro .md-preview { background: transparent; letter-spacing: .02em; }
+.app.fx-retro .tab.active { box-shadow: inset 2px 0 0 var(--accent); }
+/* A scanline pair every four device pixels. Faint enough to survive being
+   read through for an hour, present enough to date the picture. */
+.app.fx-retro::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 5;
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0.16) 0 1px,
+    transparent 1px 4px);
+}
+.font-row.disabled { opacity: .4; pointer-events: none; }
+
+/* ── Typewriter (Sound) · Moon (Live) · Bubbles (Playable) ──────────────
+   Typewriter draws over the app (wet ink under the last letters); the other
+   two draw behind it. */
+.fx-typewriter-canvas,
+.fx-moon-canvas,
+.fx-bubbles-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+/* =========================================================
+   GUIDE
+   =========================================================
+   Wider than the other overlays because the screenshots are the point: a
+   picture of the tab rail squeezed into 340px teaches nothing. */
+.guide-card {
+  width: 100%;
+  max-width: 760px;
+  height: min(88vh, 620px);
+  display: flex;
+  flex-direction: column;
+  background: var(--sidebar);
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, .5);
+  overflow: hidden;
+  animation: settings-in .26s cubic-bezier(.16, 1, .3, 1);
+}
+.guide-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.guide-title {
+  font-size: 12px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--muted-2);
+}
+.guide-lang { margin-left: auto; }
+.guide-lang .seg-btn { padding: 4px 10px; font-size: 11px; }
+
+.guide-body { flex: 1; min-height: 0; display: flex; }
+.guide-nav {
+  width: 170px;
+  flex: 0 0 auto;
+  border-right: 1px solid var(--border);
+  padding: 8px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.guide-nav-item {
+  text-align: start;
+  border: none;
+  background: transparent;
+  color: var(--muted-2);
+  font-family: var(--font);
+  font-size: 11.5px;
+  padding: 7px 9px;
+  border-radius: 6px;
+  cursor: pointer;
+  line-height: 1.35;
+}
+.guide-nav-item:hover { background: var(--elevated); color: var(--text); }
+.guide-nav-item.active { background: var(--accent-soft); color: var(--accent); }
+
+.guide-article {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 16px 20px 22px;
+}
+.guide-article h4 {
+  margin: 0 0 12px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+.guide-article p {
+  margin: 0 0 11px;
+  font-size: 12.5px;
+  line-height: 1.75;
+  color: var(--muted-2);
+}
+.guide-article b { color: var(--text); font-weight: 600; }
+.guide-article code {
+  font-family: var(--font);
+  font-size: 11.5px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 5px;
+  color: var(--accent);
+}
+.guide-shot {
+  display: block;
+  width: 100%;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  margin: 0 0 16px;
+  background: var(--bg);
+}
+/* The article follows the language being read, not the app's own direction —
+   the point of the switch is to read the other one. */
+.guide-article[dir="rtl"] { text-align: right; }
+.guide-article[dir="rtl"] code { direction: ltr; display: inline-block; }
+.guide-nav[dir="rtl"] .guide-nav-item { text-align: right; }
+
+.guide-article::-webkit-scrollbar,
+.guide-nav::-webkit-scrollbar { width: 8px; }
+.guide-article::-webkit-scrollbar-thumb,
+.guide-nav::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 8px; }
+
+/* ── Murmuration (Nature) · Foundry (Playable) ─────────────────────────── */
+/* Nearest-neighbour: a cell of metal is a cell, and blurring the boundary
+   between molten and set is exactly the thing this theme is about. */
+
+/* ── Downpour · Hearth · Koto (Sound) ──────────────────────────────────
+   Downpour draws the glass behind the app; the other two throw light and
+   strings over it. */
+.fx-downpour-canvas,
+.fx-hearth-canvas,
+.fx-koto-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+/* ── Constellation · Silk · Dominoes (Playable) ────────────────────────
+   Silk is drawn over the app — you are meant to be able to reach the web —
+   and the other two sit behind the panels. */
+.fx-constellation-canvas,
+.fx-silk-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+
+/* ══════════════════════════════════════════════════════════════════════
+   Added in 3.9
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* ── Vellum (Light) ────────────────────────────────────────────────────
+   Calf skin, not paper: the grain is uneven at two scales at once, so a
+   single repeating gradient reads as corduroy. Three of them at odd angles
+   and coprime periods beat against each other and the repeat stops being
+   findable. No data: URI — the CSP forbids one, and a gradient is cheaper
+   than an image anyway because it never leaves the compositor. */
+.app.fx-vellum {
+  background-image:
+    repeating-linear-gradient(97deg,
+      rgba(120, 96, 58, 0.045) 0 1px, rgba(255,255,255,0) 1px 5px),
+    repeating-linear-gradient(3deg,
+      rgba(120, 96, 58, 0.035) 0 1px, rgba(255,255,255,0) 1px 7px),
+    repeating-linear-gradient(41deg,
+      rgba(90, 66, 34, 0.022) 0 2px, rgba(255,255,255,0) 2px 13px);
+}
+/* The panels take a lighter dose — vellum was scraped thinner where it was
+   written on, and a full-strength grain under the text hurts to read. */
+.app.fx-vellum .editor-area,
+.app.fx-vellum .note-list {
+  background-image:
+    repeating-linear-gradient(97deg,
+      rgba(120, 96, 58, 0.028) 0 1px, rgba(255,255,255,0) 1px 6px);
+}
+
+/* ── Cursive (Reactive) ────────────────────────────────────────────────
+   Drawn over the app: the stroke is paid out at the caret and has to cross
+   in front of the text it came from, or it looks like it is under the page. */
+.fx-cursive-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+/* ── Tide (Nature) ─────────────────────────────────────────────────────
+   Sits in #fxBack under translucent panels, so the palette above carries
+   alpha and the water reads through the chrome. */
+.fx-tide-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+/* ── Oscilloscope · Telex (Machines) ───────────────────────────────────
+   The scope keeps two canvases: the graticule, painted once per resize, and
+   the phosphor above it, which is never cleared — only knocked back. Putting
+   the graticule in the persistence buffer would smear it into the trace. */
+.fx-scope-grid,
+.fx-scope-canvas,
+.fx-telex-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+/* ── Cicadas · Wind · Chimes (Sound) ───────────────────────────────────
+   Chimes hangs from the top of the window and is drawn over the app; the
+   other two are weather behind it. */
+.fx-cicadas-canvas,
+.fx-wind-canvas,
+.fx-chimes-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+/* ── Marbles · Ripple Ink · Kite · Pendulums (Playable) ────────────────
+   Marbles is drawn over the app — they collect along the bottom edge and you
+   push them with the cursor, so they have to be in front of the chrome. The
+   other three are behind it. */
+.fx-marbles-canvas,
+.fx-rippleink-canvas,
+.fx-pendulums-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+/* ── Obsidian · Nacre (Luxury) ─────────────────────────────────────────── */
+.fx-obsidian-canvas,
+.fx-nacre-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+/* ══════════════════════════════════════════════════════════════════════
+   Theme browser, 3.9 — sections, chips that say what they are, and cards
+   that show what the theme does.
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* A chip now carries its count. "Nature 5" answers "is it worth opening?"
+   before you open it, and the numbers give the row a shape you can scan
+   instead of ten similar words. */
+.tb-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  transition: background .16s ease, border-color .16s ease, color .16s ease,
+              transform .12s cubic-bezier(.22, .8, .3, 1);
+}
+.tb-chip:active { transform: scale(.94); }
+.tb-chip-n {
+  font-style: normal;
+  font-size: 9px;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 4px;
+  background: var(--elevatedHi, rgba(255, 255, 255, .07));
+  color: inherit;
+  opacity: .62;
+}
+.tb-chip.active .tb-chip-n { background: var(--accent-soft); opacity: .9; }
+/* The recommended chip is the one to reach for first, so it is the only one
+   in the row that is filled before you touch it. */
+.tb-chip--rec {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.tb-chip--rec::before {
+  content: "★";
+  font-size: 9px;
+  line-height: 1;
+}
+
+/* The line under the chips. Replayed on change rather than assigned, so the
+   category reads as having *changed* — a word quietly being different is a
+   thing people miss. */
+.tb-hint {
+  flex: 0 0 auto;
+  min-height: 14px;
+  margin: 6px 2px 2px;
+  font-size: 10.5px;
+  color: var(--muted-2);
+  letter-spacing: .01em;
+}
+@keyframes tb-hint-in {
+  from { opacity: 0; transform: translateY(-3px); }
+  to   { opacity: 1; transform: none; }
+}
+.tb-hint.tb-hint-in { animation: tb-hint-in .22s cubic-bezier(.22, .8, .3, 1); }
+
+/* Section rules across the whole grid. Two of these turn a wall of seventy
+   cards into "here are eleven to try" and then everything else. */
+.tb-sec {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 10px 2px 0;
+  padding-bottom: 5px;
+  border-bottom: 1px solid var(--border);
+}
+.tb-grid > .tb-sec:first-child { margin-top: 2px; }
+.tb-sec-title {
+  font-size: 10px;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+  color: var(--text);
+}
+.tb-sec-note { font-size: 10px; color: var(--muted-2); }
+
+/* Cards arrive rather than appearing. The delay is per card and capped in
+   script at a dozen — past that a stagger stops reading as a sequence and
+   starts reading as the grid being slow. */
+@keyframes tb-card-in {
+  from { opacity: 0; transform: translateY(6px) scale(.985); }
+  to   { opacity: 1; transform: none; }
+}
+.tb-card {
+  animation: tb-card-in .26s cubic-bezier(.22, .8, .3, 1) both;
+  animation-delay: calc(var(--tb-i, 0) * 18ms);
+  transition: border-color .14s, transform .14s cubic-bezier(.22, .8, .3, 1),
+              box-shadow .14s;
+}
+.tb-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, .28);
+}
+.tb-card.active { box-shadow: 0 0 0 1px var(--accent) inset; }
+
+.tb-card-star { transition: transform .14s cubic-bezier(.34, 1.56, .64, 1), color .14s; }
+.tb-card-star:hover { transform: scale(1.18); }
+.tb-card-star.on { transform: none; }
+.tb-card-star:active { transform: scale(.82); }
+
+/* The sketch sits over the note area — the biggest empty part of the
+   miniature — so the rail and the title bar still do their job of making the
+   card look like the app. */
+.tb-mini-note { position: relative; }
+.tb-mini-fx {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/* ── Alley (Nostalgia) ─────────────────────────────────────────────────
+   Drawn into a 480-wide buffer and scaled up, which is how the game this
+   comes from does it. Nearest-neighbour on the way up: the whole look is
+   built out of single pixels, and smoothing them is the one thing that
+   would throw it away. */
+.fx-alley-canvas {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  image-rendering: pixelated;
+}
+
+
+/* Snow Street '97 — makeRetro creates and positions its own canvas; this rule
+   only takes effect if your makeRetro applies the fx class. Kept for the contract. */
+.fx-snowstreet-canvas { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; }

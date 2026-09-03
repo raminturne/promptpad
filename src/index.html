@@ -174,6 +174,11 @@
                 </svg>
               </button>
               <span id="placeholderCount" class="placeholder-count"></span>
+              <button id="phPresetBtn" class="ph-preset-btn" title="Presets">
+                <svg viewBox="0 0 24 24" width="11" height="11" aria-hidden="true">
+                  <path d="M4 6h16M4 12h16M4 18h10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+              </button>
             </div>
             <div id="placeholderFields" class="placeholder-fields"></div>
           </div>
@@ -214,6 +219,17 @@
             <div id="editor" class="editor-area" contenteditable="plaintext-only"
               spellcheck="false" data-placeholder="Write your prompt here…"></div>
             <div id="mdPreview" class="md-preview hidden" tabindex="0"></div>
+            <!-- Shown in place of the editor when the active note is locked and
+                 the vault is shut. The note's text isn't in memory at all here. -->
+            <div id="lockPane" class="lock-pane hidden">
+              <svg viewBox="0 0 24 24" width="34" height="34" aria-hidden="true">
+                <rect x="4" y="10" width="16" height="11" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.7"/>
+                <path d="M8 10V7a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+              </svg>
+              <p class="lock-pane-title">This note is locked</p>
+              <p class="lock-pane-text">Its text is encrypted on disk. Enter your PIN to open it.</p>
+              <button id="lockPaneBtn" class="mini-dialog-save">Unlock</button>
+            </div>
           </div>
         </div>
         <!-- Fast Save: chat-style quick notes (replaces the editor when active) -->
@@ -504,12 +520,6 @@
               <span id="filesCount" class="files-count hidden"></span>
             </button>
             </div>
-            <button id="genImgBtn" class="copy-btn hidden" title="Generate preview image from this prompt">
-              <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
-                <path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3z" fill="currentColor"/>
-                <path d="M19 14l.9 2.1L22 17l-2.1.9L19 20l-.9-2.1L16 17l2.1-.9L19 14z" fill="currentColor"/>
-              </svg>
-            </button>
           </div>
         </footer>
       </main>
@@ -530,6 +540,7 @@
 
         <div class="settings-tabs" id="settingsTabs" role="tablist">
           <button type="button" class="set-tab" data-pane="general" role="tab">General</button>
+          <button type="button" class="set-tab" data-pane="theme" role="tab">Theme</button>
           <button type="button" class="set-tab" data-pane="appearance" role="tab">Appearance</button>
           <button type="button" class="set-tab" data-pane="layout" role="tab">Layout</button>
           <button type="button" class="set-tab" data-pane="editor" role="tab">Editor</button>
@@ -588,6 +599,17 @@
               </div>
               <div class="set-toggle-row">
                 <div class="set-toggle-text">
+                  <span>Motion</span>
+                  <small>Panels slide, views fade, the tab rail opens and closes. Turn it off for
+                    an instant, still interface.</small>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="toggleAnimations" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+              <div class="set-toggle-row">
+                <div class="set-toggle-text">
                   <span>Close to tray</span>
                   <small>Keep running in the tray when closed</small>
                 </div>
@@ -614,12 +636,44 @@
             </section>
           </div>
 
+          <div class="settings-pane settings-pane--flush hidden" data-pane="theme" role="tabpanel">
+            <div id="themeBrowser" class="theme-browser">
+              <div class="tb-head">
+                <input type="text" id="tbSearch" class="tb-search" spellcheck="false"
+                  autocomplete="off" placeholder="Search themes…" />
+              </div>
+              <div id="tbFilters" class="tb-filters"></div>
+              <!-- One line saying what the selected category actually means.
+                   The chip labels are one word each and several of them
+                   ("Reactive", "Live") do not explain themselves. -->
+              <div id="tbHint" class="tb-hint"></div>
+              <div id="tbGrid" class="tb-grid"></div>
+              <div class="tb-foot" id="tbFoot"></div>
+              <div class="set-toggle-row hidden" id="fxVolumeRow">
+                <div class="set-toggle-text">
+                  <span>Theme sound</span>
+                  <small id="fxVolumeValue">60%</small>
+                </div>
+                <input type="range" id="fxVolumeRange" class="range-input" min="0" max="100" step="5" />
+              </div>
+            </div>
+          </div>
+
           <div class="settings-pane hidden" data-pane="appearance" role="tabpanel">
             <section class="set-group">
-              <h3 class="set-label">Theme</h3>
-              <div id="themeRow" class="theme-row"></div>
-              <h3 class="set-label" style="margin-top:14px">Font</h3>
+              <h3 class="set-label">Font</h3>
               <div id="fontRow" class="font-row"></div>
+              <div class="set-toggle-row hidden" id="themeFontRow">
+                <div class="set-toggle-text">
+                  <span>Use the theme's own font</span>
+                  <small id="themeFontHint">This theme ships a typeface of its own. Turn it off to
+                    keep your font instead.</small>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="toggleThemeFont" />
+                  <span class="slider"></span>
+                </label>
+              </div>
               <div class="set-toggle-row" id="fontSizeRow">
                 <div class="set-toggle-text">
                   <span>Font size</span>
@@ -837,6 +891,38 @@
                   <button class="seg-btn" data-wrap="stack">Stacked</button>
                 </div>
               </div>
+              <p class="set-hint">Give a placeholder a list and the fill bar offers a dropdown instead of a
+                text box: <b>[tone|formal, casual, funny]</b>. <b>[date]</b>, <b>[time]</b> and
+                <b>[clipboard]</b> fill themselves in.</p>
+              <div id="phPresetList" class="custom-actions-list"></div>
+            </section>
+            <section class="set-group">
+              <h3 class="set-label">Blocks</h3>
+              <p class="set-hint">Reusable pieces of a prompt — a persona, an output format, your
+                standing rules. Type <b>@</b> in a note and pick one to drop it in. A block can hold
+                [placeholders] like any other text, and <b>$0</b> marks where the caret should land.</p>
+              <div class="set-toggle-row">
+                <div class="set-toggle-text">
+                  <span>Trigger with @</span>
+                  <small>Turn off to stop the block picker opening as you type</small>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="toggleBlocks" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+              <div class="set-toggle-row">
+                <div class="set-toggle-text">
+                  <span>Slash commands</span>
+                  <small>Type <b>/</b> in a note to run an AI action or insert markdown</small>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="toggleSlash" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+              <div id="blocksList" class="custom-actions-list"></div>
+              <button type="button" id="addBlockBtn" class="mini-dialog-save custom-action-add">+ Add block</button>
             </section>
             <section class="set-group">
               <h3 class="set-label">Images &amp; markdown</h3>
@@ -884,44 +970,6 @@
           </div>
 
           <div class="settings-pane hidden" data-pane="ai" role="tabpanel">
-            <!-- Image generation — feature hidden for now, code kept intact for later -->
-            <section class="set-group hidden">
-              <h3 class="set-label">Image generation</h3>
-              <p class="set-hint">"Generate Image" sends the current tab's text to an image generator and
-                inserts a square preview image above it — handy for prompts written for image generators.</p>
-              <!-- Hugging Face and Gemini are wired up but hidden for now — both
-                   turned out unreliable in practice (HF's free hf-inference
-                   backend was down for its only supported model; Gemini's
-                   image quota was 0 with no billing enabled). Free Pollinations
-                   is the only option surfaced until those get revisited. -->
-              <div class="seg hidden" id="imageGenProviderSeg">
-                <button class="seg-btn" data-provider="pollinations">Free</button>
-                <button class="seg-btn" data-provider="huggingface">Hugging Face</button>
-                <button class="seg-btn" data-provider="gemini">Google Gemini</button>
-              </div>
-              <p class="set-hint" id="providerHintPollinations">No signup, no API key. Prompts are sent to
-                <a href="#" class="about-link" data-url="https://pollinations.ai">pollinations.ai</a>, a free
-                third-party image service — generations aren't saved to their public feed, but the prompt text
-                still leaves your machine. Quality is decent but on the weaker/faster side.</p>
-              <div id="hfProviderFields" class="hidden">
-                <input type="password" id="hfApiKeyInput" class="text-input" placeholder="Hugging Face access token" autocomplete="off" spellcheck="false" />
-                <p class="backup-note">Free (rate-limited), noticeably better quality than the no-signup option —
-                  uses the FLUX.1-schnell model. Get a token at
-                  <a href="#" class="about-link" data-url="https://huggingface.co/settings/tokens/new?ownUserPermissions=inference.serverless.write&amp;tokenType=fineGrained">huggingface.co/settings/tokens</a>
-                  (free account, no card required) with "Make calls to Inference Providers" permission. The token is
-                  stored locally in PromptPad's own settings file, the same as your other preferences.</p>
-              </div>
-              <div id="geminiProviderFields" class="hidden">
-                <input type="password" id="geminiApiKeyInput" class="text-input" placeholder="Gemini API key" autocomplete="off" spellcheck="false" />
-                <p class="backup-note">Get a key at
-                  <a href="#" class="about-link" data-url="https://aistudio.google.com/apikey">aistudio.google.com/apikey</a>
-                  (sign in with your Google account, click "Create API key"). Image generation is billed per image —
-                  see <a href="#" class="about-link" data-url="https://ai.google.dev/gemini-api/docs/pricing">Gemini's
-                  pricing page</a> for current rates; free-tier availability for image models varies by region and
-                  account and isn't guaranteed. The key is stored locally in PromptPad's own settings file, the same
-                  as your other preferences.</p>
-              </div>
-            </section>
             <section class="set-group">
               <div class="set-label-row">
                 <h3 class="set-label">AI Chat &amp; actions</h3>
@@ -1064,6 +1112,21 @@
 
           <div class="settings-pane hidden" data-pane="data" role="tabpanel">
             <section class="set-group">
+              <h3 class="set-label">Note lock</h3>
+              <p class="set-hint">Lock a note from its right-click menu and its text is encrypted on
+                disk with a key derived from your PIN. PromptPad never stores the PIN itself, so keep
+                the recovery code somewhere safe — it is the only way back in.</p>
+              <p class="set-hint" id="lockStatus"></p>
+              <div class="recovery-actions">
+                <button type="button" class="custom-action-btn" id="lockSetupBtn">Set a PIN</button>
+                <button type="button" class="custom-action-btn hidden" id="lockChangeBtn">Change PIN</button>
+                <button type="button" class="custom-action-btn hidden" id="lockNowBtn">Lock now</button>
+                <button type="button" class="custom-action-btn hidden" id="lockNewCodeBtn">New recovery code</button>
+                <button type="button" class="custom-action-btn hidden" id="lockRemoveAllBtn">Unlock everything</button>
+                <button type="button" class="custom-action-btn ctx-danger hidden" id="lockResetBtn">Forget the PIN…</button>
+              </div>
+            </section>
+            <section class="set-group">
               <h3 class="set-label">Storage</h3>
               <div class="storage-path-row">
                 <span id="storagePathValue" class="storage-path-value">Loading…</span>
@@ -1101,11 +1164,21 @@
 
           <div class="settings-pane hidden" data-pane="about" role="tabpanel">
             <section class="set-group">
+              <h3 class="set-label">Updates</h3>
+              <p class="set-hint" id="updaterStatusText">…</p>
+              <p class="set-hint hidden" id="updaterErrorText"></p>
+            </section>
+            <section class="set-group">
+              <h3 class="set-label">Guide</h3>
+              <p class="set-hint">Everything PromptPad can do, with pictures — in English and Persian.</p>
+              <button type="button" id="openGuideBtn" class="mini-dialog-save custom-action-add">Open the guide</button>
+            </section>
+            <section class="set-group">
               <h3 class="set-label">About</h3>
               <div class="about-box">
                 <div class="about-brand">
                   <span class="brand-dot"></span>
-                  <span>PromptPad <em id="aboutVersion">v3.8.0</em></span>
+                  <span>PromptPad <em id="aboutVersion">v4.0.0</em></span>
                 </div>
                 <p class="about-desc">A compact notepad for writing AI prompts.</p>
                 <div class="about-links">
@@ -1162,6 +1235,9 @@
       <div class="ctx-item" data-action="copy">Copy content</div>
       <div class="ctx-item" data-action="export">Export as file…</div>
       <div class="ctx-item" data-action="save-template">Save as template…</div>
+      <div class="ctx-sep" id="ctxLockSep"></div>
+      <div class="ctx-item" id="ctxLockItem" data-action="lock">Lock note…</div>
+      <div class="ctx-item hidden" id="ctxUnlockItem" data-action="remove-lock">Remove lock</div>
       <!-- Hidden unless Discover is configured and you're signed in (see showCtxMenu). -->
       <div class="ctx-item ctx-share-item hidden" data-action="share">Share &amp; invite…</div>
       <div class="ctx-sep"></div>
@@ -1380,6 +1456,31 @@
       </div>
     </div>
 
+    <!-- Guide: what the app can do, in English and Persian, with a picture per
+         topic. Its own overlay rather than a settings pane, because the
+         screenshots need more width than the settings card has. -->
+    <div id="guideOverlay" class="overlay hidden">
+      <div class="guide-card">
+        <div class="guide-head">
+          <span class="guide-title">guide</span>
+          <div class="seg guide-lang" id="guideLangSeg">
+            <button class="seg-btn" data-guidelang="en">English</button>
+            <button class="seg-btn" data-guidelang="fa">فارسی</button>
+          </div>
+          <button id="guideClose" class="win-btn" title="Close">
+            <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+              <line x1="6" y1="6" x2="18" y2="18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+              <line x1="18" y1="6" x2="6" y2="18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+            </svg>
+          </button>
+        </div>
+        <div class="guide-body">
+          <div class="guide-nav" id="guideNav"></div>
+          <div class="guide-article" id="guideArticle"></div>
+        </div>
+      </div>
+    </div>
+
     <div id="templatesOverlay" class="overlay hidden">
       <div class="templates-card">
         <div class="templates-head">
@@ -1441,6 +1542,8 @@
       <div class="ctx-item hidden" id="ctxAiMoreItem" data-text-action="ai-more">AI actions&nbsp;&nbsp;›</div>
       <div class="ctx-sep hidden" id="ctxMdSep"></div>
       <div class="ctx-item hidden" id="ctxMdItem" data-text-action="md-more">Markdown Commands&nbsp;&nbsp;›</div>
+      <div class="ctx-sep hidden" id="ctxBlockSep"></div>
+      <div class="ctx-item hidden" id="ctxBlockItem" data-text-action="save-block">Save as block…</div>
       <div class="ctx-sep hidden" id="ctxShareSep"></div>
       <div class="ctx-item hidden" id="ctxShareItem" data-text-action="share-discover">Share to Discover</div>
     </div>
@@ -1468,6 +1571,84 @@
       <div class="mini-dialog-actions">
         <button id="aiCustomCancel" class="mini-dialog-cancel">Cancel</button>
         <button id="aiCustomRun" class="mini-dialog-save">Run</button>
+      </div>
+    </div>
+
+    <!-- Note lock: one dialog for setting a PIN, entering it, and recovering -->
+    <div id="pinDialog" class="mini-dialog hidden">
+      <span class="mini-dialog-label" id="pinDialogLabel">Enter your PIN</span>
+      <p class="mini-dialog-text" id="pinDialogText"></p>
+      <input type="password" id="pinInput" class="mini-dialog-input" inputmode="numeric"
+        autocomplete="off" spellcheck="false" placeholder="PIN" />
+      <input type="password" id="pinInput2" class="mini-dialog-input hidden"
+        autocomplete="off" spellcheck="false" placeholder="Repeat the PIN" />
+      <p class="mini-dialog-text pin-error hidden" id="pinError"></p>
+      <button type="button" class="pin-forgot" id="pinForgot">Forgot it? Use a recovery code</button>
+      <div class="mini-dialog-actions">
+        <button id="pinCancel" class="mini-dialog-cancel">Cancel</button>
+        <button id="pinConfirm" class="mini-dialog-save">Unlock</button>
+      </div>
+    </div>
+
+    <!-- The way out when the PIN is gone and so is the recovery code. It
+         cannot decrypt anything, so it says plainly what will be lost. -->
+    <div id="lockResetDialog" class="mini-dialog hidden">
+      <span class="mini-dialog-label">Forget the PIN</span>
+      <p class="mini-dialog-text" id="lockResetText"></p>
+      <label class="ai-custom-save">
+        <input type="checkbox" id="lockResetAck" />
+        <span>I understand this cannot be undone</span>
+      </label>
+      <div class="mini-dialog-actions">
+        <button id="lockResetCancel" class="mini-dialog-cancel">Cancel</button>
+        <button id="lockResetGo" class="mini-dialog-save mini-dialog-danger" disabled>Forget it</button>
+      </div>
+    </div>
+
+    <!-- Shown once, when the lock is first set up. This code is the only way
+         back in if the PIN is forgotten, so it cannot be dismissed casually. -->
+    <div id="recoveryDialog" class="mini-dialog hidden">
+      <span class="mini-dialog-label">Your recovery code</span>
+      <p class="mini-dialog-text">Write this down. It is the only way into your locked notes
+        if you forget the PIN — nobody can reset it for you, not even a reinstall.</p>
+      <div class="recovery-code" id="recoveryCode"></div>
+      <div class="recovery-actions">
+        <button type="button" class="custom-action-btn" id="recoveryCopy">Copy</button>
+        <button type="button" class="custom-action-btn" id="recoverySave">Save to a file…</button>
+      </div>
+      <label class="ai-custom-save">
+        <input type="checkbox" id="recoveryAck" />
+        <span>I have written it down</span>
+      </label>
+      <div class="mini-dialog-actions">
+        <button id="recoveryDone" class="mini-dialog-save" disabled>Done</button>
+      </div>
+    </div>
+
+    <!-- Placeholder presets: a saved set of values applied to a note in one go -->
+    <div id="phPresetMenu" class="ctx-menu hidden"></div>
+
+    <div id="phPresetDialog" class="mini-dialog hidden">
+      <span class="mini-dialog-label">Save these values as a preset</span>
+      <input type="text" id="phPresetNameInput" class="mini-dialog-input" spellcheck="false"
+        placeholder="e.g. Client A" />
+      <p class="mini-dialog-text" id="phPresetSummary"></p>
+      <div class="mini-dialog-actions">
+        <button id="phPresetCancel" class="mini-dialog-cancel">Cancel</button>
+        <button id="phPresetSave" class="mini-dialog-save">Save</button>
+      </div>
+    </div>
+
+    <!-- Block editor (Settings → Editor → Blocks, and "Save as block" on a selection) -->
+    <div id="blockDialog" class="mini-dialog hidden">
+      <span class="mini-dialog-label" id="blockDialogLabel">New block</span>
+      <input type="text" id="blockNameInput" class="mini-dialog-input" spellcheck="false"
+        placeholder="Name — what you type after @" />
+      <textarea id="blockBodyInput" class="mini-dialog-input block-body-input" rows="5"
+        spellcheck="false" placeholder="The text this block inserts"></textarea>
+      <div class="mini-dialog-actions">
+        <button id="blockCancel" class="mini-dialog-cancel">Cancel</button>
+        <button id="blockSave" class="mini-dialog-save">Save</button>
       </div>
     </div>
 
@@ -1529,6 +1710,14 @@
           autocomplete="off" placeholder="Jump to a tab or run a command…" />
         <div id="cmdResults" class="cmd-results"></div>
       </div>
+    </div>
+
+    <!-- Inline trigger popup: "@" inserts a block, "/" runs a command.
+         Positioned at the caret, so it lives at the top level rather than
+         inside the editor (which is contenteditable and would swallow it). -->
+    <div id="inlinePop" class="inline-pop hidden">
+      <div id="inlinePopList" class="inline-pop-list"></div>
+      <div id="inlinePopFoot" class="inline-pop-foot"></div>
     </div>
 
     <!-- Image context menu -->
@@ -1654,6 +1843,10 @@
   <script src="themes.js"></script>
   <script src="fx.js"></script>
   <script src="i18n.js"></script>
+  <script src="guide.js"></script>
+  <!-- Card sketches for the theme browser: one small animated signature per
+       theme, so a card shows what the theme does rather than only its colours. -->
+  <script src="theme-sketch.js"></script>
   <script src="markdown.js"></script>
   <script src="supabase.js"></script>
   <script src="lame.js"></script>

@@ -8,7 +8,9 @@ let state = {
   phValues: {},  // { '[token]': ['recent', 'values'] } — MRU, max 8
   fastSave: { messages: [] }, // { id, ts, text } — chat-style quick notes
   aiChat: { messages: [] }, // { id, ts, role: 'user'|'assistant', text } — one continuous AI conversation
-  promptLab: [] // { id, ts, title, prompt, category, image?, audio?, video? } — local personal prompt library
+  promptLab: [], // { id, ts, title, prompt, category, image?, audio?, video? } — local personal prompt library
+  blocks: null,  // { id, name, body } — reusable prompt pieces, typed as "@name". null = never seeded
+  phPresets: []  // { id, name, values: { '[token]': 'value' } } — saved placeholder fills
 };
 
 // Sentinel activeId for the Fast Save view (not a real tab).
@@ -83,6 +85,14 @@ const DEFAULT_SETTINGS = {
   placeholderBarWrap: 'line', // 'line' | 'stack'
   placeholderBarWidth: 220,
   placeholderBarCollapsed: false,
+  themeFont: true,              // let a theme that ships a typeface use it
+  animations: true,             // panel slides, view fades, the rail closing
+  fxVolume: 60,                 // 0-100, for the themes that make sound
+  seenThemes: [],               // themes already shown to this user; the rest get a NEW mark
+  favThemes: [],                // starred in the theme browser, shown first
+  recentThemes: [],             // last few themes picked, after the starred ones
+  blocksEnabled: true,          // "@" opens the block picker in a note
+  slashEnabled: true,           // "/" opens the command picker in a note
   fastSaveEnabled: true,
   templatesEnabled: true,       // show the templates button in the rail
   discoverEnabled: true,        // show the Discover tab in the rail (only when configured)
@@ -108,7 +118,6 @@ const DEFAULT_SETTINGS = {
     todo: true, emoji: true, link: true, justify: true, clean: true, improve: true, voice: true,
     md: true, paste: true, copy: true, img: true, table: true, genimg: true, files: true
   },
-  imageGen: { provider: 'pollinations', geminiApiKey: '', hfApiKey: '' },
   seenFeatures: {}, // { improve: true, aiChat: true, ... } — clears each button's "New" badge once used
   voice: { hfApiKey: '' }, // Hugging Face token for speech-to-text (Whisper)
   // Each user brings their own key for Chat / Improve / AI actions. The
@@ -193,7 +202,6 @@ const aiChatBtn = document.getElementById('aiChatBtn');
 const settingsBtn = document.getElementById('settingsBtn');
 const settingsOverlay = document.getElementById('settingsOverlay');
 const settingsClose = document.getElementById('settingsClose');
-const themeRow = document.getElementById('themeRow');
 const tabSizeSeg = document.getElementById('tabSizeSeg');
 const handyPosSeg = document.getElementById('handyPosSeg');
 const handyCloseSeg = document.getElementById('handyCloseSeg');
@@ -208,6 +216,15 @@ const toggleCloseEl = document.getElementById('toggleClose');
 const toggleResizeEl = document.getElementById('toggleResize');
 const toggleStartupEl = document.getElementById('toggleStartup');
 const togglePlaceholdersEl = document.getElementById('togglePlaceholders');
+const fontRow = document.getElementById('fontRow');
+const themeFontRow = document.getElementById('themeFontRow');
+const toggleThemeFontEl = document.getElementById('toggleThemeFont');
+const fxVolumeRange = document.getElementById('fxVolumeRange');
+const fxVolumeValue = document.getElementById('fxVolumeValue');
+const fxVolumeRow = document.getElementById('fxVolumeRow');
+const toggleAnimationsEl = document.getElementById('toggleAnimations');
+const toggleBlocksEl = document.getElementById('toggleBlocks');
+const toggleSlashEl = document.getElementById('toggleSlash');
 const placeholderPositionSeg = document.getElementById('placeholderPositionSeg');
 const placeholderWrapSeg = document.getElementById('placeholderWrapSeg');
 const placeholderWrapRow = document.getElementById('placeholderWrapRow');
@@ -292,7 +309,6 @@ const placeholderCollapseEl = document.getElementById('placeholderCollapse');
 // todo & image buttons
 const todoBtn = document.getElementById('todoBtn');
 const imgBtn = document.getElementById('imgBtn');
-const genImgBtn = document.getElementById('genImgBtn');
 // fast save
 const fastSaveViewEl = document.getElementById('fastSaveView');
 const fsMessagesEl = document.getElementById('fsMessages');
@@ -425,12 +441,6 @@ const toggleImageResizeEl = document.getElementById('toggleImageResize');
 const toggleImageDownloadEl = document.getElementById('toggleImageDownload');
 const toggleMdImageFullSizeEl = document.getElementById('toggleMdImageFullSize');
 const toggleMdShortcutsEl = document.getElementById('toggleMdShortcuts');
-const geminiApiKeyInputEl = document.getElementById('geminiApiKeyInput');
-const hfApiKeyInputEl = document.getElementById('hfApiKeyInput');
-const imageGenProviderSeg = document.getElementById('imageGenProviderSeg');
-const geminiProviderFieldsEl = document.getElementById('geminiProviderFields');
-const hfProviderFieldsEl = document.getElementById('hfProviderFields');
-const providerHintPollinationsEl = document.getElementById('providerHintPollinations');
 // fast save extras
 const fsHeaderSearchBtn = document.getElementById('fsSearchBtn');
 const fsGalleryBtn = document.getElementById('fsGalleryBtn');
@@ -618,6 +628,43 @@ function getEditorText() {
   const els = editorLines();
   if (!els.length) return '';
   return els.map((d) => d.textContent).join('\n');
+}
+
+function animationsOn() { return settings.animations !== false; }
+
+// Hide an element through its exit animation rather than dropping it. Without
+// this every panel in the app opened with a slide and closed with a blink.
+//
+// `animationend` is the signal, with a timer behind it: an element that is
+// display:none by the time the class lands never fires the event, and neither
+// does one whose animation the reduced-motion rules collapsed to nothing.
+function hideWithAnim(el, cls, after) {
+  if (!el || el.classList.contains('hidden')) return;
+  const finish = () => {
+    if (!el.classList.contains(cls)) return;   // already finished
+    el.classList.remove(cls);
+    el.classList.add('hidden');
+    if (after) after();
+  };
+  if (!animationsOn()) { el.classList.add('hidden'); if (after) after(); return; }
+  el.classList.add(cls);
+  const onEnd = (e) => {
+    if (e.target !== el) return;               // a child's animation is not ours
+    el.removeEventListener('animationend', onEnd);
+    finish();
+  };
+  el.addEventListener('animationend', onEnd);
+  setTimeout(() => { el.removeEventListener('animationend', onEnd); finish(); }, 400);
+}
+
+// Replay a one-shot CSS animation on an element. Removing the class, forcing
+// a reflow and putting it back is the only way to restart one — without the
+// reflow the browser coalesces both writes and nothing happens.
+function replayAnim(el, cls) {
+  if (!el || !animationsOn()) return;
+  el.classList.remove(cls);
+  void el.offsetWidth;
+  el.classList.add(cls);
 }
 
 function setEditorText(text) {
@@ -1037,6 +1084,10 @@ function placeCaretEnd() {
 // Auto-name a tab from its first non-empty line, else "Prompt N"
 function autoName(tab, index) {
   if (tab.custom && tab.name) return tab.name;
+  // A locked note auto-named from its first line would print the very text the
+  // lock exists to hide, straight into the rail. A name the user typed is
+  // their own choice and stays.
+  if (tab.locked) return tr('lock.tabName', 'Locked note');
   const firstLine = (tab.content || '')
     .split('\n')
     .map((l) => l.trim())
@@ -1111,18 +1162,45 @@ function buildPlaceholderField(token) {
   row.className = 'placeholder-field';
   row.dataset.token = token;
 
-  const label = document.createElement('label');
-  label.textContent = token;
-  label.setAttribute('dir', detectDir(token));
+  const typed = parsePhToken(token);
 
-  const input = document.createElement('input');
-  input.type = 'text';
-  input.placeholder = 'Type value…';
+  const label = document.createElement('label');
+  // A typed token's label is the part before the "|" — showing the whole
+  // "[tone|formal, casual, funny]" would push the options off the row twice.
+  label.textContent = typed ? typed.label : token;
+  label.title = token;
+  label.setAttribute('dir', detectDir(label.textContent));
+
+  const input = typed
+    ? document.createElement('select')
+    : document.createElement('input');
+  if (typed) {
+    // A blank first option so opening the bar doesn't silently commit the
+    // first choice to a note the user hasn't decided about yet.
+    const blank = document.createElement('option');
+    blank.value = '';
+    blank.textContent = '—';
+    input.appendChild(blank);
+    typed.options.forEach((o) => {
+      const opt = document.createElement('option');
+      opt.value = o;
+      opt.textContent = o;
+      input.appendChild(opt);
+    });
+  } else {
+    input.type = 'text';
+    input.placeholder = 'Type value…';
+    // [date] / [time] / [clipboard] arrive already filled in; it's still just
+    // a text box, so it can be edited or cleared before Enter.
+    const auto = autoPhValue(token);
+    if (auto) input.value = auto;
+  }
 
   // suggest previously used values for this token
   const dl = document.createElement('datalist');
   dl.id = 'ph-dl-' + uid();
   const refreshSuggestions = () => {
+    if (typed) return;
     dl.innerHTML = '';
     ((state.phValues && state.phValues[token]) || []).forEach((v) => {
       const opt = document.createElement('option');
@@ -1131,7 +1209,7 @@ function buildPlaceholderField(token) {
     });
   };
   refreshSuggestions();
-  input.setAttribute('list', dl.id);
+  if (!typed) input.setAttribute('list', dl.id);
 
   const confirmBtn = document.createElement('button');
   confirmBtn.type = 'button';
@@ -1181,10 +1259,20 @@ function buildPlaceholderField(token) {
     startPreview();
     updatePreview();
   });
+  confirmBtn.disabled = !String(input.value || '').trim();
   input.addEventListener('input', () => {
     confirmBtn.disabled = !input.value.trim();
     updatePreview();
   });
+  if (typed) {
+    // Picking from the list is the decision — there is nothing else to type,
+    // so waiting for Enter as well would just be an extra key.
+    input.addEventListener('change', () => {
+      confirmBtn.disabled = !input.value;
+      updatePreview();
+      if (input.value) commit();
+    });
+  }
   input.addEventListener('blur', () => {
     // Small delay so confirm-button click can fire first
     setTimeout(() => { endPreview(true); }, 120);
@@ -1231,6 +1319,9 @@ function updatePlaceholderPanel() {
   placeholderBarEl.classList.remove('hidden');
   placeholderCountEl.textContent =
     tokens.length + (tokens.length === 1 ? ' placeholder' : ' placeholders');
+  // Reading the clipboard is async, so it's kicked off here and the panel
+  // rebuilds itself if the text turns out to have changed.
+  if (tokens.some((tok) => /clipboard/i.test(tok))) refreshPhClipboard();
 
   const existing = new Map();
   Array.from(placeholderFieldsEl.children).forEach((row) => existing.set(row.dataset.token, row));
@@ -1329,7 +1420,29 @@ function startFsRename(el, nameEl) {
   input.addEventListener('click', (e) => e.stopPropagation());
 }
 
+// Move the "which one is open" highlight without touching the rail's DOM.
+// renderTabs() tears the whole list down and rebuilds it, which is right when
+// the list itself changed (added, closed, reordered, renamed) and wrong for a
+// plain switch — every tab, badge and group header being replaced is what made
+// clicking a tab look like the app reloading.
+// The one tab that should animate into the rail on the next render. Cleared as
+// soon as it is used, so a later rebuild (a rename, a reorder) doesn't replay
+// the entrance on a row that has been sitting there.
+let _tabEnterId = null;
+
+function syncRailActive() {
+  tabListEl.querySelectorAll('.tab').forEach((el) => {
+    el.classList.toggle('active', el.dataset.id === state.activeId);
+  });
+  updateFastSaveBtn();
+  updateAiChatBtn();
+  if (discoverBtn) discoverBtn.classList.toggle('active', discoverActive());
+  if (promptLabBtn) promptLabBtn.classList.toggle('active', labActive());
+}
+
 function renderTabs() {
+  const entering = _tabEnterId;
+  _tabEnterId = null;
   tabListEl.innerHTML = '';
 
   // Fast Save, AI Chat, Discover and Prompt Lab are compact rail buttons above
@@ -1369,6 +1482,7 @@ function renderTabs() {
       (tab.id === lastPinnedId ? ' pin-divider' : '') +
       (selectedTabIds.has(tab.id) ? ' selected' : '') +
       (tab.color ? ' has-color' : '');
+    if (tab.id === entering) el.className += ' tab-entering';
     el.dataset.id = tab.id;
     el.draggable = true;
     // Full-tab tint (whole tab takes the color, not just a dot)
@@ -1390,6 +1504,26 @@ function renderTabs() {
     nameEl.setAttribute('dir', detectDir(dispName));
     nameEl.textContent = dispName;
     el.appendChild(nameEl);
+
+    // A locked note carries a padlock, open or shut depending on whether the
+    // vault is — the difference between "nobody can read this" and "it is
+    // readable right now on this machine" is worth showing at a glance.
+    if (tab.locked) {
+      const lockEl = document.createElement('span');
+      lockEl.className = 'tab-lock';
+      const shut = !vaultOpen();
+      lockEl.innerHTML =
+        '<svg viewBox="0 0 24 24" width="11" height="11" aria-hidden="true">' +
+        '<rect x="5" y="11" width="14" height="9" rx="2" fill="none" stroke="currentColor" stroke-width="1.9"/>' +
+        (shut
+          ? '<path d="M8.5 11V7.5a3.5 3.5 0 0 1 7 0V11"'
+          : '<path d="M8.5 11V7.5a3.5 3.5 0 0 1 6.8-1.2"') +
+        ' fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg>';
+      lockEl.title = shut
+        ? tr('lock.badgeShut', 'Locked — encrypted on disk')
+        : tr('lock.badgeOpen', 'Locked note, unlocked for this session');
+      el.appendChild(lockEl);
+    }
 
     // A shared note gets a small badge so it's never a surprise that someone
     // else can see what you're typing.
@@ -1908,6 +2042,7 @@ function showEditorView() {
   discoverViewEl.classList.add('hidden');
   promptLabViewEl.classList.add('hidden');
   shUpdateBar();
+  replayAnim(editorBodyEl, 'view-entering');
 }
 
 function showFastSaveView() {
@@ -1923,6 +2058,7 @@ function showFastSaveView() {
   updateFsSelectBar();
   renderFsMessages();
   fsInputEl.focus();
+  replayAnim(fastSaveViewEl, 'view-entering');
 }
 
 function showAiChatView() {
@@ -1939,6 +2075,7 @@ function showAiChatView() {
   void aiChatViewEl.offsetWidth;
   aiChatViewEl.classList.add('ai-view-enter');
   aiInputEl.focus();
+  replayAnim(aiChatViewEl, 'view-entering');
 }
 
 function showDiscoverView() {
@@ -1958,6 +2095,7 @@ function showDiscoverView() {
       if (discoverActive() && dcProfile && !!dcProfile.is_admin !== !!wasAdmin) dcRenderNav();
     });
   }
+  replayAnim(discoverViewEl, 'view-entering');
 }
 
 function showLabView() {
@@ -1969,6 +2107,7 @@ function showLabView() {
   discoverViewEl.classList.add('hidden');
   promptLabViewEl.classList.remove('hidden');
   labRender();
+  replayAnim(promptLabViewEl, 'view-entering');
 }
 
 // Show whichever view matches state.activeId (used at startup).
@@ -2374,7 +2513,7 @@ function switchToAiChat() {
   syncEditorToState();
   state.activeId = AI_ID;
   showAiChatView();
-  renderTabs();
+  syncRailActive();
   scheduleSave();
 }
 
@@ -2387,7 +2526,7 @@ function switchToFastSave() {
   syncEditorToState();
   state.activeId = FS_ID;
   showFastSaveView();
-  renderTabs();
+  syncRailActive();
   scheduleSave();
 }
 
@@ -2400,7 +2539,7 @@ function switchToDiscover() {
   syncEditorToState();
   state.activeId = DISCOVER_ID;
   showDiscoverView();
-  renderTabs();
+  syncRailActive();
   scheduleSave();
 }
 
@@ -2413,7 +2552,7 @@ function switchToLab() {
   syncEditorToState();
   state.activeId = LAB_ID;
   showLabView();
-  renderTabs();
+  syncRailActive();
   scheduleSave();
 }
 
@@ -3087,6 +3226,7 @@ async function sendAiMessage() {
   updateAiInputDir();
 
   aiMessages().push({ id: uid(), ts: Date.now(), role: 'user', text });
+  seedThemesSeen();
   trimAiMessages();
   renderAiMessages();
   renderTabs();
@@ -3147,7 +3287,9 @@ function switchTab(id) {
   showEditorView();
   const t = activeTab();
   setEditorText(t ? t.content : '');
-  renderTabs();
+  replayAnim(mdOn() ? mdPreviewEl : editorEl, 'note-entering');
+  applyLockView();
+  syncRailActive();
   updateCounts();
   updatePlaceholderPanel();
   applyEditorAlign(); // alignment is per-note too — repaint the button and preview class
@@ -3164,6 +3306,7 @@ function addTab(focus = true) {
   commitMdBlockEdit();
   syncEditorToState();
   const tab = { id: uid(), name: '', custom: false, content: '', dir: 'auto', align: 'auto', color: null, md: false };
+  _tabEnterId = tab.id;   // renderTabs animates this one row in
   state.tabs.push(tab);
   state.activeId = tab.id;
   showEditorView();
@@ -3195,9 +3338,26 @@ function addTabWithContent(name, content) {
   scheduleSave();
 }
 
+// A note whose text is still encrypted cannot be closed. Otherwise the lock
+// protects the content from being *read* and not at all from being destroyed,
+// which is the wrong half — anyone at the keyboard could throw away work they
+// were never able to see. Unlocking first is the whole requirement.
+function sealedGuard(ids) {
+  const sealed = ids.filter((id) => {
+    const t = state.tabs.find((x) => x.id === id);
+    return t && t.locked && !vaultOpen();
+  });
+  if (!sealed.length) return true;
+  showToast(sealed.length === 1
+    ? tr('lock.noClose', 'That note is locked. Unlock it before closing it.')
+    : tr('lock.noCloseMany', 'Some of those notes are locked. Unlock them first.'));
+  return false;
+}
+
 function closeTab(id) {
   const idx = state.tabs.findIndex((t) => t.id === id);
   if (idx === -1) return;
+  if (!sealedGuard([id])) return;
   // Closing a shared note only closes it here — flush any last edit and drop
   // the channel; you stay a member and can rejoin from the invitations bell.
   const shareId = state.tabs[idx].shareId;
@@ -3365,10 +3525,22 @@ function showCtxMenu(e, tabId) {
   buildCtxDirList(tab);
   wireProfileSections(ctxMenuEl, ctxProfileRowsEl, hideCtxMenu, () => [tabId]);
 
+  // Lock / remove lock. Only one of the two is ever offered, and a sealed note
+  // hides everything that would read its (absent) text.
+  const lockItem = document.getElementById('ctxLockItem');
+  const unlockItem = document.getElementById('ctxUnlockItem');
+  lockItem.classList.toggle('hidden', !!tab.locked);
+  unlockItem.classList.toggle('hidden', !tab.locked);
+  const sealed = !!tab.locked && !vaultOpen();
+  ['copy', 'export', 'save-template', 'history', 'duplicate'].forEach((a) => {
+    const el = ctxMenuEl.querySelector('[data-action="' + a + '"]');
+    if (el) el.classList.toggle('hidden', sealed);
+  });
+
   // Sharing needs the Discover backend and a signed-in account behind it.
   const shareItem = ctxMenuEl.querySelector('.ctx-share-item');
   if (shareItem) {
-    shareItem.classList.toggle('hidden', !shConfigured());
+    shareItem.classList.toggle('hidden', !shConfigured() || !!tab.locked);
     shareItem.textContent = tab.shareId
       ? tr('ctx.manageShare', 'Sharing & people…')
       : tr('ctx.share', 'Share & invite…');
@@ -3415,6 +3587,8 @@ ctxMenuEl.addEventListener('click', (e) => {
       break;
     }
     case 'save-template': openSaveTemplateDialog(id); break;
+    case 'lock': lockNote(id); break;
+    case 'remove-lock': removeLock(id); break;
     case 'share': shShareTab(id); break;
     case 'pin': togglePin(id); break;
     case 'close': closeTab(id); break;
@@ -3587,6 +3761,7 @@ tabMultiMenu.addEventListener('click', (e) => {
   } else if (action === 'close') {
     const ids = [...selectedTabIds];
     selectedTabIds.clear();
+    if (!sealedGuard(ids)) return;
     ids.forEach((id) => closeTab(id));
   }
 });
@@ -3868,11 +4043,11 @@ function removeMovedLocally(srcTabs, groupId) {
 function openTemplates() {
   if (settings.templatesEnabled === false) return;
   renderTemplatesList();
-  templatesOverlay.classList.remove('hidden');
+  templatesOverlay.classList.remove('hidden', 'closing');
 }
 
 function closeTemplates() {
-  templatesOverlay.classList.add('hidden');
+  hideWithAnim(templatesOverlay, 'closing');
 }
 
 function renderTemplatesList() {
@@ -4116,6 +4291,9 @@ const SNAPSHOT_MIN_GAP = 5 * 60 * 1000; // at most one auto-snapshot per 5 min
 
 function takeSnapshot(t, force = false) {
   if (!t || !t.content || !t.content.trim()) return;
+  // Snapshots are persisted as plain text. Taking one of a locked note would
+  // write the very thing the lock encrypts straight back to disk.
+  if (t.locked) return;
   t.snapshots = t.snapshots || [];
   const newest = t.snapshots[0];
   if (newest && newest.content === t.content) return;
@@ -4131,13 +4309,27 @@ async function doSave() {
   // block edits, AI actions, undo, snapshot restore, clean-up. Sweeping the
   // shared tabs here covers all of them with one check (shLocalEdit no-ops when
   // the text already matches what the other side has).
-  state.tabs.forEach((t) => { if (t.shareId) shLocalEdit(t); });
+  state.tabs.forEach((t) => { if (t.shareId && !t.locked) shLocalEdit(t); });
   // Persist only durable tab fields. undo/redo stacks (up to 100 full copies
   // of a tab's content each) and checkpoint bookkeeping are session-only;
   // serializing them into every autosave made saves grow with typing history
   // and bloated the data file on disk.
+  // A locked note is written as ciphertext only. Re-encrypting is skipped when
+  // the text hasn't moved since the last time (AES is cheap, but this runs on
+  // a 350ms debounce behind every keystroke).
+  if (vaultOpen()) {
+    for (const t of state.tabs) {
+      if (!t.locked) continue;
+      if (t.enc && t._encOf === t.content) continue;
+      try {
+        t.enc = await aesEncrypt(vaultKey, sealPayload(t));
+        t._encOf = t.content;
+      } catch (e) { console.error('encrypt on save failed', e); }
+    }
+  }
   const tabs = state.tabs.map(
-    ({ undoStack, redoStack, pendingCheckpoint, checkpointTimer, ...t }) => t
+    ({ undoStack, redoStack, pendingCheckpoint, checkpointTimer, _encOf, ...t }) =>
+      (t.locked ? { ...t, content: '', snapshots: [] } : t)
   );
   try {
     await window.api.saveNotes({ ...state, tabs });
@@ -4182,6 +4374,17 @@ async function loadState() {
   state.aiChat = (saved.aiChat && Array.isArray(saved.aiChat.messages))
     ? saved.aiChat : { messages: [] };
   state.promptLab = Array.isArray(saved.promptLab) ? saved.promptLab : (state.promptLab || []);
+  // null (never seeded) is deliberately distinct from [] (seeded, then emptied
+  // by hand) — otherwise deleting every block would resurrect the starters on
+  // the next launch.
+  state.blocks = Array.isArray(saved.blocks) ? saved.blocks : seedBlocks();
+  state.phPresets = Array.isArray(saved.phPresets) ? saved.phPresets : [];
+  // A profile switch can land while the vault is open, but the key belongs to
+  // the install rather than the profile — the incoming notes are still sealed
+  // until something asks for them.
+  state.tabs.forEach((t) => {
+    if (t.locked) { t.content = ''; t.snapshots = []; delete t._encOf; }
+  });
   state.activeId = resolveActiveId(saved.activeId, state.tabs);
   // One-time carry-over: lastVersion used to be stored with the workspace.
   if (!settings.lastVersion && saved.lastVersion) {
@@ -4192,6 +4395,7 @@ async function loadState() {
   const t = activeTab();
   setEditorText(t ? t.content : '');
   applyEditorAlign();
+  applyLockView();
   renderTabs();
   updateCounts();
   updatePlaceholderPanel();
@@ -4217,7 +4421,7 @@ function handleEditorChanged() {
     if (t.content !== prevContent) noteEditForUndo(t, prevContent);
     // Shared note: push this keystroke out on its own (short) debounce rather
     // than waiting for the 350ms autosave to notice.
-    if (t.shareId && t.content !== prevContent) shLocalEdit(t);
+    if (t.shareId && !t.locked && t.content !== prevContent) shLocalEdit(t);
     // live update auto-name if not custom — patch just the name span; a full
     // renderTabs() here rebuilt the whole rail on every keystroke (visible
     // flicker + wasted layout with many tabs)
@@ -4700,8 +4904,14 @@ function showTextContextMenu(e, target, isEditable, hasSelection) {
   document.getElementById('ctxMdSep').classList.toggle('hidden', !showMd);
   document.getElementById('ctxMdItem').classList.toggle('hidden', !showMd);
 
-  // "Share to Discover" — any selected text, anywhere, once Discover is set up.
+  // "Save as block" — selected text in the editor becomes a reusable @block.
   textCtxSelection = selectedTextFrom(target);
+  const showBlock = editorEl.contains(target) && !mdOn()
+    && settings.blocksEnabled !== false && !!textCtxSelection.trim();
+  document.getElementById('ctxBlockSep').classList.toggle('hidden', !showBlock);
+  document.getElementById('ctxBlockItem').classList.toggle('hidden', !showBlock);
+
+  // "Share to Discover" — any selected text, anywhere, once Discover is set up.
   const showShare = !!window.DISCOVER_CONFIGURED && settings.discoverEnabled && !!dcClient && !!textCtxSelection.trim();
   const shareSep = document.getElementById('ctxShareSep');
   const shareItem = document.getElementById('ctxShareItem');
@@ -4752,6 +4962,12 @@ textContextMenu.addEventListener('click', async (e) => {
   if (!item || item.classList.contains('disabled') || !textCtxTarget) return;
   const action = item.dataset.textAction;
   const target = textCtxTarget;
+  if (action === 'save-block') {
+    const text = textCtxSelection;
+    hideTextContextMenu();
+    saveSelectionAsBlock(text);
+    return;
+  }
   if (action === 'share-discover') {
     const text = textCtxSelection;
     hideTextContextMenu();
@@ -4901,69 +5117,6 @@ function setPreviewImageToken(t, filename, targetLine) {
   t.content = lines.join('\n');
   noteEditForUndo(t, prev);
 }
-
-// Shared by the toolbar "Generate Image" button and each code block's
-// generate-image button (see the mdPreviewEl click delegate below).
-async function runImageGeneration(btnEl, prompt, targetLine) {
-  const provider = settings.imageGen.provider || 'pollinations';
-  if (provider === 'gemini' && !settings.imageGen.geminiApiKey) {
-    openSettings(geminiApiKeyInputEl);
-    return;
-  }
-  if (provider === 'huggingface' && !settings.imageGen.hfApiKey) {
-    openSettings(hfApiKeyInputEl);
-    return;
-  }
-  const t = activeTab();
-  if (!t) return;
-  const tabId = t.id;
-  prompt = prompt.trim();
-  if (!prompt) return;
-
-  const defaultTitle = btnEl.title;
-  const epoch = profileEpoch; // `t` belongs to this profile's workspace
-  btnEl.disabled = true;
-  btnEl.classList.add('generating');
-  btnEl.title = 'Generating…';
-  try {
-    const res = await window.api.generateImage(prompt, {
-      provider,
-      geminiApiKey: settings.imageGen.geminiApiKey,
-      hfApiKey: settings.imageGen.hfApiKey
-    });
-    if (epoch !== profileEpoch) return;
-    if (res && res.ok && res.filename) {
-      setPreviewImageToken(t, res.filename, targetLine);
-      // Only touch the visible editor if the user is still on this tab —
-      // otherwise this would hijack whatever tab is now on screen, and the
-      // next autosave would write that stale DOM text into the wrong tab.
-      if (activeTab() && activeTab().id === tabId) {
-        setEditorText(t.content);
-        if (mdOn()) renderMdPreview();
-      }
-      updateCounts();
-      updatePlaceholderPanel();
-      scheduleSave();
-    } else {
-      btnEl.classList.add('failed');
-      btnEl.title = (res && res.error) || 'Image generation failed.';
-      setTimeout(() => {
-        btnEl.classList.remove('failed');
-        btnEl.title = defaultTitle;
-      }, 4000);
-    }
-  } finally {
-    btnEl.disabled = false;
-    btnEl.classList.remove('generating');
-    if (!btnEl.classList.contains('failed')) btnEl.title = defaultTitle;
-  }
-}
-
-genImgBtn.addEventListener('click', () => {
-  if (mdOn() || fsActive() || !activeTab()) return;
-  const prompt = activeTab().content.replace(IMG_TOKEN_RE, '');
-  runImageGeneration(genImgBtn, prompt, 0);
-});
 
 // Paste an image straight from the clipboard. Plain-text paste stays native.
 editorEl.addEventListener('paste', (e) => {
@@ -5182,14 +5335,6 @@ mdPreviewEl.addEventListener('click', (e) => {
         setTimeout(() => copyCodeBtn.classList.remove('copied'), 900);
       }).catch((err) => console.error('copy code failed', err));
     }
-    return;
-  }
-  const genImgCodeBtn = t.closest('.md-code-genimg');
-  if (genImgCodeBtn) {
-    const block = genImgCodeBtn.closest('.md-codeblock');
-    const codeEl = block && block.querySelector('code');
-    const line = block ? Number(block.dataset.line) : NaN;
-    if (codeEl && Number.isFinite(line)) runImageGeneration(genImgCodeBtn, codeEl.textContent, line);
     return;
   }
   const improveCodeBtn = t.closest('.md-code-improve');
@@ -5900,7 +6045,7 @@ function currentSelectionRange() {
 // Both paths rebuild the full content and go through noteEditForUndo, so a
 // selection edit is a single undo step too (it wasn't, before). Only touches
 // the DOM when the user is still on the originating tab — guards against a
-// mid-flight tab switch, same pattern as runImageGeneration.
+// mid-flight tab switch.
 function applyTransformResult(t, tabId, range, out) {
   if (!activeTab() || activeTab().id !== tabId) { if (!range) t.content = out; return; }
   const prev = t.content;
@@ -6274,7 +6419,7 @@ function exportRenderPayload(content) {
   // covers a table's +/- rail (the delete button riding inside each header
   // cell, the whole extra add-column/delete-row cells, and the add-row row).
   holder.querySelectorAll(
-    '.md-code-copy, .md-code-improve, .md-code-genimg, ' +
+    '.md-code-copy, .md-code-improve, ' +
     '.md-table-delcol, .md-table-ctlcell, .md-table-addrow-row'
   ).forEach((b) => b.remove());
   // Table cells are contenteditable in the live preview so you can click and
@@ -6349,6 +6494,24 @@ document.addEventListener('click', (e) => {
   }
 });
 
+// A right-click anywhere puts away whichever flyout is open.
+//
+// The two handlers above close them on a *click*, and a right-click is not
+// one: it fires contextmenu and mousedown and never a click. So opening the
+// AI actions submenu and then right-clicking somewhere else left the submenu
+// sitting on top of the fresh context menu, with two menus on screen at once
+// and no way to tell which one the next key would go to.
+//
+// Capture phase, so it runs ahead of every specific contextmenu handler —
+// including the ones that return early and open no menu at all, where the
+// stale flyout would otherwise simply stay.
+document.addEventListener('contextmenu', (e) => {
+  const t = e.target;
+  if (t instanceof Node && (aiActionsMenu.contains(t) || mdCommandsMenu.contains(t))) return;
+  hideAiActionsMenu();
+  hideMdCommandsMenu();
+}, true);
+
 // ---------- Command palette (Ctrl+P) ----------
 const cmdPalette = document.getElementById('cmdPalette');
 const cmdInput = document.getElementById('cmdInput');
@@ -6364,7 +6527,8 @@ function buildCommands() {
     { id: 'toggle-md', label: tr('cmd.toggleMd', 'Toggle markdown preview'), hint: 'Ctrl+M', run: () => { if (!fsActive()) setMdPreview(!mdOn()); } },
     { id: 'find', label: tr('cmd.find', 'Find'), hint: 'Ctrl+F', run: () => { if (!fsActive()) openFind(false); } },
     { id: 'replace', label: tr('cmd.replace', 'Find & replace'), hint: 'Ctrl+H', run: () => { if (!fsActive()) openFind(true); } },
-    { id: 'settings', label: tr('cmd.settings', 'Settings'), hint: '', run: openSettings }
+    { id: 'settings', label: tr('cmd.settings', 'Settings'), hint: '', run: openSettings },
+    { id: 'guide', label: tr('cmd.guide', 'Guide — what PromptPad can do'), hint: '', run: openGuide }
   ];
   if (settings.handyEnabled !== false) {
     cmds.push({ id: 'handy-mode', label: settings.handyMode ? tr('cmd.handyExit', 'Exit handy dock') : tr('cmd.handyEnter', 'Handy mode (dock to edge)'), hint: settings.handyShortcut || 'Ctrl+Shift+D', run: toggleHandy });
@@ -6490,6 +6654,1344 @@ cmdResults.addEventListener('click', (e) => {
 cmdPalette.addEventListener('mousedown', (e) => {
   if (e.target === cmdPalette) closeCommandPalette();
 });
+
+
+
+
+// ---------- Note lock ----------
+// A locked note's text is encrypted on disk with AES-GCM. The key hierarchy is
+// the usual one, and it exists for two reasons: changing the PIN must not mean
+// re-encrypting every note, and a forgotten PIN must not mean losing them.
+//
+//   vaultKey            random 256-bit key; the only thing that touches notes
+//     ├─ wrapped by PBKDF2(PIN, saltPin)
+//     └─ wrapped by PBKDF2(recovery code, saltRec)
+//
+// Both wraps sit in settings. Neither the PIN nor the code is stored, and
+// AES-GCM's own tag is the check that an unwrap succeeded — a wrong PIN throws
+// rather than yielding a plausible-looking wrong key.
+//
+// `vaultKey` lives in memory only while the vault is open. Closing it (Lock
+// now, or quitting) re-encrypts every open note and drops the plaintext.
+const VAULT_ITERATIONS = 250000;
+
+// The characters people misread off paper are all gone: I, O, L, 0 and 1. The
+// recovery code is written down by hand exactly once, and an L read back as a
+// 1 costs the user every locked note they have. 31 characters over 25 places
+// is ~124 bits, so nothing is given up by the ones left out.
+const RECOVERY_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+
+let vaultKey = null;              // CryptoKey while the vault is open
+let pinDialogMode = null;         // 'setup' | 'unlock' | 'change' | 'recover'
+let pinResolve = null;            // resolves the promise openPinDialog() handed out
+
+function vaultCfg() {
+  return settings.vault && settings.vault.v === 1 ? settings.vault : null;
+}
+function vaultExists() { return !!vaultCfg(); }
+function vaultOpen() { return !!vaultKey; }
+
+function bufToB64(buf) {
+  const bytes = new Uint8Array(buf);
+  let s = '';
+  for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
+  return btoa(s);
+}
+function b64ToBuf(b64) {
+  const s = atob(b64);
+  const out = new Uint8Array(s.length);
+  for (let i = 0; i < s.length; i++) out[i] = s.charCodeAt(i);
+  return out;
+}
+function randomBytes(n) { return crypto.getRandomValues(new Uint8Array(n)); }
+
+async function deriveWrapKey(secret, saltB64) {
+  const base = await crypto.subtle.importKey(
+    'raw', new TextEncoder().encode(secret), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey(
+    { name: 'PBKDF2', salt: b64ToBuf(saltB64), iterations: VAULT_ITERATIONS, hash: 'SHA-256' },
+    base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+}
+
+async function aesEncrypt(key, plaintext) {
+  const iv = randomBytes(12);
+  const ct = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv }, key, new TextEncoder().encode(plaintext));
+  return { iv: bufToB64(iv), ct: bufToB64(ct) };
+}
+async function aesDecrypt(key, blob) {
+  const out = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv: b64ToBuf(blob.iv) }, key, b64ToBuf(blob.ct));
+  return new TextDecoder().decode(out);
+}
+
+function makeRecoveryCode() {
+  const n = RECOVERY_ALPHABET.length;      // 31 — not a power of two
+  const limit = Math.floor(256 / n) * n;   // 248: everything above is rejected
+  let out = '';
+  let picked = 0;
+  while (picked < 25) {
+    // Drawing a byte and taking it mod 31 would make the first eight letters
+    // very slightly likelier than the rest. Rejecting the tail costs a few
+    // extra bytes and leaves the code uniform.
+    const batch = randomBytes(32);
+    for (let i = 0; i < batch.length && picked < 25; i++) {
+      if (batch[i] >= limit) continue;
+      if (picked && picked % 5 === 0) out += '-';
+      out += RECOVERY_ALPHABET[batch[i] % n];
+      picked++;
+    }
+  }
+  return out;
+}
+// Typed-in codes arrive with whatever spacing and case the user used.
+function normalizeRecoveryCode(raw) {
+  return String(raw || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
+
+// Create the vault: a fresh key, wrapped under both the PIN and a new
+// recovery code. Returns the code so it can be shown once.
+async function createVault(pin) {
+  const key = await crypto.subtle.generateKey(
+    { name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt']);
+  const raw = await crypto.subtle.exportKey('raw', key);
+  const rawB64 = bufToB64(raw);
+  const code = makeRecoveryCode();
+  const saltPin = bufToB64(randomBytes(16));
+  const saltRec = bufToB64(randomBytes(16));
+  settings.vault = {
+    v: 1, saltPin, saltRec,
+    wrapPin: await aesEncrypt(await deriveWrapKey(pin, saltPin), rawB64),
+    wrapRec: await aesEncrypt(await deriveWrapKey(normalizeRecoveryCode(code), saltRec), rawB64)
+  };
+  vaultKey = key;
+  saveSettingsNow();
+  return code;
+}
+
+// Unwrap with a PIN or a recovery code. Returns false on the wrong secret
+// rather than throwing — a failed unwrap is an ordinary outcome here.
+async function openVault(secret, which) {
+  const cfg = vaultCfg();
+  if (!cfg) return false;
+  const isRec = which === 'recovery';
+  const salt = isRec ? cfg.saltRec : cfg.saltPin;
+  const wrap = isRec ? cfg.wrapRec : cfg.wrapPin;
+  if (!salt || !wrap) return false;
+  try {
+    const rawB64 = await aesDecrypt(await deriveWrapKey(secret, salt), wrap);
+    vaultKey = await crypto.subtle.importKey(
+      'raw', b64ToBuf(rawB64), { name: 'AES-GCM' }, true, ['encrypt', 'decrypt']);
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+// Re-wrap the existing key under a new PIN, leaving every note's ciphertext
+// alone. Requires the vault to be open.
+async function rewrapVault(newPin, newCode) {
+  const cfg = vaultCfg();
+  if (!cfg || !vaultKey) return null;
+  const rawB64 = bufToB64(await crypto.subtle.exportKey('raw', vaultKey));
+  if (newPin != null) {
+    cfg.saltPin = bufToB64(randomBytes(16));
+    cfg.wrapPin = await aesEncrypt(await deriveWrapKey(newPin, cfg.saltPin), rawB64);
+  }
+  let code = null;
+  if (newCode) {
+    code = makeRecoveryCode();
+    cfg.saltRec = bufToB64(randomBytes(16));
+    cfg.wrapRec = await aesEncrypt(
+      await deriveWrapKey(normalizeRecoveryCode(code), cfg.saltRec), rawB64);
+  }
+  saveSettingsNow();
+  return code;
+}
+
+// ---------- Locking notes ----------
+function lockedTabs() { return state.tabs.filter((t) => t.locked); }
+
+// What actually goes inside the ciphertext. The note's history has to travel
+// with it: snapshots are stored as plain text, so a note locked after it had
+// any would leave its own past sitting on disk next to the sealed present.
+function sealPayload(t) {
+  return JSON.stringify({ c: t.content || '', s: Array.isArray(t.snapshots) ? t.snapshots : [] });
+}
+function applySealPayload(t, json) {
+  try {
+    const o = JSON.parse(json);
+    // Older shape (content only) never shipped, but a hand-edited file could
+    // still hold one — treat anything unparseable as the text itself.
+    t.content = typeof o.c === 'string' ? o.c : json;
+    t.snapshots = Array.isArray(o.s) ? o.s : [];
+  } catch (e) {
+    t.content = json;
+    t.snapshots = [];
+  }
+}
+
+// Encrypt every open locked note and drop the plaintext, then forget the key.
+// This is what "Lock now" and quitting both do.
+async function closeVault() {
+  if (vaultKey) {
+    for (const t of lockedTabs()) {
+      if (t.content || (t.snapshots && t.snapshots.length)) {
+        try { t.enc = await aesEncrypt(vaultKey, sealPayload(t)); }
+        catch (e) { console.error('re-lock failed', e); }
+      }
+      t.content = '';
+      t.snapshots = [];
+      delete t._encOf;
+    }
+  }
+  vaultKey = null;
+  const t = activeTab();
+  if (t && t.locked) setEditorText('');
+  applyLockView();
+  renderTabs();
+  scheduleSave();
+}
+
+// Decrypt every locked note into memory. Called once, right after the vault
+// opens, so switching between locked tabs afterwards costs nothing.
+async function revealLockedTabs() {
+  if (!vaultKey) return;
+  for (const t of lockedTabs()) {
+    if (!t.enc) continue;
+    try {
+      applySealPayload(t, await aesDecrypt(vaultKey, t.enc));
+      t._encOf = t.content;
+    } catch (e) {
+      console.error('decrypt failed for tab', t.id, e);
+    }
+  }
+  const t = activeTab();
+  if (t && t.locked) setEditorText(t.content || '');
+  applyLockView();
+  renderTabs();
+  updateCounts();
+  updatePlaceholderPanel();
+}
+
+// Ask for the PIN and check it, whether or not the vault is already open.
+//
+// "It is unlocked in this session" is not the same as "the person at the
+// keyboard knows the PIN" — you may have unlocked it an hour ago and walked
+// away. So everything that *undoes* the lock (taking it off a note, changing
+// the PIN, wiping the vault) asks again, and only reading goes through
+// ensureVaultOpen below.
+async function confirmPin() {
+  if (!vaultExists()) return false;
+  return openPinDialog('verify');
+}
+
+// Make sure the vault is open, asking for the PIN if it isn't. Returns whether
+// it ended up open, so callers can just bail on false.
+async function ensureVaultOpen() {
+  if (vaultOpen()) return true;
+  if (!vaultExists()) return false;
+  const ok = await openPinDialog('unlock');
+  if (!ok) return false;
+  await revealLockedTabs();
+  return true;
+}
+
+async function lockNote(tabId) {
+  const t = state.tabs.find((x) => x.id === tabId);
+  if (!t || t.locked) return;
+  // Sharing sends the note's text to the server in the clear, so the two are
+  // mutually exclusive — locking one silently would stop the other side's copy
+  // updating with no explanation.
+  if (t.shareId) {
+    showToast(tr('lock.noShared', 'Stop sharing this note before locking it'));
+    return;
+  }
+  if (!vaultExists()) {
+    const made = await openPinDialog('setup');
+    if (!made) return;
+  } else if (!(await ensureVaultOpen())) {
+    return;
+  }
+  if (t === activeTab()) syncEditorToState();
+  t.locked = true;
+  try {
+    t.enc = await aesEncrypt(vaultKey, sealPayload(t));
+    t._encOf = t.content;
+  } catch (e) {
+    console.error('lock failed', e);
+    t.locked = false;
+    return;
+  }
+  renderTabs();
+  applyLockView();
+  scheduleSave();
+  showToast(tr('lock.locked', 'Locked. It stays readable until you lock the vault or quit.'));
+}
+
+// Take the lock off for good: decrypt back to a plain note.
+async function removeLock(tabId) {
+  const t = state.tabs.find((x) => x.id === tabId);
+  if (!t || !t.locked) return;
+  // Asks even if the notes are already open — taking a lock off is the kind of
+  // thing that should not be one click away from a session somebody left
+  // unlocked.
+  if (!(await confirmPin())) return;
+  if (!vaultOpen()) return;
+  if (t.enc && !t.content) {
+    try { applySealPayload(t, await aesDecrypt(vaultKey, t.enc)); }
+    catch (e) { console.error(e); return; }
+  }
+  t.locked = false;
+  delete t.enc;
+  delete t._encOf;
+  if (t === activeTab()) setEditorText(t.content || '');
+  renderTabs();
+  applyLockView();
+  updateCounts();
+  scheduleSave();
+}
+
+// Whether the editor should be swapped for the lock pane right now.
+function activeTabSealed() {
+  const t = activeTab();
+  return !!(t && t.locked && !vaultOpen());
+}
+
+function applyLockView() {
+  const pane = document.getElementById('lockPane');
+  if (!pane) return;
+  const sealed = activeTabSealed();
+  pane.classList.toggle('hidden', !sealed);
+  // Everything that edits or reads the note has to go with it — leaving the
+  // toolbar live over a sealed note means buttons that act on an empty string.
+  editorEl.classList.toggle('hidden', sealed);
+  document.querySelector('.app').classList.toggle('note-sealed', sealed);
+  if (sealed) closeInlinePop();
+}
+
+// ---------- PIN dialog ----------
+const pinDialog = document.getElementById('pinDialog');
+const pinDialogLabel = document.getElementById('pinDialogLabel');
+const pinDialogText = document.getElementById('pinDialogText');
+const pinInput = document.getElementById('pinInput');
+const pinInput2 = document.getElementById('pinInput2');
+const pinError = document.getElementById('pinError');
+const pinForgot = document.getElementById('pinForgot');
+const pinCancel = document.getElementById('pinCancel');
+const pinConfirm = document.getElementById('pinConfirm');
+
+// Resolves true once the vault is open (or created), false if cancelled.
+function openPinDialog(mode) {
+  pinDialogMode = mode;
+  pinInput.value = '';
+  pinInput2.value = '';
+  pinError.classList.add('hidden');
+  const setup = mode === 'setup' || mode === 'change';
+  const recover = mode === 'recover';
+  const verify = mode === 'verify';
+  pinInput2.classList.toggle('hidden', !setup);
+  pinForgot.classList.toggle('hidden', mode !== 'unlock' && !verify);
+  pinInput.type = recover ? 'text' : 'password';
+  pinInput.placeholder = recover ? 'XXXXX-XXXXX-XXXXX-XXXXX-XXXXX' : 'PIN';
+  if (mode === 'setup') {
+    pinDialogLabel.textContent = tr('lock.setupTitle', 'Set a PIN');
+    pinDialogText.textContent = tr('lock.setupText',
+      'This PIN encrypts your locked notes. It is never stored, so it cannot be reset — you will get a recovery code next.');
+    pinConfirm.textContent = tr('lock.setupBtn', 'Set PIN');
+  } else if (mode === 'change') {
+    pinDialogLabel.textContent = tr('lock.changeTitle', 'Change your PIN');
+    pinDialogText.textContent = tr('lock.changeText', 'Your notes are not re-encrypted — only the PIN that opens them changes.');
+    pinConfirm.textContent = tr('save', 'Save');
+  } else if (recover) {
+    pinDialogLabel.textContent = tr('lock.recoverTitle', 'Enter your recovery code');
+    pinDialogText.textContent = tr('lock.recoverText', 'The 25-character code from when you set the lock up. Dashes and case do not matter.');
+    pinConfirm.textContent = tr('lock.recoverBtn', 'Recover');
+  } else if (verify) {
+    pinDialogLabel.textContent = tr('lock.verifyTitle', 'Confirm your PIN');
+    pinDialogText.textContent = tr('lock.verifyText',
+      'This undoes part of the lock, so it asks again even though the notes are open.');
+    pinConfirm.textContent = tr('lock.verifyBtn', 'Confirm');
+  } else {
+    pinDialogLabel.textContent = tr('lock.unlockTitle', 'Enter your PIN');
+    pinDialogText.textContent = tr('lock.unlockText', 'Opens every locked note until you lock them again or quit.');
+    pinConfirm.textContent = tr('lock.unlockBtn', 'Unlock');
+  }
+  pinDialog.classList.remove('hidden');
+  pinInput.focus();
+  return new Promise((resolve) => { pinResolve = resolve; });
+}
+
+function closePinDialog(result) {
+  pinDialog.classList.add('hidden');
+  pinDialogMode = null;
+  const r = pinResolve;
+  pinResolve = null;
+  pinInput.value = '';
+  pinInput2.value = '';
+  if (r) r(result);
+}
+
+function showPinError(msg) {
+  pinError.textContent = msg;
+  pinError.classList.remove('hidden');
+}
+
+async function confirmPinDialog() {
+  const mode = pinDialogMode;
+  const val = pinInput.value;
+  if (mode === 'setup' || mode === 'change') {
+    if (val.length < 4) { showPinError(tr('lock.tooShort', 'Use at least 4 characters')); return; }
+    if (val !== pinInput2.value) { showPinError(tr('lock.mismatch', 'The two entries do not match')); return; }
+    pinConfirm.disabled = true;
+    try {
+      if (mode === 'setup') {
+        const code = await createVault(val);
+        closePinDialog(true);
+        await showRecoveryDialog(code);
+      } else {
+        await rewrapVault(val, false);
+        closePinDialog(true);
+        showToast(tr('lock.changed', 'PIN changed'));
+      }
+    } finally { pinConfirm.disabled = false; }
+    syncLockUI();
+    return;
+  }
+
+  pinConfirm.disabled = true;
+  let ok = false;
+  try {
+    // Unwrapping is the check. A wrong PIN cannot produce a key that decrypts,
+    // so there is nothing to compare against and nothing stored to leak.
+    ok = mode === 'recover'
+      ? await openVault(normalizeRecoveryCode(val), 'recovery')
+      : await openVault(val, 'pin');
+  } finally { pinConfirm.disabled = false; }
+
+  if (!ok) {
+    showPinError(mode === 'recover'
+      ? tr('lock.badCode', 'That code does not match')
+      : tr('lock.badPin', 'Wrong PIN'));
+    pinInput.select();
+    return;
+  }
+  closePinDialog(true);
+  await revealLockedTabs();
+  syncLockUI();
+  // Recovering gets you in, but the PIN you forgot is still the one on the
+  // vault — offer to replace it while you are demonstrably the owner.
+  if (mode === 'recover') {
+    const changed = await openPinDialog('change');
+    if (changed) syncLockUI();
+  }
+}
+
+pinConfirm.addEventListener('click', confirmPinDialog);
+pinCancel.addEventListener('click', () => closePinDialog(false));
+pinForgot.addEventListener('click', () => {
+  closePinDialog(false);
+  openPinDialog('recover').then((ok) => { if (ok) syncLockUI(); });
+});
+[pinInput, pinInput2].forEach((el) => {
+  el.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); confirmPinDialog(); }
+    if (e.key === 'Escape') { e.preventDefault(); closePinDialog(false); }
+  });
+  el.addEventListener('input', () => pinError.classList.add('hidden'));
+});
+
+// ---------- Recovery code dialog ----------
+const recoveryDialog = document.getElementById('recoveryDialog');
+const recoveryCodeEl = document.getElementById('recoveryCode');
+const recoveryCopy = document.getElementById('recoveryCopy');
+const recoverySave = document.getElementById('recoverySave');
+const recoveryAck = document.getElementById('recoveryAck');
+const recoveryDone = document.getElementById('recoveryDone');
+let recoveryResolve = null;
+
+function showRecoveryDialog(code) {
+  recoveryCodeEl.textContent = code;
+  recoveryAck.checked = false;
+  recoveryDone.disabled = true;
+  recoveryDialog.classList.remove('hidden');
+  return new Promise((resolve) => { recoveryResolve = resolve; });
+}
+
+recoveryAck.addEventListener('change', () => { recoveryDone.disabled = !recoveryAck.checked; });
+recoveryCopy.addEventListener('click', () => {
+  navigator.clipboard.writeText(recoveryCodeEl.textContent).then(
+    () => { recoveryCopy.textContent = tr('copied', 'Copied'); },
+    () => {}
+  );
+});
+recoverySave.addEventListener('click', () => {
+  const nl = String.fromCharCode(10);
+  const body = 'PromptPad recovery code' + nl + nl + recoveryCodeEl.textContent + nl + nl +
+    'This is the only way into your locked notes if you forget your PIN.' + nl;
+  window.api.exportNote('promptpad-recovery-code', body, 'txt');
+});
+recoveryDone.addEventListener('click', () => {
+  recoveryDialog.classList.add('hidden');
+  recoveryCopy.textContent = tr('copy', 'Copy');
+  const r = recoveryResolve;
+  recoveryResolve = null;
+  if (r) r(true);
+});
+
+// ---------- Settings pane ----------
+function syncLockUI() {
+  const status = document.getElementById('lockStatus');
+  if (!status) return;
+  const setup = document.getElementById('lockSetupBtn');
+  const change = document.getElementById('lockChangeBtn');
+  const now = document.getElementById('lockNowBtn');
+  const newCode = document.getElementById('lockNewCodeBtn');
+  const n = lockedTabs().length;
+  if (!vaultExists()) {
+    status.textContent = tr('lock.statusNone', 'No PIN set yet.');
+  } else {
+    status.textContent =
+      (n === 1 ? tr('lock.statusOne', '1 locked note.') : n + ' ' + tr('lock.statusMany', 'locked notes.')) +
+      ' ' + (vaultOpen() ? tr('lock.statusOpen', 'Unlocked for this session.')
+                         : tr('lock.statusShut', 'Locked.'));
+  }
+  setup.classList.toggle('hidden', vaultExists());
+  change.classList.toggle('hidden', !vaultExists());
+  newCode.classList.toggle('hidden', !vaultExists());
+  now.classList.toggle('hidden', !vaultExists() || !vaultOpen());
+  const removeAll = document.getElementById('lockRemoveAllBtn');
+  const reset = document.getElementById('lockResetBtn');
+  if (removeAll) removeAll.classList.toggle('hidden', !vaultExists());
+  if (reset) reset.classList.toggle('hidden', !vaultExists());
+}
+
+// Take the lock off every note and throw the vault away. With the PIN in hand
+// nothing is lost: each note is decrypted back to ordinary text first, and the
+// next lock starts fresh with a new PIN and a new recovery code.
+async function removeAllLocks() {
+  if (!(await confirmPin())) return;
+  if (!vaultOpen()) return;
+  await revealLockedTabs();
+  for (const t of lockedTabs()) {
+    if (t.enc && !t.content) {
+      try { applySealPayload(t, await aesDecrypt(vaultKey, t.enc)); } catch (e) { console.error(e); }
+    }
+    t.locked = false;
+    delete t.enc;
+    delete t._encOf;
+  }
+  vaultKey = null;
+  delete settings.vault;
+  saveSettingsNow();
+  renderTabs();
+  applyLockView();
+  updateCounts();
+  scheduleSave();
+  syncLockUI();
+  showToast(tr('lock.allRemoved', 'Every note is unlocked and the PIN is gone.'));
+}
+
+// The way out when the PIN and the recovery code are both gone. It cannot
+// decrypt anything — that is the point of the lock — so the notes that are
+// still sealed lose their text. Says so, in those words, with a count.
+const lockResetDialog = document.getElementById('lockResetDialog');
+const lockResetText = document.getElementById('lockResetText');
+const lockResetAck = document.getElementById('lockResetAck');
+const lockResetCancel = document.getElementById('lockResetCancel');
+const lockResetGo = document.getElementById('lockResetGo');
+
+function openLockResetDialog() {
+  const sealed = lockedTabs().filter((t) => !t.content).length;
+  lockResetText.textContent = sealed
+    ? tr('lock.resetLoss', 'Nobody can read a locked note without the PIN, including PromptPad. ')
+      + sealed + ' ' + tr('lock.resetLoss2',
+        'note(s) are still encrypted and their text will be gone for good. Everything already open stays.')
+    : tr('lock.resetSafe',
+      'Nothing is encrypted at the moment, so no text is lost — this only clears the PIN so you can set a new one.');
+  lockResetAck.checked = false;
+  lockResetGo.disabled = true;
+  lockResetDialog.classList.remove('hidden');
+}
+
+if (lockResetAck) {
+  lockResetAck.addEventListener('change', () => { lockResetGo.disabled = !lockResetAck.checked; });
+}
+if (lockResetCancel) {
+  lockResetCancel.addEventListener('click', () => hideWithAnim(lockResetDialog, 'closing'));
+}
+if (lockResetGo) {
+  lockResetGo.addEventListener('click', () => {
+    hideWithAnim(lockResetDialog, 'closing');
+    for (const t of lockedTabs()) {
+      // Anything still sealed becomes an empty note rather than a tab that
+      // can never be opened again. Its name and place are kept.
+      t.locked = false;
+      delete t.enc;
+      delete t._encOf;
+      if (typeof t.content !== 'string') t.content = '';
+    }
+    vaultKey = null;
+    delete settings.vault;
+    saveSettingsNow();
+    const t2 = activeTab();
+    if (t2) setEditorText(t2.content || '');
+    renderTabs();
+    applyLockView();
+    updateCounts();
+    scheduleSave();
+    syncLockUI();
+    showToast(tr('lock.reset', 'The PIN is gone. You can set a new one whenever you like.'));
+  });
+}
+
+document.getElementById('lockSetupBtn').addEventListener('click', async () => {
+  await openPinDialog('setup');
+  syncLockUI();
+});
+document.getElementById('lockChangeBtn').addEventListener('click', async () => {
+  // The current PIN first, then the new one. Without the first step anyone who
+  // found the app unlocked could change the PIN and lock the owner out.
+  if (!(await confirmPin())) return;
+  await revealLockedTabs();
+  await openPinDialog('change');
+  syncLockUI();
+});
+document.getElementById('lockNowBtn').addEventListener('click', async () => {
+  await closeVault();
+  syncLockUI();
+});
+document.getElementById('lockNewCodeBtn').addEventListener('click', async () => {
+  if (!(await confirmPin())) return;
+  const code = await rewrapVault(null, true);
+  if (code) await showRecoveryDialog(code);
+  syncLockUI();
+});
+document.getElementById('lockRemoveAllBtn').addEventListener('click', removeAllLocks);
+document.getElementById('lockResetBtn').addEventListener('click', openLockResetDialog);
+document.getElementById('lockPaneBtn').addEventListener('click', () => ensureVaultOpen());
+
+// ---------- Typed placeholders & presets ----------
+// A plain [topic] is a text box. Two things upgrade it:
+//   [tone|formal, casual, funny]   a list, so the bar offers a dropdown
+//   [date] [time] [clipboard]      known names that can fill themselves in
+// Both are read off the token itself, so nothing has to be configured and a
+// note carries its own form with it.
+const PH_LIST_RE = /^[[{](.+?)\|(.+)[\]}]$/;
+
+// Label and options for a token, or null when it's an ordinary placeholder.
+function parsePhToken(token) {
+  const m = String(token).match(PH_LIST_RE);
+  if (!m) return null;
+  const options = m[2].split(',').map((o) => o.trim()).filter(Boolean);
+  if (!options.length) return null;
+  return { label: m[1].trim(), options };
+}
+
+// What the token would say if it filled itself in — null for anything that
+// isn't one of the known names. Matched on the bare word inside the brackets,
+// so [date] and {date} behave the same.
+function autoPhValue(token) {
+  const bare = String(token).replace(/^[[{]|[\]}]$/g, '').trim().toLowerCase();
+  const now = new Date();
+  if (bare === 'date') return now.toLocaleDateString();
+  if (bare === 'time') return now.toLocaleTimeString();
+  if (bare === 'datetime') return now.toLocaleString();
+  if (bare === 'clipboard') return _phClipboard;
+  return null;
+}
+
+// The clipboard is read once when the fill bar rebuilds rather than per field:
+// navigator.clipboard.readText() is async and prompts nothing in Electron, but
+// calling it from inside a synchronous DOM build would mean rendering the row
+// twice for every [clipboard] in the note.
+let _phClipboard = '';
+function refreshPhClipboard() {
+  if (!navigator.clipboard || !navigator.clipboard.readText) return;
+  navigator.clipboard.readText().then((txt) => {
+    const next = String(txt || '').trim();
+    if (next === _phClipboard) return;
+    _phClipboard = next;
+    // Only rebuild if a [clipboard] token is actually on screen.
+    if (placeholderFieldsEl.querySelector('[data-token*="clipboard" i]')) updatePlaceholderPanel();
+  }).catch(() => {});
+}
+
+function phPresets() {
+  if (!Array.isArray(state.phPresets)) state.phPresets = [];
+  return state.phPresets;
+}
+
+// Values typed into the bar but not yet applied. This is what "save as preset"
+// captures — once a value is applied the token is gone from the note, so there
+// is nothing left to read back.
+function currentPhDraft() {
+  const out = {};
+  Array.from(placeholderFieldsEl.children).forEach((row) => {
+    const token = row.dataset.token;
+    const field = row.querySelector('input, select');
+    if (!token || !field) return;
+    const val = String(field.value || '').trim();
+    if (val) out[token] = val;
+  });
+  return out;
+}
+
+// Fill every token in the note the preset has a value for, in one pass. Done
+// as a single content rewrite rather than a loop over fillPlaceholder so the
+// whole preset is one undo step.
+function applyPhPreset(preset) {
+  const t = activeTab();
+  if (!t || !preset || !preset.values) return;
+  syncEditorToState();
+  const tokens = findPlaceholderTokens(t.content);
+  const hits = tokens.filter((tok) => preset.values[tok]);
+  if (!hits.length) { showToast(tr('ph.presetNoMatch', 'Nothing in this note matches that preset')); return; }
+
+  commitCheckpoint(t);
+  const prevContent = t.content;
+  let next = t.content;
+  hits.forEach((tok) => {
+    rememberPhValue(tok, preset.values[tok]);
+    next = next.split(tok).join(preset.values[tok]);
+  });
+  t.content = next;
+  t.undoStack = t.undoStack || [];
+  t.undoStack.push(prevContent);
+  if (t.undoStack.length > UNDO_LIMIT) t.undoStack.shift();
+  t.redoStack = [];
+  setEditorText(t.content);
+  updateCounts();
+  scheduleSave();
+  updatePlaceholderPanel();
+}
+
+// ---------- Preset menu (the ≡ button in the fill bar) ----------
+const phPresetBtn = document.getElementById('phPresetBtn');
+const phPresetMenu = document.getElementById('phPresetMenu');
+const phPresetDialog = document.getElementById('phPresetDialog');
+const phPresetNameInput = document.getElementById('phPresetNameInput');
+const phPresetSummary = document.getElementById('phPresetSummary');
+const phPresetCancel = document.getElementById('phPresetCancel');
+const phPresetSave = document.getElementById('phPresetSave');
+
+let _phPendingDraft = null;
+
+function hidePhPresetMenu() { phPresetMenu.classList.add('hidden'); }
+
+function openPhPresetMenu() {
+  const list = phPresets();
+  phPresetMenu.innerHTML = '';
+  const label = document.createElement('div');
+  label.className = 'ctx-label';
+  label.textContent = tr('ph.presets', 'Presets');
+  phPresetMenu.appendChild(label);
+
+  if (!list.length) {
+    const empty = document.createElement('div');
+    empty.className = 'ctx-item ctx-item--disabled';
+    empty.textContent = tr('ph.noPresets', 'None saved yet');
+    phPresetMenu.appendChild(empty);
+  } else {
+    list.forEach((p) => {
+      const item = document.createElement('div');
+      item.className = 'ctx-item';
+      item.textContent = p.name;
+      item.setAttribute('dir', detectDir(p.name));
+      item.addEventListener('click', () => { hidePhPresetMenu(); applyPhPreset(p); });
+      phPresetMenu.appendChild(item);
+    });
+  }
+
+  const sep = document.createElement('div');
+  sep.className = 'ctx-sep';
+  phPresetMenu.appendChild(sep);
+  const save = document.createElement('div');
+  save.className = 'ctx-item';
+  save.textContent = tr('ph.savePreset', 'Save typed values…');
+  save.addEventListener('click', () => { hidePhPresetMenu(); openPhPresetDialog(); });
+  phPresetMenu.appendChild(save);
+
+  phPresetMenu.classList.remove('hidden');
+  const r = phPresetBtn.getBoundingClientRect();
+  const box = phPresetMenu.getBoundingClientRect();
+  const left = Math.max(6, Math.min(r.left, window.innerWidth - box.width - 6));
+  const top = Math.min(r.bottom + 4, window.innerHeight - box.height - 6);
+  phPresetMenu.style.left = Math.round(left) + 'px';
+  phPresetMenu.style.top = Math.round(Math.max(6, top)) + 'px';
+}
+
+function openPhPresetDialog() {
+  const draft = currentPhDraft();
+  const n = Object.keys(draft).length;
+  if (!n) {
+    showToast(tr('ph.presetEmpty', 'Type values into the fields first, then save them'));
+    return;
+  }
+  _phPendingDraft = draft;
+  phPresetNameInput.value = '';
+  phPresetSummary.textContent = Object.keys(draft)
+    .map((k) => k + ' → ' + draft[k])
+    .join('  ·  ');
+  phPresetDialog.classList.remove('hidden');
+  phPresetNameInput.focus();
+}
+
+function closePhPresetDialog() {
+  phPresetDialog.classList.add('hidden');
+  _phPendingDraft = null;
+}
+
+function confirmPhPresetDialog() {
+  const name = phPresetNameInput.value.trim();
+  const draft = _phPendingDraft;
+  closePhPresetDialog();
+  if (!name || !draft) return;
+  const existing = phPresets().find((p) => p.name.toLowerCase() === name.toLowerCase());
+  if (existing) existing.values = draft;
+  else phPresets().push({ id: uid(), name, values: draft });
+  renderPhPresetList();
+  scheduleSave();
+}
+
+function renderPhPresetList() {
+  const el = document.getElementById('phPresetList');
+  if (!el) return;
+  el.innerHTML = '';
+  const list = phPresets();
+  if (!list.length) {
+    const empty = document.createElement('p');
+    empty.className = 'set-hint custom-action-empty';
+    empty.textContent = tr('ph.noPresetsHint',
+      'No presets yet — fill the bar’s fields in a note, then Presets → Save typed values.');
+    el.appendChild(empty);
+    return;
+  }
+  list.forEach((p) => {
+    const row = document.createElement('div');
+    row.className = 'custom-action-row';
+    const text = document.createElement('div');
+    text.className = 'custom-action-text';
+    const name = document.createElement('span');
+    name.className = 'custom-action-name';
+    name.textContent = p.name;
+    name.setAttribute('dir', detectDir(p.name));
+    const vals = document.createElement('span');
+    vals.className = 'custom-action-prompt';
+    vals.textContent = Object.keys(p.values || {}).map((k) => k + ' → ' + p.values[k]).join(', ');
+    text.appendChild(name);
+    text.appendChild(vals);
+    const btns = document.createElement('div');
+    btns.className = 'custom-action-btns';
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'custom-action-btn';
+    del.textContent = tr('delete', 'Delete');
+    del.addEventListener('click', () => {
+      state.phPresets = phPresets().filter((x) => x.id !== p.id);
+      renderPhPresetList();
+      scheduleSave();
+    });
+    btns.appendChild(del);
+    row.appendChild(text);
+    row.appendChild(btns);
+    el.appendChild(row);
+  });
+}
+
+if (phPresetBtn) {
+  phPresetBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (phPresetMenu.classList.contains('hidden')) openPhPresetMenu();
+    else hidePhPresetMenu();
+  });
+}
+document.addEventListener('mousedown', (e) => {
+  if (phPresetMenu.classList.contains('hidden')) return;
+  if (!phPresetMenu.contains(e.target) && e.target !== phPresetBtn) hidePhPresetMenu();
+});
+if (phPresetCancel) phPresetCancel.addEventListener('click', closePhPresetDialog);
+if (phPresetSave) phPresetSave.addEventListener('click', confirmPhPresetDialog);
+if (phPresetNameInput) {
+  phPresetNameInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); confirmPhPresetDialog(); }
+    if (e.key === 'Escape') closePhPresetDialog();
+  });
+}
+
+// ---------- Blocks (@) and slash commands (/) ----------
+// Two triggers, one popup. "@" inserts a *block* — a reusable piece of a
+// prompt (a persona, an output format, your standing rules); "/" runs a
+// command. They share the machinery because they're the same interaction:
+// something typed in the note opens a list anchored at the caret, and picking
+// an entry rewrites the text you typed to trigger it.
+//
+// The trigger must sit at a word start (line start or after whitespace).
+// Without that guard "/" fires inside every URL and file path, and "@" inside
+// every email address.
+const INLINE_TRIGGER_RE = /(?:^|\s)([@/])([^\s@/]*)$/;
+
+// Where the caret should land after a block is inserted. Borrowed from every
+// snippet engine going; stripped before the text reaches the note.
+const BLOCK_CARET = '$0';
+
+// Starter blocks, written once into a workspace that has never had any. They
+// exist to make "@" discoverable — a picker that opens empty teaches nothing.
+function seedBlocks() {
+  return [
+    { id: uid(), name: 'persona',
+      body: 'You are a [role] with deep experience in [field].\nAnswer as that person would.' },
+    { id: uid(), name: 'json',
+      body: 'Return your answer as JSON only — no prose, no code fence:\n{\n  "": ""\n}' },
+    { id: uid(), name: 'rules',
+      body: 'Rules:\n- Ask before assuming anything not stated here.\n- Say so plainly when you are unsure.\n- No filler, no preamble.' },
+    { id: uid(), name: 'steps',
+      body: 'Work through this step by step, then give the final answer on its own line.' }
+  ];
+}
+
+function blocks() {
+  if (!Array.isArray(state.blocks)) state.blocks = seedBlocks();
+  return state.blocks;
+}
+
+// ---------- The popup ----------
+const inlinePop = document.getElementById('inlinePop');
+const inlinePopList = document.getElementById('inlinePopList');
+const inlinePopFoot = document.getElementById('inlinePopFoot');
+
+// Open state: which line the trigger sits in, the offsets it spans, and the
+// entries currently drawn. `line` is held rather than re-derived because a
+// pick has to rewrite exactly the text that opened the popup, and the caret
+// may have moved by then.
+let inlineCtx = null;
+let inlineItems = [];
+let inlineIdx = 0;
+
+function inlineOpen() { return !!inlineCtx; }
+
+function closeInlinePop() {
+  if (!inlineCtx) return;
+  inlineCtx = null;
+  inlineItems = [];
+  inlineIdx = 0;
+  inlinePop.classList.add('hidden');
+}
+
+// Every command "/" offers, in menu order. Built fresh each time so the AI
+// entries appear and disappear with the AI setting, exactly like the palette.
+function slashCommands() {
+  const out = [];
+  const md = (key, name, hint) =>
+    ({ name, hint, kind: 'md', run: () => runMdCommand(key) });
+
+  if (aiOn()) {
+    BUILTIN_AI_ACTIONS.forEach((a) => {
+      if (a.sep) return;
+      // "tone-professional" reads as "/professional" — the prefix is a
+      // grouping detail of the menu, not something anyone would type.
+      out.push({
+        name: a.id.replace(/^tone-/, ''), hint: a.label, kind: 'ai',
+        run: () => runTabAiAction(a.id)
+      });
+    });
+    customAiActions().forEach((a) => {
+      out.push({
+        name: a.name, hint: 'Your action', kind: 'ai',
+        run: () => runTabAiAction('custom', a.prompt)
+      });
+    });
+  }
+
+  out.push(md('todo', 'todo', 'Checklist item'));
+  out.push(md('table', 'table', 'Insert a table'));
+  out.push(md('codeblock', 'code', 'Code block'));
+  out.push(md('quote', 'quote', 'Block quote'));
+  out.push(md('ul', 'list', 'Bulleted list'));
+  out.push(md('ol', 'numbered', 'Numbered list'));
+  out.push(md('h1', 'h1', 'Heading 1'));
+  out.push(md('h2', 'h2', 'Heading 2'));
+  out.push(md('hr', 'divider', 'Horizontal rule'));
+  out.push(md('link', 'link', 'Insert a link'));
+
+  out.push({
+    name: 'date', hint: new Date().toLocaleDateString(), kind: 'ins',
+    run: () => insertAtCaret(new Date().toLocaleDateString())
+  });
+  out.push({
+    name: 'time', hint: new Date().toLocaleTimeString(), kind: 'ins',
+    run: () => insertAtCaret(new Date().toLocaleTimeString())
+  });
+  return out;
+}
+
+// Entries for a trigger, already filtered by what's been typed after it.
+function inlineCandidates(trigger, query) {
+  const all = trigger === '@'
+    ? blocks().map((b) => ({
+        name: b.name,
+        hint: String(b.body || '').replace(/\s+/g, ' ').trim(),
+        kind: 'block',
+        run: () => insertBlockBody(b)
+      }))
+    : slashCommands();
+  if (!query) return all.slice(0, 40);
+  return all
+    .map((c) => ({ c, s: cmdFuzzyScore(query, c.name) }))
+    .filter((x) => x.s >= 0)
+    .sort((a, b) => a.s - b.s)
+    .slice(0, 40)
+    .map((x) => x.c);
+}
+
+function renderInlinePop() {
+  inlinePopList.innerHTML = '';
+  if (!inlineItems.length) {
+    const empty = document.createElement('div');
+    empty.className = 'ip-empty';
+    empty.textContent = inlineCtx && inlineCtx.trigger === '@'
+      ? tr('blocks.none', 'No block by that name')
+      : tr('slash.none', 'No command by that name');
+    inlinePopList.appendChild(empty);
+  } else {
+    inlineItems.forEach((c, i) => {
+      const row = document.createElement('div');
+      row.className = 'ip-row' + (i === inlineIdx ? ' active' : '');
+      row.dataset.idx = i;
+      const name = document.createElement('span');
+      name.className = 'ip-row-name';
+      name.textContent = (inlineCtx.trigger === '@' ? '@' : '/') + c.name;
+      row.appendChild(name);
+      if (c.hint) {
+        const hint = document.createElement('span');
+        hint.className = 'ip-row-hint';
+        hint.textContent = c.hint;
+        hint.setAttribute('dir', detectDir(c.hint));
+        row.appendChild(hint);
+      }
+      inlinePopList.appendChild(row);
+    });
+  }
+  inlinePopFoot.textContent = tr('inline.pick', '↑↓ move · Enter insert · Esc close');
+}
+
+// Anchor the list to the caret, flipping above it when there's no room below.
+function positionInlinePop() {
+  const sel = window.getSelection();
+  let rect = null;
+  if (sel && sel.rangeCount) {
+    const r = sel.getRangeAt(0).cloneRange();
+    r.collapse(true);
+    rect = r.getBoundingClientRect();
+  }
+  if (!rect || (!rect.top && !rect.left)) {
+    const line = currentLine();
+    rect = line ? line.getBoundingClientRect() : null;
+  }
+  if (!rect) { closeInlinePop(); return; }
+
+  inlinePop.classList.remove('hidden');
+  const box = inlinePop.getBoundingClientRect();
+  const gap = 4;
+  let top = rect.bottom + gap;
+  if (top + box.height > window.innerHeight - 6) {
+    const above = rect.top - gap - box.height;
+    top = above >= 6 ? above : Math.max(6, window.innerHeight - box.height - 6);
+  }
+  const left = Math.max(6, Math.min(rect.left, window.innerWidth - box.width - 6));
+  inlinePop.style.top = Math.round(top) + 'px';
+  inlinePop.style.left = Math.round(left) + 'px';
+}
+
+function setInlineActive(idx) {
+  const rows = [...inlinePopList.querySelectorAll('.ip-row')];
+  if (!rows.length) return;
+  inlineIdx = (idx + rows.length) % rows.length;
+  rows.forEach((r, i) => r.classList.toggle('active', i === inlineIdx));
+  rows[inlineIdx].scrollIntoView({ block: 'nearest' });
+}
+
+// Re-read the line under the caret and decide whether the popup belongs open.
+// Called on every editor input, so it stays cheap: one regex over the text
+// before the caret on a single line.
+function refreshInlinePop() {
+  if (mdOn() || fsActive() || aiChatActive() || !activeTab()) { closeInlinePop(); return; }
+  const blocksOn = settings.blocksEnabled !== false;
+  const slashOn = settings.slashEnabled !== false;
+  if (!blocksOn && !slashOn) { closeInlinePop(); return; }
+
+  const line = currentLine();
+  if (!line) { closeInlinePop(); return; }
+  const off = getCaretOffsetIn(line);
+  if (off == null) { closeInlinePop(); return; }
+  const before = line.textContent.slice(0, off);
+  const m = before.match(INLINE_TRIGGER_RE);
+  if (!m) { closeInlinePop(); return; }
+
+  const trigger = m[1];
+  if (trigger === '@' && !blocksOn) { closeInlinePop(); return; }
+  if (trigger === '/' && !slashOn) { closeInlinePop(); return; }
+
+  const query = m[2];
+  const start = off - (trigger.length + query.length);
+  const items = inlineCandidates(trigger, query);
+  // Nothing matches what's been typed — the user is writing prose that happens
+  // to start with a slash, not picking from a list. Get out of the way.
+  if (!items.length && query) { closeInlinePop(); return; }
+
+  const keepIdx = inlineCtx && inlineCtx.trigger === trigger ? inlineIdx : 0;
+  inlineCtx = { trigger, query, line, start, end: off };
+  inlineItems = items;
+  inlineIdx = Math.min(keepIdx, Math.max(0, items.length - 1));
+  renderInlinePop();
+  positionInlinePop();
+}
+
+// Replace [start, end) of `line` with `replacement`, which may carry newlines.
+// A multi-line insert can't go through setLineText — it has to become several
+// line divs, or the note ends up with a literal newline inside one line.
+function replaceInLine(line, start, end, replacement, hasCaretMark) {
+  const text = line.textContent;
+  const head = text.slice(0, start);
+  const tail = text.slice(end);
+  const parts = String(replacement).split('\n');
+
+  // Where the caret goes: the $0 marker if the block carried one, otherwise
+  // the end of what was inserted.
+  let caretLine = parts.length - 1;
+  let caretCol = parts[parts.length - 1].length;
+  if (hasCaretMark) {
+    for (let i = 0; i < parts.length; i++) {
+      const at = parts[i].indexOf(BLOCK_CARET);
+      if (at !== -1) {
+        parts[i] = parts[i].slice(0, at) + parts[i].slice(at + BLOCK_CARET.length);
+        caretLine = i;
+        caretCol = at;
+        break;
+      }
+    }
+  }
+  if (caretLine === 0) caretCol += head.length;
+
+  if (parts.length === 1) {
+    setLineText(line, head + parts[0] + tail, caretCol);
+    return;
+  }
+  const made = parts.map((p, i) => {
+    if (i === 0) return makeLine(head + p);
+    if (i === parts.length - 1) return makeLine(p + tail);
+    return makeLine(p);
+  });
+  line.replaceWith(...made);
+  made.forEach(highlightLine);
+  updateLineDirs();
+  placeCaretInLine(made[caretLine], caretCol);
+  made[caretLine].scrollIntoView({ block: 'nearest' });
+  handleEditorChanged();
+}
+
+function insertBlockBody(b) {
+  const ctx = inlineCtx;
+  if (!ctx) return;
+  closeInlinePop();
+  const body = String(b.body || '');
+  replaceInLine(ctx.line, ctx.start, ctx.end, body, body.includes(BLOCK_CARET));
+}
+
+function runInlineActive() {
+  const item = inlineItems[inlineIdx];
+  const ctx = inlineCtx;
+  if (!item || !ctx) { closeInlinePop(); return; }
+  if (ctx.trigger === '@') { item.run(); return; }   // rewrites the line itself
+  // A command consumes the "/query" that summoned it before it runs, so the
+  // trigger text never survives into the note (and an AI action isn't handed
+  // "/summarize" as part of its input).
+  closeInlinePop();
+  replaceInLine(ctx.line, ctx.start, ctx.end, '', false);
+  try { item.run(); } catch (err) { console.error('slash command failed', err); }
+}
+
+// Keys are taken in the capture phase on the document: the editor's own Enter
+// and Tab handlers live on #editor and would otherwise split the line before
+// this ever saw the key.
+document.addEventListener('keydown', (e) => {
+  if (!inlineOpen() || e.isComposing) return;
+  if (e.key === 'ArrowDown') { e.preventDefault(); e.stopPropagation(); setInlineActive(inlineIdx + 1); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); e.stopPropagation(); setInlineActive(inlineIdx - 1); }
+  else if (e.key === 'Enter' || e.key === 'Tab') {
+    if (!inlineItems.length) { closeInlinePop(); return; }
+    e.preventDefault();
+    e.stopPropagation();
+    runInlineActive();
+  } else if (e.key === 'Escape') {
+    e.preventDefault();
+    e.stopPropagation();
+    closeInlinePop();
+  }
+}, true);
+
+inlinePopList.addEventListener('mousemove', (e) => {
+  const row = e.target.closest('.ip-row');
+  if (row) setInlineActive(+row.dataset.idx);
+});
+// The editor must keep focus through the click, or the caret the insert is
+// aimed at is gone by the time the handler runs.
+inlinePop.addEventListener('mousedown', (e) => e.preventDefault());
+inlinePopList.addEventListener('click', (e) => {
+  const row = e.target.closest('.ip-row');
+  if (!row) return;
+  setInlineActive(+row.dataset.idx);
+  runInlineActive();
+});
+
+editorEl.addEventListener('input', refreshInlinePop);
+editorEl.addEventListener('blur', () => setTimeout(closeInlinePop, 60));
+// Arrow keys and clicks move the caret off the trigger without firing input.
+editorEl.addEventListener('keyup', (e) => {
+  if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) refreshInlinePop();
+});
+editorEl.addEventListener('mouseup', () => { if (inlineOpen()) refreshInlinePop(); });
+window.addEventListener('resize', () => { if (inlineOpen()) positionInlinePop(); });
+
+// ---------- Blocks: settings list + editor dialog ----------
+const blocksListEl = document.getElementById('blocksList');
+const addBlockBtn = document.getElementById('addBlockBtn');
+const blockDialog = document.getElementById('blockDialog');
+const blockDialogLabel = document.getElementById('blockDialogLabel');
+const blockNameInput = document.getElementById('blockNameInput');
+const blockBodyInput = document.getElementById('blockBodyInput');
+const blockCancel = document.getElementById('blockCancel');
+const blockSave = document.getElementById('blockSave');
+
+let editingBlockId = null;
+
+// Names are what gets typed after "@", so they can't hold whitespace or the
+// trigger characters — the regex that opens the popup stops at all three.
+function normalizeBlockName(raw) {
+  return String(raw || '').trim().replace(/[\s@/]+/g, '-').slice(0, 32);
+}
+
+function uniqueBlockName(name, ignoreId) {
+  const taken = new Set(
+    blocks().filter((b) => b.id !== ignoreId).map((b) => String(b.name).toLowerCase())
+  );
+  if (!taken.has(name.toLowerCase())) return name;
+  let n = 2;
+  while (taken.has((name + '-' + n).toLowerCase())) n++;
+  return name + '-' + n;
+}
+
+function renderBlocksList() {
+  if (!blocksListEl) return;
+  blocksListEl.innerHTML = '';
+  const list = blocks();
+  if (!list.length) {
+    const empty = document.createElement('p');
+    empty.className = 'set-hint custom-action-empty';
+    empty.textContent = tr('blocks.empty', 'No blocks yet.');
+    blocksListEl.appendChild(empty);
+    return;
+  }
+  list.forEach((b) => {
+    const row = document.createElement('div');
+    row.className = 'custom-action-row';
+    const text = document.createElement('div');
+    text.className = 'custom-action-text';
+    const name = document.createElement('span');
+    name.className = 'custom-action-name';
+    name.textContent = '@' + b.name;
+    const body = document.createElement('span');
+    body.className = 'custom-action-prompt';
+    body.textContent = String(b.body || '').replace(/\s+/g, ' ').trim();
+    body.setAttribute('dir', detectDir(b.body || ''));
+    text.appendChild(name);
+    text.appendChild(body);
+    const btns = document.createElement('div');
+    btns.className = 'custom-action-btns';
+    const edit = document.createElement('button');
+    edit.type = 'button';
+    edit.className = 'custom-action-btn';
+    edit.textContent = tr('edit', 'Edit');
+    edit.addEventListener('click', () => openBlockDialog(b.id));
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'custom-action-btn';
+    del.textContent = tr('delete', 'Delete');
+    del.addEventListener('click', () => {
+      state.blocks = blocks().filter((x) => x.id !== b.id);
+      renderBlocksList();
+      scheduleSave();
+    });
+    btns.appendChild(edit);
+    btns.appendChild(del);
+    row.appendChild(text);
+    row.appendChild(btns);
+    blocksListEl.appendChild(row);
+  });
+}
+
+function openBlockDialog(id, presetBody) {
+  editingBlockId = id || null;
+  const b = id ? blocks().find((x) => x.id === id) : null;
+  blockDialogLabel.textContent = b ? tr('blocks.edit', 'Edit block') : tr('blocks.new', 'New block');
+  blockNameInput.value = b ? b.name : '';
+  blockBodyInput.value = b ? b.body : (presetBody || '');
+  blockDialog.classList.remove('hidden');
+  (b ? blockBodyInput : blockNameInput).focus();
+}
+
+function closeBlockDialog() {
+  blockDialog.classList.add('hidden');
+  editingBlockId = null;
+}
+
+function confirmBlockDialog() {
+  const body = blockBodyInput.value;
+  let name = normalizeBlockName(blockNameInput.value);
+  if (!name && !body.trim()) { closeBlockDialog(); return; }
+  if (!name) name = 'block';
+  name = uniqueBlockName(name, editingBlockId);
+  const existing = editingBlockId ? blocks().find((b) => b.id === editingBlockId) : null;
+  if (existing) {
+    existing.name = name;
+    existing.body = body;
+  } else {
+    blocks().push({ id: uid(), name, body });
+  }
+  closeBlockDialog();
+  renderBlocksList();
+  scheduleSave();
+}
+
+if (addBlockBtn) addBlockBtn.addEventListener('click', () => openBlockDialog(null));
+if (blockCancel) blockCancel.addEventListener('click', closeBlockDialog);
+if (blockSave) blockSave.addEventListener('click', confirmBlockDialog);
+if (blockNameInput) {
+  blockNameInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); blockBodyInput.focus(); }
+    if (e.key === 'Escape') closeBlockDialog();
+  });
+}
+if (blockBodyInput) {
+  blockBodyInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); confirmBlockDialog(); }
+    if (e.key === 'Escape') closeBlockDialog();
+  });
+}
+
+// Turn whatever is selected in the note into a block, with the dialog opened
+// on it so it can be named. Wired to the editor's right-click menu.
+function saveSelectionAsBlock(preset) {
+  const range = preset === undefined ? currentSelectionRange() : null;
+  const t = activeTab();
+  const body = preset !== undefined ? preset : (range ? range.text : (t ? t.content : ''));
+  if (!String(body || '').trim()) return;
+  openSettings();
+  setTimeout(() => {
+    revealSetting('blocksList');
+    openBlockDialog(null, body);
+  }, 60);
+}
 
 // ---------- Handy (peek) mode ----------
 // The window collapses to a thin line at the bottom edge; hovering it slides
@@ -6965,6 +8467,15 @@ async function toggleFullscreen() {
 }
 fullscreenBtn.addEventListener('click', toggleFullscreen);
 window.api.onFullscreenChange(applyFullscreen);
+
+// Window motion goes straight to the effect layer. Nothing in the app itself
+// wants it — it is only for themes that model something physical, and they
+// are the only things that know what to do with it.
+if (window.api.onWindowShove) {
+  window.api.onWindowShove((v) => {
+    if (window.PP_FX && v) PP_FX.shove(v.dx || 0, v.dy || 0);
+  });
+}
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'F11') return;
   e.preventDefault();
@@ -7120,12 +8631,30 @@ function applyTheme(name) {
   // Pro themes carry a runtime (refraction maps, scanline roll, glyph rain,
   // the audio analyser). Swap it after the class, so a runtime that measures
   // an element reads it with the new layout already applied.
-  if (window.PP_FX) window.PP_FX.apply(t.fx || null);
+  if (window.PP_FX) {
+    // Volume first: apply() may build the audio graph, and a sound theme
+    // arriving at the module default would be loud for one keystroke.
+    if (window.PP_FX.setVolume) window.PP_FX.setVolume((settings.fxVolume ?? 60) / 100);
+    window.PP_FX.apply(t.fx || null);
+  }
   // The native window can't take the rgba backgrounds the effect themes use.
   window.api.setBgColor(t.winBg || t.bg);
 }
 
 function applyFont(id) {
+  // A theme may ship a typeface — Nostalgia does, where a smooth font over
+  // dithered pixels breaks the illusion. It is only a default: the switch in
+  // Settings hands the font picker back, and the theme still looks like
+  // itself, just in your face rather than its own.
+  const themed = THEMES[settings.theme] && THEMES[settings.theme].font;
+  const useThemeFont = themed && settings.themeFont !== false;
+  if (themeFontRow) themeFontRow.classList.toggle('hidden', !themed);
+  if (toggleThemeFontEl) toggleThemeFontEl.checked = settings.themeFont !== false;
+  if (fontRow) fontRow.classList.toggle('disabled', !!useThemeFont);
+  if (useThemeFont) {
+    document.documentElement.style.setProperty('--font', themed);
+    return;
+  }
   const f = FONTS[id] || FONTS.cascadia;
   document.documentElement.style.setProperty('--font', f.stack);
 }
@@ -7159,6 +8688,7 @@ function applySettings() {
   applyFont(settings.font);
   applyFontSize();
   window.api.setOpacity((settings.windowOpacity || 100) / 100);
+  document.documentElement.classList.toggle('no-anim', !animationsOn());
   appEl.classList.toggle('rail-hidden', !!settings.railHidden);
   appEl.classList.toggle('zen-mode', !!settings.zenMode);
   appEl.classList.toggle('tabsize-small', settings.tabSize === 'small');
@@ -7238,6 +8768,7 @@ function markFeatureSeen(key) {
 function applyNewBadges() {
   const seen = settings.seenFeatures || {};
   improveBtn.classList.toggle('has-new-badge', aiOn() && !seen.improve);
+  applyThemeTabBadge();
 }
 
 // ---------- Toolbar buttons show/hide ----------
@@ -7255,9 +8786,6 @@ const TOOLBAR_BUTTONS = [
   { key: 'copy', label: 'Copy', el: () => copyBtn },
   { key: 'img', label: 'Image', el: () => imgBtn },
   { key: 'table', label: 'Table', el: () => tableBtn },
-  // genImgBtn intentionally omitted — image generation is hidden for now,
-  // see index.html; leaving it out of this list keeps it from being
-  // re-shown via the Settings → Toolbar buttons chips.
   { key: 'files', label: 'Attach File', el: () => filesBtn }
 ];
 
@@ -7424,17 +8952,48 @@ function buildToolbarChips() {
 }
 
 // ---------- Placeholder panel collapse ----------
-function applyPlaceholderCollapsed() {
+// The side panel's slide is pure CSS: both widths are known, so a transition
+// on `width` is the whole animation. The top bar is the awkward one — its open
+// height is however tall the fields happen to be — so it gets the usual
+// accordion treatment: pin max-height to the measured height, then drive it to
+// zero (and back), releasing the cap afterwards so the row can still grow when
+// a note gains a placeholder.
+let phCollapseTimer = null;
+
+function applyPlaceholderCollapsed(animate) {
   const c = !!settings.placeholderBarCollapsed;
+  const side = settings.placeholderBarPosition === 'right';
   placeholderBarEl.classList.toggle('collapsed', c);
   editorBodyEl.classList.toggle('ph-collapsed', c);
   placeholderCollapseEl.classList.toggle('collapsed', c);
-  placeholderCollapseEl.title = c ? 'Expand' : 'Collapse';
+  placeholderCollapseEl.title = c ? tr('expand', 'Expand') : tr('collapse', 'Collapse');
+
+  clearTimeout(phCollapseTimer);
+  const fields = placeholderFieldsEl;
+  if (side) { fields.style.maxHeight = ''; return; }
+
+  if (!animate) {
+    fields.style.maxHeight = c ? '0px' : '';
+    return;
+  }
+  if (c) {
+    fields.style.maxHeight = fields.scrollHeight + 'px';
+    // One frame at the measured height, or the browser has no start value to
+    // animate from and jumps straight to zero.
+    requestAnimationFrame(() => {
+      if (settings.placeholderBarCollapsed) fields.style.maxHeight = '0px';
+    });
+  } else {
+    fields.style.maxHeight = fields.scrollHeight + 'px';
+    phCollapseTimer = setTimeout(() => {
+      if (!settings.placeholderBarCollapsed) fields.style.maxHeight = '';
+    }, 260);
+  }
 }
 
 placeholderCollapseEl.addEventListener('click', () => {
   settings.placeholderBarCollapsed = !settings.placeholderBarCollapsed;
-  applyPlaceholderCollapsed();
+  applyPlaceholderCollapsed(true);
   saveSettingsNow();
 });
 
@@ -7443,70 +9002,685 @@ async function saveSettingsNow() {
 }
 
 // ---------- Settings: panel ----------
-function buildThemeSwatches() {
-  themeRow.innerHTML = '';
-  const makeGroup = (label, entries) => {
-    const grp = document.createElement('div');
-    grp.className = 'theme-group';
-    const lbl = document.createElement('div');
-    lbl.className = 'theme-group-label';
-    lbl.textContent = label;
-    grp.appendChild(lbl);
-    const row = document.createElement('div');
-    row.className = 'theme-swatches';
-    entries.forEach(([key, t]) => {
-      const item = document.createElement('div');
-      item.className = 'theme-item';
-      const sw = document.createElement('button');
-      sw.className = 'theme-swatch' + (settings.theme === key ? ' active' : '');
-      sw.title = t.label;
-      sw.style.background = 'linear-gradient(135deg, ' + t.elevated + ' 0 55%, ' + t.sidebar + ' 55% 100%)';
-      // Checked on cssClass, not type — a couple of the "Pro" themes are light
-      // too and need the same subtle outline so a near-white swatch doesn't
-      // just disappear against the dark settings panel.
-      if (t.cssClass === 'theme-light') sw.style.outline = '1px solid rgba(0,0,0,.14)';
-      const dot = document.createElement('span');
-      dot.className = 'sw-dot';
-      dot.style.background = t.accent;
-      sw.appendChild(dot);
-      sw.addEventListener('click', () => {
-        const prev = THEMES[settings.theme];
-        settings.theme = key;
-        applySettings();
-        buildThemeSwatches();
-        saveSettingsNow();
-        // Glass is the one theme the renderer can't fully switch on its own —
-        // the window's acrylic material is fixed at creation. Offer the
-        // restart instead of leaving it looking half-applied.
-        const wasGlass = !!(prev && prev.needsRestart);
-        const isGlass = !!t.needsRestart;
-        if (wasGlass !== isGlass) showRestartBanner();
-      });
-      const name = document.createElement('span');
-      name.className = 'theme-name';
-      name.textContent = t.label;
-      item.appendChild(sw);
-      item.appendChild(name);
-      row.appendChild(item);
-    });
-    grp.appendChild(row);
-    themeRow.appendChild(grp);
-  };
-  const dark = Object.entries(THEMES).filter(([, t]) => t.type === 'dark');
-  const light = Object.entries(THEMES).filter(([, t]) => t.type === 'light');
-  const pro = Object.entries(THEMES).filter(([, t]) => t.type === 'pro');
-  // VIP is split out of Pro rather than added beside it: Pro had grown to two
-  // dozen entries and half of them were not the same kind of thing. A Pro theme
-  // runs a physics of its own behind the glass. A VIP theme is a material — the
-  // app rendered in satin, platinum, velvet, marble or leather — and it rewrites
-  // the chrome to match, because what makes a thing read as expensive is the
-  // hairline rules and the letterspacing, not the effect behind them.
-  const vip = Object.entries(THEMES).filter(([, t]) => t.type === 'vip');
-  makeGroup('Dark', dark);
-  makeGroup('Light', light);
-  if (pro.length) makeGroup('Pro', pro);
-  if (vip.length) makeGroup('VIP', vip);
+// ---------- Guide ----------
+// Topics live in guide.js; this only renders them. The language switch is
+// independent of the app's own — someone running the English interface may
+// still want to read the Persian, and the other way round — but it opens on
+// whichever the interface is set to, because that is the better guess.
+const guideOverlay = document.getElementById('guideOverlay');
+const guideNav = document.getElementById('guideNav');
+const guideArticle = document.getElementById('guideArticle');
+const guideLangSeg = document.getElementById('guideLangSeg');
+const guideClose = document.getElementById('guideClose');
+const openGuideBtn = document.getElementById('openGuideBtn');
+
+let guideLang = 'en';
+let guideTopic = null;
+
+function guideTopics() { return Array.isArray(window.PP_GUIDE) ? window.PP_GUIDE : []; }
+
+// The prose carries **bold**, `code` and nothing else. Built as elements
+// rather than innerHTML: the text is ours, but there is no reason for a
+// documentation renderer to be able to inject markup at all.
+function renderGuideLine(text, into) {
+  const re = /\*\*([^*]+)\*\*|`([^`]+)`/g;
+  let last = 0;
+  let m;
+  while ((m = re.exec(text))) {
+    if (m.index > last) into.appendChild(document.createTextNode(text.slice(last, m.index)));
+    const el = document.createElement(m[1] ? 'b' : 'code');
+    el.textContent = m[1] || m[2];
+    into.appendChild(el);
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) into.appendChild(document.createTextNode(text.slice(last)));
 }
+
+function renderGuideArticle() {
+  const t = guideTopics().find((x) => x.id === guideTopic) || guideTopics()[0];
+  if (!t) return;
+  const rtl = guideLang === 'fa';
+  guideArticle.setAttribute('dir', rtl ? 'rtl' : 'ltr');
+  guideArticle.innerHTML = '';
+  guideArticle.scrollTop = 0;
+
+  const h = document.createElement('h4');
+  h.textContent = t.title[guideLang] || t.title.en;
+  guideArticle.appendChild(h);
+
+  if (t.img) {
+    const img = document.createElement('img');
+    img.className = 'guide-shot';
+    img.src = 'guide-images/' + t.img;
+    img.alt = t.title.en;
+    // A missing screenshot leaves a broken-image box in the middle of the
+    // article; dropping the element is quieter and the prose still stands.
+    img.addEventListener('error', () => img.remove());
+    guideArticle.appendChild(img);
+  }
+
+  (t.body[guideLang] || t.body.en || []).forEach((line) => {
+    const p = document.createElement('p');
+    renderGuideLine(line, p);
+    guideArticle.appendChild(p);
+  });
+}
+
+function renderGuideNav() {
+  const rtl = guideLang === 'fa';
+  guideNav.setAttribute('dir', rtl ? 'rtl' : 'ltr');
+  guideNav.innerHTML = '';
+  guideTopics().forEach((t) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'guide-nav-item' + (t.id === guideTopic ? ' active' : '');
+    b.textContent = t.title[guideLang] || t.title.en;
+    b.addEventListener('click', () => {
+      guideTopic = t.id;
+      renderGuideNav();
+      renderGuideArticle();
+    });
+    guideNav.appendChild(b);
+  });
+  guideLangSeg.querySelectorAll('.seg-btn').forEach((el) => {
+    el.classList.toggle('active', el.dataset.guidelang === guideLang);
+  });
+}
+
+function openGuide() {
+  guideLang = settings.language === 'fa' ? 'fa' : 'en';
+  if (!guideTopic) guideTopic = (guideTopics()[0] || {}).id || null;
+  guideOverlay.classList.remove('hidden', 'closing');
+  renderGuideNav();
+  renderGuideArticle();
+}
+
+function closeGuide() { hideWithAnim(guideOverlay, 'closing'); }
+
+if (openGuideBtn) openGuideBtn.addEventListener('click', () => { closeSettings(); openGuide(); });
+if (guideClose) guideClose.addEventListener('click', closeGuide);
+if (guideOverlay) {
+  guideOverlay.addEventListener('click', (e) => { if (e.target === guideOverlay) closeGuide(); });
+}
+if (guideLangSeg) {
+  guideLangSeg.addEventListener('click', (e) => {
+    const btn = e.target.closest('.seg-btn');
+    if (!btn) return;
+    guideLang = btn.dataset.guidelang;
+    renderGuideNav();
+    renderGuideArticle();
+  });
+}
+
+// ---------- Theme browser ----------
+// Two problems with a wall of 34px swatches: at that size every dark theme is
+// the same dark square, and a swatch cannot show motion at all — which is the
+// entire content of the Pro, Sound, Live and Playable themes.
+//
+// So: a card is the app in miniature, painted from the theme's own variables,
+// and hovering one applies the theme to the real window for as long as the
+// pointer is on it. The settings panel is drawn with the same variables, so
+// the preview repaints the panel you are standing in — no separate render of
+// anything, and the effect runtime you are previewing is the real one.
+const themeBrowser = document.getElementById('themeBrowser');
+const tbGrid = document.getElementById('tbGrid');
+const tbFilters = document.getElementById('tbFilters');
+const tbSearch = document.getElementById('tbSearch');
+const tbFoot = document.getElementById('tbFoot');
+const tbHint = document.getElementById('tbHint');
+
+
+// Category order and labels, in one place — the swatch groups, the filter
+// chips and the card footers all read from it, so a new category is one line.
+// The old "Pro" was 25 entries with nothing in common but not being a plain
+// palette. These say what actually drives the theme, which is the only thing
+// that helps anyone find one.
+//
+// Each carries its own one-line explanation, shown under the chips when it is
+// selected. Half these words do not explain themselves — "Reactive" and "Live"
+// in particular could mean almost anything — and a category nobody can define
+// is a category nobody clicks.
+const THEME_KINDS = [
+  { id: 'dark',     label: 'Dark',      hint: 'Plain dark palettes. Nothing moves.' },
+  { id: 'light',    label: 'Light',     hint: 'Plain light palettes, for a lit room.' },
+  { id: 'reactive', label: 'Reactive',  hint: 'Answers your keyboard — the window responds as you write.' },
+  { id: 'nature',   label: 'Nature',    hint: 'Weather, water and sky, carrying on by themselves.' },
+  { id: 'machines', label: 'Machines',  hint: 'Instruments and screens: traces, tape, current.' },
+  { id: 'retro',    label: 'Nostalgia', hint: 'Places, drawn the way 1997 hardware drew them.' },
+  { id: 'live',     label: 'Live',      hint: 'Reads the real world — the clock, the season, your speakers.' },
+  { id: 'sound',    label: 'Sound',     hint: 'You hear these. Volume is at the bottom of this pane.' },
+  { id: 'play',     label: 'Playable',  hint: 'You can touch them. Push things around with the cursor.' },
+  { id: 'luxury',   label: 'Luxury',    hint: 'Rendered as a material: glass, gold, pearl, obsidian.' }
+];
+const TB_HINTS = {
+  all: 'Every theme, newest first.',
+  rec: 'A short list worth trying first.',
+  fav: 'The ones you starred.'
+};
+const KIND_LABEL = {};
+THEME_KINDS.forEach((k) => { KIND_LABEL[k.id] = k.label; });
+
+let tbFilter = 'all';
+// The card order for this visit to the pane. Held so that starring a theme or
+// picking one never rearranges the board under the pointer; recomputed when
+// the pane is next opened.
+let tbOrder = null;
+// Favourites as they stood when this visit began — see the note in
+// renderThemeBrowser where it is filled.
+let tbStarred = new Set();
+
+// There was a hover preview here — pass over a card and the whole window took
+// that theme on. It was pulled. Two things kept going wrong with it and both
+// were symptoms of the same problem: a preview that fires on movement fires on
+// movement you did not mean. The window growing as the pane opened slid cards
+// under a stationary cursor; so did the grid re-laying out after a render.
+// Each of those was fixable, and each fix was another guard on top of a
+// feature nobody had asked to be that clever. Clicking a card applies it
+// instantly and clicking another undoes that, which was always the honest
+// version of the same idea.
+
+function favThemes() {
+  if (!Array.isArray(settings.favThemes)) settings.favThemes = [];
+  return settings.favThemes;
+}
+function recentThemes() {
+  if (!Array.isArray(settings.recentThemes)) settings.recentThemes = [];
+  return settings.recentThemes;
+}
+function rememberTheme(key) {
+  const list = recentThemes().filter((k) => k !== key);
+  list.unshift(key);
+  settings.recentThemes = list.slice(0, 6);
+}
+
+// ---------- Live preview ----------
+// Applying a theme is already a pure function of settings.theme, so a peek is
+// just that with the save left out. Debounced: dragging the pointer across a
+// grid of cards would otherwise start and stop a dozen effect runtimes.
+// Which card is the current theme. Nothing else is marked any more.
+function markPeekingCard() {
+  if (!tbGrid) return;
+  tbGrid.querySelectorAll('.tb-card').forEach((el) => {
+    el.classList.toggle('active', el.dataset.theme === settings.theme);
+  });
+}
+
+// Clicking a card is the whole interaction now: it applies at once, and
+// clicking a different one applies that instead.
+function chooseTheme(key) {
+  const prev = THEMES[settings.theme];
+  settings.theme = key;
+  rememberTheme(key);
+  markThemeSeen(key);
+  applySettings();
+  renderThemeBrowser();
+  saveSettingsNow();
+  const t = THEMES[key];
+  if (!!(prev && prev.needsRestart) !== !!(t && t.needsRestart)) showRestartBanner();
+}
+
+// ---------- Cards ----------
+// The miniature is the app, not a diagram of it: the same title bar, the same
+// rail with the same tab shapes, a note with real words in it and a real
+// [placeholder], the same status bar. It is laid out at the window's actual
+// proportions and scaled down, so what you are looking at is the thing you
+// would get — every colour on it comes from the theme's own seven variables,
+// which is also why a theme added tomorrow gets a correct card for free.
+//
+// What a still cannot show is motion, and for half of these that is the whole
+// theme. That is what the hover preview is for: the card gets you close enough
+// to know which one to hover.
+function buildThemeMini(t, key) {
+  const wrap = document.createElement('div');
+  wrap.className = 'tb-mini';
+
+  const app = document.createElement('div');
+  app.className = 'tb-mini-app';
+  app.style.background = t.winBg || t.bg;
+  // Light themes need their hairlines dark and dark themes need them light,
+  // or half the cards come out looking like they have no chrome at all.
+  const light = /theme-light/.test(t.cssClass || '');
+  const rule = light ? 'rgba(0,0,0,.13)' : 'rgba(255,255,255,.09)';
+
+  // ---- title bar
+  const bar = document.createElement('div');
+  bar.className = 'tb-mini-bar';
+  bar.style.background = t.sidebar;
+  bar.style.borderBottom = '1px solid ' + rule;
+  const dot = document.createElement('span');
+  dot.className = 'tb-mini-dot';
+  dot.style.background = t.accent;
+  const brand = document.createElement('span');
+  brand.className = 'tb-mini-brand';
+  brand.style.color = t.text;
+  brand.textContent = 'promptpad';
+  bar.appendChild(dot);
+  bar.appendChild(brand);
+  const wins = document.createElement('span');
+  wins.className = 'tb-mini-wins';
+  for (let i = 0; i < 3; i++) {
+    const w = document.createElement('i');
+    w.style.background = t.text;
+    wins.appendChild(w);
+  }
+  bar.appendChild(wins);
+
+  // ---- body: rail + note
+  const body = document.createElement('div');
+  body.className = 'tb-mini-body';
+
+  const rail = document.createElement('div');
+  rail.className = 'tb-mini-rail';
+  rail.style.background = t.sidebar;
+  rail.style.borderRight = '1px solid ' + rule;
+  ['new', 'templates', 'discover'].forEach((label) => {
+    const pill = document.createElement('span');
+    pill.className = 'tb-mini-pill';
+    pill.style.color = t.text;
+    pill.style.border = '1px solid ' + rule;
+    pill.textContent = label;
+    rail.appendChild(pill);
+  });
+  const active = document.createElement('span');
+  active.className = 'tb-mini-pill tb-mini-pill--on';
+  active.style.color = t.text;
+  active.style.background = t.elevatedHi;
+  active.style.boxShadow = 'inset 2px 0 0 ' + t.accent;
+  active.textContent = 'tea landing';
+  rail.appendChild(active);
+
+  const note = document.createElement('div');
+  note.className = 'tb-mini-note';
+  note.style.background = t.bg;
+  note.style.color = t.text;
+  const p1 = document.createElement('div');
+  p1.textContent = 'Write a landing page for';
+  const p2 = document.createElement('div');
+  p2.textContent = 'a tea company. Keep it';
+  const p3 = document.createElement('div');
+  p3.append('calm. Tone: ');
+  const ph = document.createElement('span');
+  ph.style.color = t.accent;
+  ph.textContent = '[tone]';
+  p3.appendChild(ph);
+  const caret = document.createElement('span');
+  caret.className = 'tb-mini-caret';
+  caret.style.background = t.accent;
+  p3.appendChild(caret);
+  note.appendChild(p1);
+  note.appendChild(p2);
+  note.appendChild(p3);
+
+  // The sketch: a few seconds of what the theme actually does, over the note
+  // area rather than the whole card, so the miniature still reads as the app
+  // — the rail and the title bar are half of why the card is convincing.
+  if (window.PP_SKETCH && key && PP_SKETCH.has(key, t)) {
+    const fx = document.createElement('canvas');
+    fx.className = 'tb-mini-fx';
+    fx.dataset.theme = key;
+    note.appendChild(fx);
+  }
+
+  body.appendChild(rail);
+  body.appendChild(note);
+
+  // ---- status bar
+  const foot = document.createElement('div');
+  foot.className = 'tb-mini-foot';
+  foot.style.background = t.elevated;
+  foot.style.borderTop = '1px solid ' + rule;
+  ['Todo', 'Improve', 'Voice'].forEach((label) => {
+    const b = document.createElement('span');
+    b.className = 'tb-mini-btn';
+    b.style.color = t.text;
+    b.style.border = '1px solid ' + rule;
+    b.textContent = label;
+    foot.appendChild(b);
+  });
+
+  app.appendChild(bar);
+  app.appendChild(body);
+  app.appendChild(foot);
+  wrap.appendChild(app);
+  return wrap;
+}
+
+// ---------- Card sketches ----------
+// One rAF for the whole grid, at twelve frames a second, drawing only the
+// cards that are actually on screen.
+//
+// Seventy live canvases is the obvious way to do this and the wrong one: it is
+// seventy contexts, seventy timers' worth of work per frame, and most of them
+// scrolled out of sight. One loop that skips anything outside the grid's box
+// costs about as much as a single card did.
+//
+// Twelve frames a second on purpose, too. These are thumbnails; at sixty they
+// would be smoother and would also be the most expensive thing in the app
+// while you decide which colour you like.
+let miniItems = [];
+let miniRaf = null;
+let miniLast = 0;
+
+function stopMiniSketches() {
+  if (miniRaf != null) cancelAnimationFrame(miniRaf);
+  miniRaf = null;
+  miniItems = [];
+}
+
+function startMiniSketches() {
+  stopMiniSketches();
+  if (!tbGrid || !window.PP_SKETCH) return;
+  miniItems = [...tbGrid.querySelectorAll('canvas.tb-mini-fx')].map((el) => ({
+    el, key: el.dataset.theme, theme: THEMES[el.dataset.theme], g: null, w: 0, h: 0
+  })).filter((it) => it.theme);
+  if (!miniItems.length) return;
+  // With motion off, one frame each and no loop at all.
+  if (!animationsOn()) { drawMiniFrame(performance.now()); return; }
+  miniRaf = requestAnimationFrame(tickMini);
+}
+
+function drawMiniFrame(now) {
+  const box = tbGrid.getBoundingClientRect();
+  const time = now / 1000;
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  for (const it of miniItems) {
+    const r = it.el.getBoundingClientRect();
+    if (!r.width || r.bottom < box.top - 60 || r.top > box.bottom + 60) continue;
+    if (!it.g || it.w !== Math.round(r.width) || it.h !== Math.round(r.height)) {
+      it.w = Math.round(r.width);
+      it.h = Math.round(r.height);
+      it.el.width = Math.max(1, Math.round(it.w * dpr));
+      it.el.height = Math.max(1, Math.round(it.h * dpr));
+      it.g = it.el.getContext('2d');
+      it.g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+    PP_SKETCH.draw(it.key, it.theme, it.g, it.w, it.h, time);
+  }
+}
+
+function tickMini(now) {
+  miniRaf = requestAnimationFrame(tickMini);
+  if (now - miniLast < 80) return;
+  miniLast = now;
+  drawMiniFrame(now);
+}
+
+function starIcon(on) {
+  return '<svg viewBox="0 0 24 24" width="11" height="11" aria-hidden="true">' +
+    '<path d="M12 3.5l2.6 5.3 5.9.85-4.25 4.15 1 5.85L12 16.9l-5.25 2.75 1-5.85L3.5 9.65l5.9-.85z"' +
+    ' fill="' + (on ? 'currentColor' : 'none') + '" stroke="currentColor" stroke-width="1.6"' +
+    ' stroke-linejoin="round"/></svg>';
+}
+
+function themeMatches(key, t, q) {
+  if (!q) return true;
+  const hay = (t.label + ' ' + key + ' ' + (t.keywords || '') + ' ' +
+    (KIND_LABEL[t.type] || t.type)).toLowerCase();
+  return hay.includes(q) || cmdFuzzyScore(q, t.label) >= 0;
+}
+
+function renderThemeBrowser() {
+  if (!tbGrid) return;
+  const q = (tbSearch.value || '').trim().toLowerCase();
+
+  // Filter chips, rebuilt each time so a category with nothing in it never
+  // offers a chip that leads to an empty grid. Each carries its own count:
+  // "Nature 5" answers "is it worth opening?" before you open it, and the
+  // numbers also make the row scannable as a shape rather than a wall of
+  // similar words.
+  tbFilters.innerHTML = '';
+  const counts = {};
+  Object.values(THEMES).forEach((t) => { counts[t.type] = (counts[t.type] || 0) + 1; });
+  const recCount = Object.values(THEMES).filter((t) => t.recommended).length;
+  const chips = [{ id: 'all', label: tr('tb.all', 'All'), n: Object.keys(THEMES).length }]
+    .concat(recCount ? [{ id: 'rec', label: tr('tb.rec', 'Recommended'), n: recCount, star: true }] : [])
+    .concat(THEME_KINDS.filter((k) => counts[k.id]).map((k) => ({ ...k, n: counts[k.id] })))
+    .concat(favThemes().length ? [{ id: 'fav', label: tr('tb.fav', 'Starred'), n: favThemes().length }] : []);
+  chips.forEach((k) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'tb-chip' + (tbFilter === k.id ? ' active' : '') + (k.star ? ' tb-chip--rec' : '');
+    const lab = document.createElement('span');
+    lab.textContent = k.label;
+    b.appendChild(lab);
+    const n = document.createElement('i');
+    n.className = 'tb-chip-n';
+    n.textContent = String(k.n);
+    b.appendChild(n);
+    if (k.hint || TB_HINTS[k.id]) b.title = k.hint || TB_HINTS[k.id];
+    b.addEventListener('click', () => {
+      tbFilter = k.id;
+      renderThemeBrowser();
+    });
+    tbFilters.appendChild(b);
+  });
+
+  if (tbHint) {
+    const kind = THEME_KINDS.find((k) => k.id === tbFilter);
+    const text = (kind && kind.hint) || TB_HINTS[tbFilter] || '';
+    // Replayed rather than assigned, so switching category reads as the line
+    // changing rather than as text quietly being different.
+    if (tbHint.textContent !== text) {
+      tbHint.textContent = text;
+      replayAnim(tbHint, 'tb-hint-in');
+    }
+  }
+
+  let entries = Object.entries(THEMES).filter(([key, t]) => themeMatches(key, t, q));
+  if (tbFilter === 'fav') entries = entries.filter(([key]) => favThemes().includes(key));
+  else if (tbFilter === 'rec') entries = entries.filter(([, t]) => t.recommended);
+  else if (tbFilter !== 'all') entries = entries.filter(([, t]) => t.type === tbFilter);
+
+  // Starred first, then recently used, then the declaration order — which is
+  // the order the categories are written in themes.js.
+  const favs = favThemes();
+  // Read out here as well as inside the ordering block: the cards themselves
+  // need it to know which of them to mark NEW.
+  const fresh = unseenThemes();
+  // The order is worked out once, when the pane opens, and then held for the
+  // whole visit. Re-ranking on every render meant that picking a theme made it
+  // "recent", which moved it — so the card you had just clicked jumped out
+  // from under the cursor, and so did everything after it.
+  if (!tbOrder) {
+    // Which section each theme sits in is frozen for the visit, exactly as the
+    // order is and for the same reason: starring a card would otherwise lift
+    // it straight into the Starred section, and the card you just clicked
+    // would leave from under the cursor. The star fills immediately; where the
+    // card lives is settled next time the pane opens.
+    tbStarred = new Set(favThemes());
+    const recents = recentThemes();
+    // Anything new since the last version this user opened goes to the very
+    // front, ahead of favourites, until they have looked at the pane once.
+    const rank = (key) =>
+      (fresh.includes(key) ? -1 : (favs.includes(key) ? 0 : (recents.includes(key) ? 1 : 2)));
+    const all = Object.keys(THEMES);
+    tbOrder = all.slice().sort((a, b) => rank(a) - rank(b) || all.indexOf(a) - all.indexOf(b));
+  }
+  const pos = (key) => {
+    const i = tbOrder.indexOf(key);
+    return i === -1 ? tbOrder.length : i;      // a theme added mid-visit sorts last
+  };
+  entries.sort((a, b) => pos(a[0]) - pos(b[0]));
+
+  tbGrid.innerHTML = '';
+  stopMiniSketches();
+  if (!entries.length) {
+    const empty = document.createElement('div');
+    empty.className = 'tb-empty';
+    empty.textContent = tr('tb.none', 'No theme by that name');
+    tbGrid.appendChild(empty);
+    return;
+  }
+
+  // A section rule that spans the whole grid. Two of these turn a wall of
+  // seventy cards into "here are eleven to try" followed by everything else,
+  // which is the difference between a catalogue and a shop.
+  const section = (title, note) => {
+    const h = document.createElement('div');
+    h.className = 'tb-sec';
+    const a = document.createElement('span');
+    a.className = 'tb-sec-title';
+    a.textContent = title;
+    h.appendChild(a);
+    if (note) {
+      const b = document.createElement('span');
+      b.className = 'tb-sec-note';
+      b.textContent = note;
+      h.appendChild(b);
+    }
+    return h;
+  };
+
+  const makeCard = ([key, t], i) => {
+    const card = document.createElement('div');
+    card.className = 'tb-card' + (settings.theme === key ? ' active' : '');
+    card.dataset.theme = key;
+    // Staggered entrance, capped: past a dozen the delay stops reading as a
+    // sequence and starts reading as the grid being slow.
+    card.style.setProperty('--tb-i', String(Math.min(i, 11)));
+    card.appendChild(buildThemeMini(t, key));
+
+    const foot = document.createElement('div');
+    foot.className = 'tb-card-foot';
+    const name = document.createElement('span');
+    name.className = 'tb-card-name';
+    name.textContent = t.label;
+    name.title = KIND_LABEL[t.type] || t.type;
+    if (!seenThemeSet().includes(key) && seenThemeSet().length) {
+      const tag = document.createElement('span');
+      tag.className = 'tb-card-new';
+      tag.textContent = tr('tb.new', 'NEW');
+      foot.appendChild(tag);
+    }
+    const star = document.createElement('button');
+    star.type = 'button';
+    const on = favs.includes(key);
+    star.className = 'tb-card-star' + (on ? ' on' : '');
+    star.title = on ? tr('tb.unstar', 'Remove from favourites') : tr('tb.star', 'Add to favourites');
+    star.innerHTML = starIcon(on);
+    star.addEventListener('click', (e) => {
+      e.stopPropagation();
+      settings.favThemes = on ? favs.filter((k) => k !== key) : favs.concat(key);
+      saveSettingsNow();
+      renderThemeBrowser();
+    });
+    foot.appendChild(name);
+    foot.appendChild(star);
+    card.appendChild(foot);
+
+    card.addEventListener('click', () => chooseTheme(key));
+    return card;
+  };
+
+  // Sections, only on the unfiltered and unsearched board. Once you have typed
+  // a query or picked a category you have already said what you want, and
+  // splitting the answer in two at that point is just in the way.
+  //
+  // Starred first, then recommended, then the rest — your own picks outrank a
+  // list somebody else drew up, and a "recommended" shelf that pushes the user
+  // past their own favourites every time is the kind of helpfulness nobody
+  // asked for.
+  const sectioned = tbFilter === 'all' && !q;
+  const starred = sectioned ? entries.filter(([k]) => tbStarred.has(k)) : [];
+  const rec = sectioned
+    ? entries.filter(([k, t]) => t.recommended && !tbStarred.has(k))
+    : [];
+  if (starred.length || rec.length) {
+    const rest = entries.filter(([k, t]) => !tbStarred.has(k) && !t.recommended);
+    let i = 0;
+    const put = (list) => list.forEach((e) => tbGrid.appendChild(makeCard(e, i++)));
+    if (starred.length) {
+      tbGrid.appendChild(section(tr('tb.starred', 'Starred'), tr('tb.yours', 'yours')));
+      put(starred);
+    }
+    if (rec.length) {
+      tbGrid.appendChild(section(tr('tb.rec', 'Recommended'), tr('tb.recNote', 'worth trying first')));
+      put(rec);
+    }
+    if (rest.length) {
+      tbGrid.appendChild(section(tr('tb.rest', 'Everything else'),
+        rest.length + ' ' + tr('tb.themes', 'themes')));
+      put(rest);
+    }
+  } else {
+    entries.forEach((e, i) => tbGrid.appendChild(makeCard(e, i)));
+  }
+  startMiniSketches();
+  markPeekingCard();
+}
+
+// Entering the pane clears the "new themes" mark and starts fresh; leaving it
+// (a different tab, or closing Settings) has to end any peek in flight, or the
+// window is left wearing a theme nobody chose.
+function openThemeBrowser() {
+  tbSearch.value = '';
+  tbFilter = 'all';
+  tbOrder = null;          // a fresh visit re-ranks; everything inside one does not
+  renderThemeBrowser();
+  // Two columns is not a board. Main grows the window only if it is smaller
+  // than this and hands the old size back when the pane closes.
+  // Swallowed: growing the window is a nicety, and an install where the
+  // channel is missing should not raise an unhandled rejection over it.
+  if (window.api.growWindow) window.api.growWindow(760, 640).catch(() => {});
+}
+
+// Marking on the way out, not on the way in: clearing them as the pane opened
+// meant the NEW marks were gone in the same frame that drew them, which is the
+// same as not having them.
+function closeThemeBrowser() {
+  stopMiniSketches();
+  if (window.api.restoreWindow) window.api.restoreWindow().catch(() => {});
+}
+
+if (tbSearch) {
+  tbSearch.addEventListener('input', renderThemeBrowser);
+  tbSearch.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { e.preventDefault(); tbSearch.value = ''; renderThemeBrowser(); }
+  });
+}
+
+// ---------- "New" marks ----------
+// A theme the user has never had in front of them gets a dot, and the Theme
+// tab carries one while any remain. Themes are added a few at a time in a
+// release nobody reads the notes for; without this they simply go unnoticed
+// at the bottom of a list of forty.
+function seenThemeSet() {
+  if (!Array.isArray(settings.seenThemes)) settings.seenThemes = [];
+  return settings.seenThemes;
+}
+function unseenThemes() {
+  const seen = seenThemeSet();
+  // A fresh install has seen nothing, which would mark all 47. The first run
+  // banks the whole list instead, so the mark only ever means "this one is new
+  // to a version you already had".
+  if (!seen.length) return [];
+  return Object.keys(THEMES).filter((k) => !seen.includes(k));
+}
+// One theme, marked as seen. Clearing the whole list when the pane closed
+// meant that opening it with two new themes in it and trying one banked both —
+// the other lost its mark without ever having been looked at.
+function markThemeSeen(key) {
+  if (!key) return;
+  const seen = seenThemeSet();
+  if (seen.includes(key)) return;
+  settings.seenThemes = seen.concat(key);
+  saveSettingsNow();
+  applyThemeTabBadge();
+}
+
+// The first run banks the whole catalogue: on a fresh install nothing is
+// "new", and marking all fifty would be noise rather than news.
+function seedThemesSeen() {
+  if (seenThemeSet().length) return;
+  settings.seenThemes = Object.keys(THEMES);
+  saveSettingsNow();
+  applyThemeTabBadge();
+}
+function applyThemeTabBadge() {
+  const tab = document.querySelector('.set-tab[data-pane="theme"]');
+  if (tab) tab.classList.toggle('has-new-badge', unseenThemes().length > 0);
+}
+
 
 function buildFontPicker() {
   const row = document.getElementById('fontRow');
@@ -7529,7 +9703,6 @@ function buildFontPicker() {
 }
 
 function syncSettingsUI() {
-  buildThemeSwatches();
   buildFontPicker();
   buildToolbarChips();
   updateFontSizeLabel();
@@ -7588,19 +9761,25 @@ function syncSettingsUI() {
   toggleImageDownloadEl.checked = !!settings.imageDownloadEnabled;
   toggleMdImageFullSizeEl.checked = !!settings.mdImageFullSize;
   toggleMdShortcutsEl.checked = !!settings.mdShortcuts;
-  geminiApiKeyInputEl.value = (settings.imageGen && settings.imageGen.geminiApiKey) || '';
-  hfApiKeyInputEl.value = (settings.imageGen && settings.imageGen.hfApiKey) || '';
-  const genProvider = (settings.imageGen && settings.imageGen.provider) || 'pollinations';
-  imageGenProviderSeg.querySelectorAll('.seg-btn').forEach((b) => {
-    b.classList.toggle('active', b.dataset.provider === genProvider);
-  });
-  geminiProviderFieldsEl.classList.toggle('hidden', genProvider !== 'gemini');
-  hfProviderFieldsEl.classList.toggle('hidden', genProvider !== 'huggingface');
-  providerHintPollinationsEl.classList.toggle('hidden', genProvider !== 'pollinations');
-
   voiceHfApiKeyInputEl.value = (settings.voice && settings.voice.hfApiKey) || '';
   syncAiProviderUI();
   togglePlaceholdersEl.checked = settings.placeholdersEnabled;
+  const vol = settings.fxVolume ?? 60;
+  fxVolumeRange.value = vol;
+  fxVolumeValue.textContent = vol + '%';
+  // Only shown for the themes that actually make a sound — a permanent volume
+  // slider on a notepad reads as a promise the other 30 themes don't keep.
+  // Shown for the Sound category and for anything else that makes a noise —
+  // Clockwork is a Machines theme with a ratchet on it.
+  const th = THEMES[settings.theme] || {};
+  fxVolumeRow.classList.toggle('hidden', th.type !== 'sound' && !th.sound);
+  toggleAnimationsEl.checked = animationsOn();
+  toggleBlocksEl.checked = settings.blocksEnabled !== false;
+  toggleSlashEl.checked = settings.slashEnabled !== false;
+  renderBlocksList();
+  renderPhPresetList();
+  syncLockUI();
+  syncUpdaterStatus();
   resizeRow.classList.remove('disabled');
   placeholderPositionSeg.querySelectorAll('.seg-btn').forEach((b) => {
     b.classList.toggle('active', b.dataset.pos === settings.placeholderBarPosition);
@@ -7631,8 +9810,13 @@ function setSettingsPane(id) {
   const panes = document.querySelectorAll('.settings-pane');
   if (!panes.length) return;
   if (![...panes].some((p) => p.dataset.pane === id)) id = 'general';
+  const leaving = settingsPane;
   settingsPane = id;
   panes.forEach((p) => p.classList.toggle('hidden', p.dataset.pane !== id));
+  // Leaving the pane banks the "new theme" marks and hands the window size
+  // back; entering it does the reverse.
+  if (leaving === 'theme' && id !== 'theme') closeThemeBrowser();
+  if (id === 'theme') openThemeBrowser();
   document.querySelectorAll('.set-tab').forEach((b) => {
     b.classList.toggle('active', b.dataset.pane === id);
   });
@@ -7660,7 +9844,7 @@ function openSettings(target) {
   syncSettingsUI();
   refreshStoragePathDisplay();
   setSettingsPane(settingsPane);
-  settingsOverlay.classList.remove('hidden');
+  settingsOverlay.classList.remove('hidden', 'closing');
   if (target) {
     const el = revealSetting(target);
     if (el && typeof el.focus === 'function') el.focus();
@@ -7693,7 +9877,8 @@ if (toggleRtlMirrorEl) toggleRtlMirrorEl.addEventListener('change', () => {
   saveSettingsNow();
 });
 function closeSettings() {
-  settingsOverlay.classList.add('hidden');
+  closeThemeBrowser();
+  hideWithAnim(settingsOverlay, 'closing');
 }
 
 settingsBtn.addEventListener('click', openSettings);
@@ -8013,24 +10198,6 @@ toggleMdShortcutsEl.addEventListener('change', () => {
   saveSettingsNow();
 });
 
-geminiApiKeyInputEl.addEventListener('change', () => {
-  settings.imageGen = { ...settings.imageGen, geminiApiKey: geminiApiKeyInputEl.value.trim() };
-  saveSettingsNow();
-});
-
-hfApiKeyInputEl.addEventListener('change', () => {
-  settings.imageGen = { ...settings.imageGen, hfApiKey: hfApiKeyInputEl.value.trim() };
-  saveSettingsNow();
-});
-
-imageGenProviderSeg.addEventListener('click', (e) => {
-  const btn = e.target.closest('.seg-btn');
-  if (!btn) return;
-  settings.imageGen = { ...settings.imageGen, provider: btn.dataset.provider };
-  syncSettingsUI();
-  saveSettingsNow();
-});
-
 voiceHfApiKeyInputEl.addEventListener('change', () => {
   settings.voice = { ...settings.voice, hfApiKey: voiceHfApiKeyInputEl.value.trim() };
   saveSettingsNow();
@@ -8330,6 +10497,38 @@ togglePlaceholdersEl.addEventListener('change', () => {
   saveSettingsNow();
 });
 
+fxVolumeRange.addEventListener('input', () => {
+  settings.fxVolume = Number(fxVolumeRange.value);
+  fxVolumeValue.textContent = settings.fxVolume + '%';
+  if (window.PP_FX && window.PP_FX.setVolume) window.PP_FX.setVolume(settings.fxVolume / 100);
+});
+fxVolumeRange.addEventListener('change', saveSettingsNow);
+
+toggleThemeFontEl.addEventListener('change', () => {
+  settings.themeFont = toggleThemeFontEl.checked;
+  applyFont(settings.font);
+  buildFontPicker();
+  saveSettingsNow();
+});
+
+toggleAnimationsEl.addEventListener('change', () => {
+  settings.animations = toggleAnimationsEl.checked;
+  document.documentElement.classList.toggle('no-anim', !settings.animations);
+  saveSettingsNow();
+});
+
+toggleBlocksEl.addEventListener('change', () => {
+  settings.blocksEnabled = toggleBlocksEl.checked;
+  if (!settings.blocksEnabled) closeInlinePop();
+  saveSettingsNow();
+});
+
+toggleSlashEl.addEventListener('change', () => {
+  settings.slashEnabled = toggleSlashEl.checked;
+  if (!settings.slashEnabled) closeInlinePop();
+  saveSettingsNow();
+});
+
 placeholderPositionSeg.addEventListener('click', (e) => {
   const btn = e.target.closest('.seg-btn');
   if (!btn) return;
@@ -8350,7 +10549,6 @@ placeholderWrapSeg.addEventListener('click', (e) => {
 
 resetBtn.addEventListener('click', async () => {
   settings = { ...DEFAULT_SETTINGS };
-  settings.imageGen = { ...DEFAULT_SETTINGS.imageGen };
   // fresh copies, never the shared DEFAULT_SETTINGS references
   settings.ai = { ...DEFAULT_SETTINGS.ai };
   settings.customAiActions = [];
@@ -8408,6 +10606,7 @@ placeholderResizerEl.addEventListener('mousedown', (e) => {
   if (settings.placeholderBarPosition !== 'right' || settings.placeholderBarCollapsed) return;
   placeholderResizing = true;
   placeholderResizerEl.classList.add('active');
+  editorBodyEl.classList.add('ph-resizing');
   document.body.style.cursor = 'col-resize';
   e.preventDefault();
 });
@@ -8423,6 +10622,7 @@ window.addEventListener('mouseup', () => {
   if (!placeholderResizing) return;
   placeholderResizing = false;
   placeholderResizerEl.classList.remove('active');
+  editorBodyEl.classList.remove('ph-resizing');
   document.body.style.cursor = '';
   saveSettingsNow();
 });
@@ -8435,7 +10635,7 @@ const _findHL = CSS.highlights ? (() => { const h = new Highlight(); CSS.highlig
 const _curHL = CSS.highlights ? (() => { const h = new Highlight(); CSS.highlights.set('find-current', h); return h; })() : null;
 
 function openFind(withReplace = false) {
-  findBarEl.classList.remove('hidden');
+  findBarEl.classList.remove('hidden', 'closing');
   replaceRowEl.classList.toggle('hidden', !withReplace);
   const sel = window.getSelection();
   if (sel && !sel.isCollapsed) {
@@ -8448,7 +10648,7 @@ function openFind(withReplace = false) {
 }
 
 function closeFind() {
-  findBarEl.classList.add('hidden');
+  hideWithAnim(findBarEl, 'closing');
   clearFindHL();
   findMatches = [];
   findResultsEl.classList.add('hidden');
@@ -8729,7 +10929,7 @@ mdPreviewEl.addEventListener('dblclick', (e) => {
   // these already have their own click behaviour — a table's cells are
   // directly editable now, so double-clicking one to select a word must not
   // swap the whole table for the raw-markdown textarea underneath it.
-  if (target.closest('.md-code-copy, .md-code-improve, .md-code-genimg, .md-img, .md-link, .md-todo-box, ' +
+  if (target.closest('.md-code-copy, .md-code-improve, .md-img, .md-link, .md-todo-box, ' +
     '.md-table-delcol, .md-table-addcol, .md-table-delrow, .md-table-addrow, table')) return;
   const block = target.closest('[data-line]');
   if (!block || !mdPreviewEl.contains(block)) return;
@@ -9005,30 +11205,105 @@ const CURRENT_VERSION = document.getElementById('aboutVersion').textContent.repl
 const WHATS_NEW =
   "What's new in v" + CURRENT_VERSION + " ✨\n" +
   '\n' +
-  '• Real fullscreen — a new titlebar button (and F11) that hides the taskbar\n' +
-  '   too, not just Maximize.\n' +
-  '• Insert Table: a new toolbar button builds a markdown table at your\n' +
-  '   cursor. Turn on Markdown preview to see it rendered for real, click any\n' +
-  '   cell to type straight into it, and use the +/- controls on the table\n' +
-  '   itself to add or remove rows and columns.\n' +
-  '• Cognac is gone; in its place, Nightvision — a tactical HUD theme, green\n' +
-  '   leaning to blue, with a scanline sweep, corner targeting brackets, and\n' +
-  '   a burst of signal glitch on every keystroke.\n' +
+  'The biggest release yet. Two things you can write with, one you can lock,\n' +
+  'and a theme collection that got out of hand.\n' +
+  '\n' +
+  '── WRITING ──────────────────────────────\n' +
+  '\n' +
+  '• Blocks — type @ and pick a piece of prompt you keep reusing. Personas,\n' +
+  '   output formats, rules, step lists. Save any selection as a block from\n' +
+  '   the right-click menu.\n' +
+  '• Slash commands — type / for markdown and AI actions without leaving\n' +
+  '   the keyboard.\n' +
+  '• Placeholders grew up — give one a list and it becomes a dropdown, save\n' +
+  '   a whole set of answers as a preset and refill a prompt in one click.\n' +
+  '\n' +
+  '── LOCKED NOTES ─────────────────────────\n' +
+  '\n' +
+  '• Lock a tab with a PIN and it is encrypted on disk — not hidden,\n' +
+  '   encrypted. A locked note cannot be deleted until you unlock it, and\n' +
+  '   removing the lock asks for the PIN again.\n' +
+  '• You get a recovery code when you set the PIN. Keep it. There is also a\n' +
+  '   reset in Settings that unlocks everything so you can start over.\n' +
+  '\n' +
+  '── THEMES ───────────────────────────────\n' +
+  '\n' +
+  '• 76 of them, and a proper browser to find one in. Every card is the app\n' +
+  '   in miniature with the theme actually running on it — Koi shows fish,\n' +
+  '   Last Train shows a train.\n' +
+  '• Sorted by what drives them: Reactive, Nature, Machines, Nostalgia,\n' +
+  '   Live, Sound, Playable, Luxury. Each category says what it means.\n' +
+  '• Starred and Recommended sections, and search across names and keywords.\n' +
+  '• Nostalgia is a new family: places drawn the way 1997 hardware drew them.\n' +
+  '   Barrel Fire, Last Train, Snow Street, Ferris Wheel, Bedroom, Harbour,\n' +
+  '   Alley — a snowy back street where a torch follows your caret.\n' +
+  '• Drag the window and Tide sloshes; the water leans and rocks back.\n' +
+  '\n' +
+  '── EVERYTHING ELSE ──────────────────────\n' +
+  '\n' +
+  '• A full guide with pictures, in English and Persian, in Settings.\n' +
+  '• Motion everywhere — panels, tabs, cards. Focus mode now folds the\n' +
+  '   chrome away instead of blinking it out. Turn it all off in Settings.\n' +
+  '• The keyboard themes use real recordings now, not synthesis.\n' +
+  '• New fonts, and a switch for whether a theme may bring its own.\n' +
+  '• A fresh install starts on Mono.\n' +
+  '• Fixed: the updater opening GitHub instead of updating, the AI actions\n' +
+  '   menu staying open behind a new right-click, and a long tail of others.\n' +
+  '• Image generation has been removed. All three back ends turned out\n' +
+  '   unreliable and one of them had been dead for months.\n' +
   '\n' +
   'You can close this tab — it won\'t come back until the next update.\n' +
   '\n' +
   '\n' +
   'تازه‌ها در نسخه ' + CURRENT_VERSION + ' ✨\n' +
   '\n' +
-  '• تمام‌صفحه‌ی واقعی — یک دکمه‌ی تازه در نوار عنوان (و کلید F11) که این‌بار\n' +
-  '   نوار وظیفه‌ی ویندوز را هم پنهان می‌کند، نه فقط بزرگ کردن پنجره.\n' +
-  '• درج جدول: یک دکمه‌ی تازه در نوار ابزار یک جدول مارک‌داون درست همان‌جا\n' +
-  '   که مکان‌نما هست می‌سازد. پیش‌نمایش مارک‌داون را روشن کن تا جدول را\n' +
-  '   واقعاً رندرشده ببینی، روی هر سلول کلیک کن و مستقیم توش بنویس، و با\n' +
-  '   دکمه‌های +/- روی خودِ جدول ردیف یا ستون اضافه یا حذف کن.\n' +
-  '• تمِ Cognac رفت؛ به‌جایش Nightvision آمد — یک تمِ نظامیِ HUD، سبزِ مایل\n' +
-  '   به آبی، با یک خطِ اسکنِ همیشگی، براکت‌های نشانه‌گیری در گوشه‌ها، و یک\n' +
-  '   موجِ اختلالِ سیگنال روی هر ضربه‌ی کیبورد.\n' +
+  'بزرگ‌ترین نسخه تا امروز. دو چیز که باهاشون می‌نویسی، یکی که قفلش می‌کنی،\n' +
+  'و مجموعه‌ای از تم‌ها که از دست در رفت.\n' +
+  '\n' +
+  '── نوشتن ────────────────────────────────\n' +
+  '\n' +
+  '• بلاک‌ها — @ را بزن و تکه‌ای از پرامپت که مدام تکرارش می‌کنی را انتخاب کن.\n' +
+  '   شخصیت، قالب خروجی، قواعد، فهرست مرحله‌ها. هر متن انتخاب‌شده را هم از\n' +
+  '   منوی راست‌کلیک می‌توانی به‌عنوان بلاک ذخیره کنی.\n' +
+  '• دستورهای اسلش — / را بزن تا مارک‌داون و کارهای هوش مصنوعی را بدون\n' +
+  '   برداشتن دست از کیبورد اجرا کنی.\n' +
+  '• جای‌گیرها بزرگ شدند — به یکی‌شان فهرست بده تا کشویی شود، و یک دسته\n' +
+  '   جواب را به‌عنوان پیش‌تنظیم ذخیره کن تا پرامپت را با یک کلیک پر کنی.\n' +
+  '\n' +
+  '── یادداشت‌های قفل‌شده ───────────────────\n' +
+  '\n' +
+  '• یک تب را با پین قفل کن و روی دیسک رمزگذاری می‌شود — نه پنهان، رمزگذاری‌شده.\n' +
+  '   یادداشتِ قفل تا بازش نکنی پاک نمی‌شود، و برداشتن قفل دوباره پین می‌خواهد.\n' +
+  '• موقع ساختن پین یک کد بازیابی می‌گیری. نگهش دار. در تنظیمات هم یک ریست\n' +
+  '   هست که همه‌چیز را باز می‌کند تا از اول شروع کنی.\n' +
+  '\n' +
+  '── تم‌ها ─────────────────────────────────\n' +
+  '\n' +
+  '• ۷۶ تا، و یک مرورگر درست‌وحسابی برای پیدا کردنشان. هر کارت خودِ برنامه\n' +
+  '   است در مقیاس کوچک، با تمی که واقعاً رویش اجرا می‌شود — Koi ماهی نشان\n' +
+  '   می‌دهد، Last Train قطار.\n' +
+  '• دسته‌بندی بر اساس چیزی که تم را می‌گرداند: واکنشی، طبیعت، ماشین‌ها،\n' +
+  '   نوستالژی، زنده، صدا، بازی‌شدنی، لوکس. هر دسته می‌گوید یعنی چه.\n' +
+  '• بخش ستاره‌دارها و پیشنهادی‌ها، و جست‌وجو در نام و کلیدواژه‌ها.\n' +
+  '• نوستالژی یک خانواده‌ی تازه است: مکان‌هایی که همان‌طور کشیده شده‌اند که\n' +
+  '   سخت‌افزار ۱۹۹۷ می‌کشید. بشکه‌ی آتش، آخرین قطار، خیابان برفی، چرخ و فلک،\n' +
+  '   اتاق‌خواب، بندر، و کوچه — کوچه‌ای برفی که چراغ‌قوه دنبال مکان‌نمای تو می‌گردد.\n' +
+  '• پنجره را بکش، آب در تم Tide تکان می‌خورد؛ کج می‌شود و برمی‌گردد.\n' +
+  '\n' +
+  '── باقی چیزها ────────────────────────────\n' +
+  '\n' +
+  '• یک راهنمای کامل با تصویر، فارسی و انگلیسی، داخل تنظیمات.\n' +
+  '• حرکت در همه‌جا — پنل‌ها، تب‌ها، کارت‌ها. حالت تمرکز حالا به‌جای پریدن،\n' +
+  '   جمع می‌شود. همه‌اش را می‌توانی از تنظیمات خاموش کنی.\n' +
+  '• تم‌های کیبورد حالا از ضبطِ واقعی استفاده می‌کنند، نه سنتز.\n' +
+  '• فونت‌های تازه، و یک کلید برای اینکه تم اجازه داشته باشد فونت خودش را\n' +
+  '   بیاورد یا نه.\n' +
+  '• نصب تازه با تمِ Mono شروع می‌شود.\n' +
+  '• رفع اشکال: آپدیتری که به‌جای آپدیت کردن گیت‌هاب را باز می‌کرد، منوی\n' +
+  '   کارهای هوش مصنوعی که پشت راست‌کلیکِ بعدی باز می‌ماند، و یک دنباله‌ی بلند\n' +
+  '   از بقیه.\n' +
+  '• ساخت تصویر حذف شد. هر سه سرویسش غیرقابل‌اتکا از آب درآمدند و یکی‌شان\n' +
+  '   ماه‌ها بود که اصلاً کار نمی‌کرد.\n' +
   '\n' +
   'این تب را می‌توانی ببندی — تا آپدیت بعدی دیگر برنمی‌گردد.';
 
@@ -9064,7 +11339,10 @@ function showUpdateBanner(tag, url) {
   // also update settings button
   checkUpdateBtn.classList.add('update-available');
   checkUpdateLabel.textContent = 'Update available: v' + tag.replace('v', '');
-  checkUpdateBtn.onclick = () => window.api.openExternal(url);
+  // Held rather than bound to onclick: the button already has a click listener
+  // that re-checks, and assigning onclick on top of it made a single click do
+  // both — re-check *and* open the browser.
+  pendingReleaseUrl = url;
 }
 
 // > 0 when a is newer than b (semver-ish "1.5.0" strings)
@@ -9102,7 +11380,39 @@ updateBannerCloseEl.addEventListener('click', () => {
 });
 
 // ---- In-app auto-update (electron-updater) with GitHub-API notify fallback ----
-let updaterActive = false; // an update was reported by electron-updater
+let updaterActive = false;      // an update was reported by electron-updater
+let pendingReleaseUrl = null;   // set when we fell back to the notify flow
+
+// What the in-app updater can actually do on this machine, shown in About.
+// "It just opens GitHub" has two completely different causes — a build that
+// can never self-update, and one that tried and failed — and they look
+// identical from the outside.
+async function syncUpdaterStatus() {
+  const el = document.getElementById('updaterStatusText');
+  const err = document.getElementById('updaterErrorText');
+  if (!el) return;
+  let st = null;
+  try { st = window.api.updaterStatus ? await window.api.updaterStatus() : null; } catch {}
+  if (!st) { el.textContent = tr('upd.unknown', 'Update status unavailable.'); return; }
+  if (st.supported) {
+    el.textContent = tr('upd.inApp',
+      'Updates install inside PromptPad — it downloads the new version and restarts into it.');
+  } else {
+    const why = {
+      'macos-unsigned': tr('upd.mac',
+        'On macOS PromptPad cannot update itself (the builds are not code-signed), so it opens the release page instead.'),
+      'dev-build': tr('upd.dev', 'This is a development build, so updates open the release page instead.'),
+      'module-missing': tr('upd.missing', 'The updater component is missing from this build, so updates open the release page instead.')
+    }[st.reason];
+    el.textContent = why || tr('upd.fallback', 'Updates open the release page in your browser.');
+  }
+  if (st.lastError) {
+    err.textContent = tr('upd.lastError', 'Last updater error: ') + st.lastError;
+    err.classList.remove('hidden');
+  } else {
+    err.classList.add('hidden');
+  }
+}
 
 function showUpdaterBanner(text, actionLabel, onAction) {
   updateBannerTextEl.textContent = text;
@@ -9133,7 +11443,7 @@ function maybeAnnounceProThemes(hadSaved) {
         updateBannerEl.classList.add('hidden');
         openSettings();
         // Land them on the themes, not the top of a long settings page.
-        setTimeout(() => revealSetting(themeRow), 80);
+        setTimeout(() => setSettingsPane('theme'), 80);
       }
     );
   }, 1200); // let the window settle before anything slides in
@@ -9228,6 +11538,9 @@ async function checkForUpdates(silent) {
 }
 
 checkUpdateBtn.addEventListener('click', async () => {
+  // Once a release has been found and the in-app updater couldn't fetch it,
+  // the button's job is to open that release rather than look again.
+  if (pendingReleaseUrl) { window.api.openExternal(pendingReleaseUrl); return; }
   if (checkUpdateBtn.classList.contains('checking')) return;
   checkUpdateBtn.classList.add('checking');
   checkUpdateLabel.textContent = 'Checking…';
@@ -12377,11 +14690,32 @@ async function bootstrap() {
   }
 
   const savedSettings = await window.api.loadSettings();
+  // A genuinely fresh install — no settings file at all — opens on Mono rather
+  // than Forest. This is deliberately keyed on there being no saved object,
+  // not on `theme` being absent: anyone who already has PromptPad keeps the
+  // theme they chose, including if they chose Forest.
+  const firstRun = !savedSettings || !Object.keys(savedSettings).length;
   settings = { ...DEFAULT_SETTINGS, ...(savedSettings || {}) };
+  if (firstRun) settings.theme = 'mono';
+  // Themes that have been withdrawn. Anyone sitting on one of these keys would
+  // otherwise silently fall back to the default on their next launch.
+  const GONE = {
+    orrery: 'blueprint', clockwork: 'blueprint', murmuration: 'starfall', foundry: 'embers',
+    // Withdrawn in 3.9. Static was noise with nothing behind it, and
+    // Fireflies and Pollen were the same theme twice: small warm dots
+    // drifting over a dark ground.
+    staticsig: 'crt', fireflies: 'starfall', pollen: 'sundial',
+    // Withdrawn in 3.9 as well.
+    drivein: 'lasttrain',
+    cornershop: 'snowstreet',
+    kite: 'sundial'
+  };
+  if (GONE[settings.theme]) settings.theme = GONE[settings.theme];
+  ['favThemes', 'recentThemes', 'seenThemes'].forEach((k) => {
+    if (Array.isArray(settings[k])) settings[k] = settings[k].filter((x) => !GONE[x]);
+  });
   // ensure every toolbar key exists even if an older save lacked some
   settings.toolbar = { ...DEFAULT_SETTINGS.toolbar, ...(settings.toolbar || {}) };
-  // fresh object, never the shared DEFAULT_SETTINGS.imageGen reference
-  settings.imageGen = { ...DEFAULT_SETTINGS.imageGen, ...(settings.imageGen || {}) };
   settings.seenFeatures = { ...(settings.seenFeatures || {}) };
   settings.voice = { ...DEFAULT_SETTINGS.voice, ...(settings.voice || {}) };
   settings.ai = { ...DEFAULT_SETTINGS.ai, ...(settings.ai || {}) };
@@ -12478,6 +14812,7 @@ async function bootstrap() {
   // close overlays with Escape (priority: lightbox > ctx menu > find bar > dialogs > overlays)
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
+    if (!guideOverlay.classList.contains('hidden')) { closeGuide(); return; }
     if (!cmdPalette.classList.contains('hidden')) { closeCommandPalette(); return; }
     if (shLeaveDialogOpen()) { shCloseLeaveDialog(); return; }
     if (shShareDialogOpen()) { shCloseShareDialog(); return; }

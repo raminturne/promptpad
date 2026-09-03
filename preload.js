@@ -18,11 +18,16 @@ contextBridge.exposeInMainWorld('api', {
   toggleFullscreen: () => ipcRenderer.invoke('toggle-fullscreen'),
   isFullscreen: () => ipcRenderer.invoke('is-fullscreen'),
   onFullscreenChange: (cb) => ipcRenderer.on('fullscreen-change', (_e, v) => cb(v)),
+  // How fast the window is being dragged, in px per 60Hz frame. Themes that
+  // model something physical use it; everything else ignores it.
+  onWindowShove: (cb) => ipcRenderer.on('window-shove', (_e, v) => cb(v)),
   toggleAlwaysOnTop: () => ipcRenderer.invoke('toggle-always-on-top'),
   getAlwaysOnTop: () => ipcRenderer.invoke('get-always-on-top'),
   loadSettings: () => ipcRenderer.invoke('load-settings'),
   saveSettings: (settings) => ipcRenderer.invoke('save-settings', settings),
   setBgColor: (color) => ipcRenderer.send('set-bg-color', color),
+  growWindow: (w, h) => ipcRenderer.invoke('grow-window', w, h),
+  restoreWindow: () => ipcRenderer.invoke('restore-window'),
   setStartup: (enabled) => ipcRenderer.invoke('set-startup', enabled),
   getStartup: () => ipcRenderer.invoke('get-startup'),
   openExternal: (url) => ipcRenderer.send('open-external', url),
@@ -30,6 +35,7 @@ contextBridge.exposeInMainWorld('api', {
   updaterCheck: () => ipcRenderer.invoke('updater-check'),
   updaterDownload: () => ipcRenderer.invoke('updater-download'),
   updaterInstall: () => ipcRenderer.invoke('updater-install'),
+  updaterStatus: () => ipcRenderer.invoke('updater-status'),
   onUpdaterEvent: (cb) => ipcRenderer.on('updater-event', (_e, payload) => cb(payload)),
   setOpacity: (v) => ipcRenderer.send('set-opacity', v),
   setCloseToTray: (enabled) => ipcRenderer.send('set-close-to-tray', enabled),
@@ -45,7 +51,6 @@ contextBridge.exposeInMainWorld('api', {
   pickImage: () => ipcRenderer.invoke('pick-image'),
   saveImage: (base64, ext) => ipcRenderer.invoke('save-image', base64, ext),
   saveMedia: (base64, ext) => ipcRenderer.invoke('save-media', base64, ext),
-  generateImage: (prompt, opts) => ipcRenderer.invoke('generate-image', prompt, opts),
   // `ai` is { provider, model, apiKey, baseUrl, models } — see aiOpts() in the
   // renderer. `prompt` is only set for a custom AI action.
   improvePrompt: (text, ai) => ipcRenderer.invoke('improve-prompt', { text, ai }),

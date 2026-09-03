@@ -6,11 +6,11 @@
 
 A compact, always-on-top desktop notepad for writing and organizing AI prompts. Built with Electron.
 
-Minimal, fast, and right next to your work — with tabs, 14 themes, live placeholder fill, templates, find & replace, a Telegram-style Fast Save, a free built-in AI chat, one-click AI actions, speech-to-text, a handy edge-dock, inline images, todo checklists, a **Discover** gallery to share & reuse prompts, and a global quick-capture hotkey.
+Minimal, fast, and right next to your work — with tabs, reusable **blocks**, slash commands, live placeholder fill, **PIN-locked notes** encrypted on disk, templates, find & replace, a Telegram-style Fast Save, a free built-in AI chat, one-click AI actions, speech-to-text, a handy edge-dock, inline images, todo checklists, a **Discover** gallery to share & reuse prompts, a global quick-capture hotkey — and **76 themes**, half of which are alive.
 
 ## 📸 Screenshots
 
-Shown in the **Mono** theme — 14 themes total (7 dark + 7 light) are available in Settings.
+Shown in the **Mono** theme. There are 76 in Settings, sorted by what drives them — Reactive, Nature, Machines, Nostalgia, Live, Sound, Playable, Luxury.
 
 | Workspace — tabs, colored groups, placeholders & live fill | Fast Save — Telegram-style pinned quick notes |
 |:---:|:---:|
@@ -20,9 +20,13 @@ Shown in the **Mono** theme — 14 themes total (7 dark + 7 light) are available
 |:---:|:---:|
 | ![AI Chat](screenshots/03-ai-chat.png) | ![Markdown](screenshots/04-markdown.png) |
 
-| AI actions — Improve, Translate, Summarize, Fix grammar, change tone | Settings — theme picker, tab size, handy dock & more |
+| AI actions — Improve, Translate, Summarize, Fix grammar, change tone | Settings — startup, shortcuts, storage & more |
 |:---:|:---:|
 | ![AI actions](screenshots/05-ai-actions.png) | ![Settings](screenshots/06-settings.png) |
+
+| Themes — 76 of them, and every card is the app in miniature with the theme actually running on it |
+|:---:|
+| ![Themes](screenshots/08-themes.png) |
 
 | Discover — a shared prompt gallery: browse by category, publish with an image or music, ❤ like, and reuse any prompt in one click |
 |:---:|
@@ -39,7 +43,14 @@ Shown in the **Mono** theme — 14 themes total (7 dark + 7 light) are available
   - **Colors** tint the tab's left edge; group headers can be colored as a whole (right-click a group → Rename, Duplicate, Copy/Export content, Color, Pin, Ungroup)
   - **Per-tab files** — attach files to a tab with the "Attach File" button; open, save a copy, reveal, or remove them from the files panel
   - **Right-click context menu** — Rename, Duplicate, Copy content, Export as file, Save as template, color (8 colors), Pin/Unpin, Close
-- **14 themes** — 7 dark (Forest, Midnight, Carbon, Plum, Ember, Dracula, Mono) + 7 light (Paper, Sky, Sage, Rose, Latte, Lavender, Snow), grouped in Settings
+- **76 themes**, in a browser rather than a swatch grid — every card is the app in miniature with the theme running on it, so Koi shows fish and Last Train shows a train
+  - Sorted by what drives them: **Dark**, **Light**, **Reactive** (answers your keyboard), **Nature**, **Machines**, **Nostalgia** (places drawn the way 1997 hardware drew them), **Live** (reads the real clock and your speakers), **Sound**, **Playable** (push it around with the cursor), **Luxury**
+  - Starred and Recommended sections, search across names and keywords, and a switch for whether a theme may bring its own font
+  - Drag the window and the ones that model something physical react — the water in Tide leans and rocks back
+- **Blocks** — type `@` and drop in a piece of prompt you keep reusing; save any selection as one from the right-click menu
+- **Slash commands** — type `/` for markdown and AI actions without leaving the keyboard
+- **Locked notes** — lock a tab with a PIN and it is encrypted on disk, not hidden. It cannot be deleted until you unlock it, and you get a recovery code when you set the PIN
+- **A guide with pictures**, in English and Persian, inside Settings
 - **Placeholder quick-fill** — write `[bracket]` or `{brace}` blanks; they highlight automatically and a fill bar lets you type values one by one
   - **Live preview** — typed value appears inside the prompt in real-time before you confirm
   - Enter jumps to the next field

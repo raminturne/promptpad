@@ -14701,11 +14701,11 @@ async function bootstrap() {
   // otherwise silently fall back to the default on their next launch.
   const GONE = {
     orrery: 'blueprint', clockwork: 'blueprint', murmuration: 'starfall', foundry: 'embers',
-    // Withdrawn in 3.9. Static was noise with nothing behind it, and
+    // Withdrawn in 4.0. Static was noise with nothing behind it, and
     // Fireflies and Pollen were the same theme twice: small warm dots
     // drifting over a dark ground.
     staticsig: 'crt', fireflies: 'starfall', pollen: 'sundial',
-    // Withdrawn in 3.9 as well.
+    // Withdrawn in 4.0 as well.
     drivein: 'lasttrain',
     cornershop: 'snowstreet',
     kite: 'sundial'

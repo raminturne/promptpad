@@ -1178,6 +1178,12 @@ function updateCounts() {
   charCountEl.textContent = chars.toLocaleString('en-US') + (chars === 1 ? ' char' : ' chars');
   tokenCountEl.textContent = '~' + estimateTokens(text).toLocaleString('en-US') + ' tokens';
   updateFilesButton();
+  // The counts share the status bar with the button row and no longer give
+  // way to it, so growing from "0 chars" to "12,480 chars" takes width the
+  // toolbar had already been measured against — and the last button ends up
+  // sliced in half at the window edge. Debounced, so typing does not measure
+  // on every keystroke.
+  if (typeof scheduleFitToolbar === 'function') scheduleFitToolbar();
 }
 
 // ---------- Placeholder fill bar ----------
@@ -12027,107 +12033,123 @@ const CURRENT_VERSION = document.getElementById('aboutVersion').textContent.repl
 // own side, so the English half stays left-aligned and the Persian half
 // right-aligned instead of both being flattened to one direction.
 const WHATS_NEW =
-  "What's new in v" + CURRENT_VERSION + " ✨\n" +
+  'What\'s new in v' + CURRENT_VERSION + ' ✨\n' +
   '\n' +
-  'The biggest release yet. Two things you can write with, one you can lock,\n' +
-  'and a theme collection that got out of hand.\n' +
+  'Two new things to put in a note, and a bug that had been quietly\n' +
+  'stopping you from typing.\n' +
   '\n' +
-  '── WRITING ──────────────────────────────\n' +
+  '── VOICE NOTES ────────────────────────\n' +
   '\n' +
-  '• Blocks — type @ and pick a piece of prompt you keep reusing. Personas,\n' +
-  '   output formats, rules, step lists. Save any selection as a block from\n' +
-  '   the right-click menu.\n' +
-  '• Slash commands — type / for markdown and AI actions without leaving\n' +
-  '   the keyboard.\n' +
-  '• Placeholders grew up — give one a list and it becomes a dropdown, save\n' +
-  '   a whole set of answers as a preset and refill a prompt in one click.\n' +
+  '• Press Record and talk. The clip lands where the caret is — in the\n' +
+  '   middle of a sentence if that is where you were — not on a line of\n' +
+  '   its own.\n' +
+  '• Collapsed it is about the width of a word, so a note with three of\n' +
+  '   them in it still reads as a note. Hover one and the player slides\n' +
+  '   out of it.\n' +
+  '• Where you are in a clip stays yours. Moving the mouse away no longer\n' +
+  '   stops it, and pausing halfway no longer throws the place away. Only\n' +
+  '   reaching the end clears it.\n' +
   '\n' +
-  '── LOCKED NOTES ─────────────────────────\n' +
+  '── VIDEO ───────────────────────────────\n' +
   '\n' +
-  '• Lock a tab with a PIN and it is encrypted on disk — not hidden,\n' +
-  '   encrypted. A locked note cannot be deleted until you unlock it, and\n' +
-  '   removing the lock asks for the PIN again.\n' +
-  '• You get a recovery code when you set the PIN. Keep it. There is also a\n' +
-  '   reset in Settings that unlocks everything so you can start over.\n' +
+  '• A video goes into a note the way a picture does, and everything that\n' +
+  '   already worked on pictures works on it: resize by the corner, right-\n' +
+  '   click to save, click the magnifier to blow it up.\n' +
+  '• The zoom view has a fullscreen button of its own.\n' +
   '\n' +
-  '── THEMES ───────────────────────────────\n' +
+  '── PROMPT LAB ────────────────────────\n' +
   '\n' +
-  '• 76 of them, and a proper browser to find one in. Every card is the app\n' +
-  '   in miniature with the theme actually running on it — Koi shows fish,\n' +
-  '   Last Train shows a train.\n' +
-  '• Sorted by what drives them: Reactive, Nature, Machines, Nostalgia,\n' +
-  '   Live, Sound, Playable, Luxury. Each category says what it means.\n' +
-  '• Starred and Recommended sections, and search across names and keywords.\n' +
-  '• Nostalgia is a new family: places drawn the way 1997 hardware drew them.\n' +
-  '   Barrel Fire, Last Train, Snow Street, Ferris Wheel, Bedroom, Harbour,\n' +
-  '   Alley — a snowy back street where a torch follows your caret.\n' +
-  '• Drag the window and Tide sloshes; the water leans and rocks back.\n' +
+  '• Select more than one. Click, ctrl-click, shift for a range, Ctrl+A\n' +
+  '   for everything on screen, Escape to drop it.\n' +
+  '• Then move the whole selection to another category in one go, or\n' +
+  '   delete it. Filing a pile of prompts one at a time was the worst part\n' +
+  '   of having a lot of them.\n' +
   '\n' +
-  '── EVERYTHING ELSE ──────────────────────\n' +
+  '── FIXED ──────────────────────────────\n' +
   '\n' +
-  '• A full guide with pictures, in English and Persian, in Settings.\n' +
-  '• Motion everywhere — panels, tabs, cards. Focus mode now folds the\n' +
-  '   chrome away instead of blinking it out. Turn it all off in Settings.\n' +
-  '• The keyboard themes use real recordings now, not synthesis.\n' +
-  '• New fonts, and a switch for whether a theme may bring its own.\n' +
-  '• A fresh install starts on Mono.\n' +
-  '• Fixed: the updater opening GitHub instead of updating, the AI actions\n' +
-  '   menu staying open behind a new right-click, and a long tail of others.\n' +
-  '• Image generation has been removed. All three back ends turned out\n' +
-  '   unreliable and one of them had been dead for months.\n' +
+  '• Typing would sometimes stop working until you quit and reopened the\n' +
+  '   app. Deleting from the Prompt Lab put up a system dialog, and this\n' +
+  '   window sits on top of everything — a combination Windows handles\n' +
+  '   badly enough that the window often never got the keyboard back. It\n' +
+  '   still looked focused, because it is painted over everything else.\n' +
+  '   Every dialog in the app is now drawn inside the app.\n' +
+  '• Toolbar buttons you could not reach. The row scrolled sideways with\n' +
+  '   no scrollbar, so at the usual window width most of it sat somewhere\n' +
+  '   invisible. Whatever does not fit now moves into the ‹ menu, and\n' +
+  '   comes back when you widen the window.\n' +
+  '• …and that menu was being clipped away entirely, which is why it\n' +
+  '   looked like the arrow did nothing.\n' +
+  '• Zooming a video showed a dark screen and nothing else.\n' +
+  '• Black Card\'s sheen stopped dead at the right-hand edge instead of\n' +
+  '   sliding off it.\n' +
+  '• Snow Street \'97 was showing Barrel Fire\'s picture in the theme\n' +
+  '   browser. It has its own street now.\n' +
   '\n' +
-  'You can close this tab — it won\'t come back until the next update.\n' +
+  '── SMALL ──────────────────────────────\n' +
   '\n' +
+  '• The old Voice button is now labelled Speech to text, so it is not\n' +
+  '   confused with Record.\n' +
+  '• The ‹ menu opens with a bit of spring and its buttons arrive one\n' +
+  '   after another; the arrow turns into a close cross rather than\n' +
+  '   flipping upside down.\n' +
   '\n' +
-  'تازه‌ها در نسخه ' + CURRENT_VERSION + ' ✨\n' +
+  '────────────────────────────────────────\n' +
   '\n' +
-  'بزرگ‌ترین نسخه تا امروز. دو چیز که باهاشون می‌نویسی، یکی که قفلش می‌کنی،\n' +
-  'و مجموعه‌ای از تم‌ها که از دست در رفت.\n' +
+  'تازه‌های نسخه‌ی ' + CURRENT_VERSION + ' ✨\n' +
   '\n' +
-  '── نوشتن ────────────────────────────────\n' +
+  'دو چیز تازه که می‌شود توی یادداشت گذاشت، و یک اشکال که بی‌سروصدا\n' +
+  'نمی‌گذاشت تایپ کنی.\n' +
   '\n' +
-  '• بلاک‌ها — @ را بزن و تکه‌ای از پرامپت که مدام تکرارش می‌کنی را انتخاب کن.\n' +
-  '   شخصیت، قالب خروجی، قواعد، فهرست مرحله‌ها. هر متن انتخاب‌شده را هم از\n' +
-  '   منوی راست‌کلیک می‌توانی به‌عنوان بلاک ذخیره کنی.\n' +
-  '• دستورهای اسلش — / را بزن تا مارک‌داون و کارهای هوش مصنوعی را بدون\n' +
-  '   برداشتن دست از کیبورد اجرا کنی.\n' +
-  '• جای‌گیرها بزرگ شدند — به یکی‌شان فهرست بده تا کشویی شود، و یک دسته\n' +
-  '   جواب را به‌عنوان پیش‌تنظیم ذخیره کن تا پرامپت را با یک کلیک پر کنی.\n' +
+  '── یادداشت صوتی ────────────────\n' +
   '\n' +
-  '── یادداشت‌های قفل‌شده ───────────────────\n' +
+  '• Record را بزن و حرف بزن. کلیپ دقیقاً همان‌جایی می‌نشیند که\n' +
+  '   مکان‌نماست — وسط جمله، اگر آن‌جا بودی — نه در خطی جداگانه.\n' +
+  '• جمع که باشد اندازه‌ی یک کلمه است، پس یادداشتی با سه تا صدا هنوز\n' +
+  '   یادداشت است. موس را که ببری رویش، پخش‌کننده از درونش باز می‌شود.\n' +
+  '• جایی که در کلیپ هستی مال خودت است. موس را که برداری دیگر قطع\n' +
+  '   نمی‌شود، و اگر وسطش پوز کنی جایت گم نمی‌شود. فقط رسیدن به\n' +
+  '   آخر پاکش می‌کند.\n' +
   '\n' +
-  '• یک تب را با پین قفل کن و روی دیسک رمزگذاری می‌شود — نه پنهان، رمزگذاری‌شده.\n' +
-  '   یادداشتِ قفل تا بازش نکنی پاک نمی‌شود، و برداشتن قفل دوباره پین می‌خواهد.\n' +
-  '• موقع ساختن پین یک کد بازیابی می‌گیری. نگهش دار. در تنظیمات هم یک ریست\n' +
-  '   هست که همه‌چیز را باز می‌کند تا از اول شروع کنی.\n' +
+  '── ویدیو ─────────────────────────\n' +
   '\n' +
-  '── تم‌ها ─────────────────────────────────\n' +
+  '• ویدیو هم‌مانند عکس داخل یادداشت می‌رود، و هر چه روی عکس کار\n' +
+  '   می‌کرد روی این هم کار می‌کند: تغییر اندازه از گوشه، راست‌کلیک\n' +
+  '   برای ذخیره، و ذره‌بین برای بزرگ کردن.\n' +
+  '• نمای بزرگ دکمه‌ی تمام‌صفحه‌ی خودش را دارد.\n' +
   '\n' +
-  '• ۷۶ تا، و یک مرورگر درست‌وحسابی برای پیدا کردنشان. هر کارت خودِ برنامه\n' +
-  '   است در مقیاس کوچک، با تمی که واقعاً رویش اجرا می‌شود — Koi ماهی نشان\n' +
-  '   می‌دهد، Last Train قطار.\n' +
-  '• دسته‌بندی بر اساس چیزی که تم را می‌گرداند: واکنشی، طبیعت، ماشین‌ها،\n' +
-  '   نوستالژی، زنده، صدا، بازی‌شدنی، لوکس. هر دسته می‌گوید یعنی چه.\n' +
-  '• بخش ستاره‌دارها و پیشنهادی‌ها، و جست‌وجو در نام و کلیدواژه‌ها.\n' +
-  '• نوستالژی یک خانواده‌ی تازه است: مکان‌هایی که همان‌طور کشیده شده‌اند که\n' +
-  '   سخت‌افزار ۱۹۹۷ می‌کشید. بشکه‌ی آتش، آخرین قطار، خیابان برفی، چرخ و فلک،\n' +
-  '   اتاق‌خواب، بندر، و کوچه — کوچه‌ای برفی که چراغ‌قوه دنبال مکان‌نمای تو می‌گردد.\n' +
-  '• پنجره را بکش، آب در تم Tide تکان می‌خورد؛ کج می‌شود و برمی‌گردد.\n' +
+  '── آزمایشگاه پرامپت ──────────────\n' +
   '\n' +
-  '── باقی چیزها ────────────────────────────\n' +
+  '• چندتایی انتخاب کن. کلیک، ctrl+کلیک، shift برای یک بازه، Ctrl+A\n' +
+  '   برای همه‌ی آنچه روی صفحه است، Escape برای رها کردن.\n' +
+  '• بعد کل انتخاب را یک‌جا به دسته‌ی دیگر منتقل کن یا پاکش کن.\n' +
+  '   دسته‌بندی یکی‌یکی بدترین قسمت داشتن پرامپت زیاد بود.\n' +
   '\n' +
-  '• یک راهنمای کامل با تصویر، فارسی و انگلیسی، داخل تنظیمات.\n' +
-  '• حرکت در همه‌جا — پنل‌ها، تب‌ها، کارت‌ها. حالت تمرکز حالا به‌جای پریدن،\n' +
-  '   جمع می‌شود. همه‌اش را می‌توانی از تنظیمات خاموش کنی.\n' +
-  '• تم‌های کیبورد حالا از ضبطِ واقعی استفاده می‌کنند، نه سنتز.\n' +
-  '• فونت‌های تازه، و یک کلید برای اینکه تم اجازه داشته باشد فونت خودش را\n' +
-  '   بیاورد یا نه.\n' +
-  '• نصب تازه با تمِ Mono شروع می‌شود.\n' +
-  '• رفع اشکال: آپدیتری که به‌جای آپدیت کردن گیت‌هاب را باز می‌کرد، منوی\n' +
-  '   کارهای هوش مصنوعی که پشت راست‌کلیکِ بعدی باز می‌ماند، و یک دنباله‌ی بلند\n' +
-  '   از بقیه.\n' +
-  '• ساخت تصویر حذف شد. هر سه سرویسش غیرقابل‌اتکا از آب درآمدند و یکی‌شان\n' +
-  '   ماه‌ها بود که اصلاً کار نمی‌کرد.\n' +
+  '── رفع اشکال ────────────────────\n' +
+  '\n' +
+  '• گاهی تایپ کردن از کار می‌افتاد تا وقتی برنامه را می‌بستی و دوباره\n' +
+  '   باز می‌کردی. پاک کردن از آزمایشگاه یک پنجره‌ی سیستمی بالا می‌آورد،\n' +
+  '   و این پنجره روی همه‌چیز می‌نشیند — ترکیبی که ویندوز آن‌قدر بد\n' +
+  '   مدیریت می‌کند که اغلب کیبورد دیگر برنمی‌گشت. ظاهرش هم طبیعی\n' +
+  '   بود، چون پنجره روی بقیه کشیده می‌شود. حالا همه‌ی پنجره‌های\n' +
+  '   تأیید داخل خود برنامه کشیده می‌شوند.\n' +
+  '• دکمه‌های نوار ابزار که دست‌رس‌ناپذیر بودند. نوار بدون اسکرول‌بار\n' +
+  '   افقی اسکرول می‌شد، پس در عرض معمولی پنجره بیشترش جایی ناپیدا\n' +
+  '   می‌ماند. حالا هر چه جا نشود خودبه‌خود می‌رود داخل منوی ‹ و با\n' +
+  '   پهن‌تر کردن پنجره برمی‌گردد.\n' +
+  '• …و خود آن منو کاملاً بریده می‌شد، برای همین به نظر می‌رسید فلش\n' +
+  '   کار نمی‌کند.\n' +
+  '• ذره‌بین روی ویدیو فقط یک صفحه‌ی تاریک نشان می‌داد.\n' +
+  '• درخشش تم Black Card در لبه‌ی راست می‌مرد به‌جای این‌که از آن\n' +
+  '   بزند بیرون.\n' +
+  '• Snow Street \'97 در مرورگر تم‌ها تصویر Barrel Fire را نشان می‌داد.\n' +
+  '   حالا خیابان خودش را دارد.\n' +
+  '\n' +
+  '── ریزه‌کاری ────────────────────\n' +
+  '\n' +
+  '• دکمه‌ی Voice قدیمی حالا Speech to text نام دارد تا با Record\n' +
+  '   قاطی نشود.\n' +
+  '• منوی ‹ با کمی فنر باز می‌شود و دکمه‌هایش پشت سر هم می‌آیند؛\n' +
+  '   فلش هم به‌جای برعکس شدن، به ضربدر تبدیل می‌شود.\n' +
   '\n' +
   'این تب را می‌توانی ببندی — تا آپدیت بعدی دیگر برنمی‌گردد.';
 

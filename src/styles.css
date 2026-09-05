@@ -829,14 +829,18 @@ body {
   color: var(--muted);
 }
 
+/* The counts do not give way any more. They used to shrink first, which made
+   sense when the button row silently scrolled whatever did not fit; now that
+   fitToolbar() moves the overflow into the flyout instead, the row can take
+   the space it is given and the counts have no reason to be sacrificed —
+   "251 cha… · ~63 toke…" is a worse trade than one fewer button in the row,
+   because the buttons are all still one tap away and the number is not. */
 .counts {
   display: flex;
   align-items: center;
   gap: 7px;
   letter-spacing: 0.3px;
-  flex-shrink: 3;
-  min-width: 0;
-  overflow: hidden;
+  flex-shrink: 0;
   white-space: nowrap;
 }
 .counts > span { overflow: hidden; text-overflow: ellipsis; }

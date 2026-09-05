@@ -1,6 +1,6 @@
 {
   "name": "promptpad",
-  "version": "4.0.0",
+  "version": "4.1.0",
   "description": "A compact, always-on-top notepad widget for writing AI prompts",
   "main": "main.js",
   "author": "PromptPad",

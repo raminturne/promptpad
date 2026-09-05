@@ -92,7 +92,12 @@ app.whenReady().then(async () => {
           'Audience: [who]. Tone: [tone|warm, plain, poetic].' + String.fromCharCode(10) +
           String.fromCharCode(10) +
           'Keep it under [words] words. No exclamation marks.' + String.fromCharCode(10) +
-          'Give a Persian version after the English one.',
+          'Give a Persian version after the English one.' + String.fromCharCode(10) +
+          String.fromCharCode(10) +
+          // A voice note, mid-line, which is the point of them. The file does
+          // not exist and does not need to: the chip renders from the token
+          // and only reaches for the audio when somebody presses play.
+          'What the client actually said: ![voice](ppimg://brief.webm|17000)',
         dir: 'auto', align: 'auto', snapshots: [] },
       { id: 't2', name: 'System prompt v3', custom: true, groupId: 'g1', color: '#a855f7',
         content: 'You are a careful editor.', dir: 'auto', align: 'auto', snapshots: [] },
@@ -202,6 +207,31 @@ app.whenReady().then(async () => {
     return true;`);
   await nap(1400);
   await shot('08-themes');
+
+  // 09 — the toolbar flyout. Worth its own shot now that it is where the
+  // buttons that do not fit actually go.
+  await run(`
+    setSettingsPane('general');
+    closeSettings();
+    state.activeId = 't1';
+    // Step 04 overwrote this tab with the markdown sample; put the prompt
+    // back so the shot is not a wall of raw code fences behind the menu.
+    state.tabs[0].content = 'Write a landing page for [product].' + String.fromCharCode(10) +
+      'Audience: [who]. Tone: [tone|warm, plain, poetic].' + String.fromCharCode(10) +
+      String.fromCharCode(10) +
+      'Keep it under [words] words. No exclamation marks.';
+    showEditorView();
+    setEditorText(state.tabs[0].content);
+    if (typeof editorLines === 'function' && typeof highlightLine === 'function') {
+      editorLines().forEach(highlightLine);
+    }
+    renderTabs();
+    updateCounts();
+    return true;`);
+  await nap(400);
+  await run('toolbarOverflowBtnEl.click(); return true;');
+  await nap(500);
+  await shot('09-toolbar');
 
   app.exit(0);
 });

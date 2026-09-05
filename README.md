@@ -6,13 +6,13 @@
 
 A compact, always-on-top desktop notepad for writing and organizing AI prompts. Built with Electron.
 
-Minimal, fast, and right next to your work — with tabs, reusable **blocks**, slash commands, live placeholder fill, **PIN-locked notes** encrypted on disk, templates, find & replace, a Telegram-style Fast Save, a free built-in AI chat, one-click AI actions, speech-to-text, a handy edge-dock, inline images, todo checklists, a **Discover** gallery to share & reuse prompts, a global quick-capture hotkey — and **76 themes**, half of which are alive.
+Minimal, fast, and right next to your work — with tabs, reusable **blocks**, slash commands, live placeholder fill, **PIN-locked notes** encrypted on disk, **voice notes** you drop mid-sentence, inline images and **video**, templates, find & replace, a Telegram-style Fast Save, a free built-in AI chat, one-click AI actions, speech-to-text, a handy edge-dock, todo checklists, a **Discover** gallery to share & reuse prompts, a global quick-capture hotkey — and **76 themes**, half of which are alive.
 
 ## 📸 Screenshots
 
 Shown in the **Mono** theme. There are 76 in Settings, sorted by what drives them — Reactive, Nature, Machines, Nostalgia, Live, Sound, Playable, Luxury.
 
-| Workspace — tabs, colored groups, placeholders & live fill | Fast Save — Telegram-style pinned quick notes |
+| Workspace — tabs, colored groups, placeholders, live fill and a voice note | Fast Save — Telegram-style pinned quick notes |
 |:---:|:---:|
 | ![Workspace](screenshots/01-workspace.png) | ![Fast Save](screenshots/02-fast-save.png) |
 
@@ -32,8 +32,14 @@ Shown in the **Mono** theme. There are 76 in Settings, sorted by what drives the
 |:---:|
 | ![Discover](screenshots/07-discover.jpg) |
 
+| The toolbar — drag buttons between the row and the menu; whatever does not fit moves there on its own |
+|:---:|
+| ![Toolbar](screenshots/09-toolbar.png) |
+
 ## ✨ Features
 
+- **Voice notes** — press Record and talk; the clip lands at the caret, in the middle of a line if that is where you were. Collapsed it is about the width of a word; hover it and a player slides out. Where you are in a clip is kept until it reaches the end — moving the mouse away does not stop it, and pausing halfway does not lose your place
+- **Video in a note** — insert one like an image, with the same corner-resize, right-click save, and click-to-zoom. The zoom view has its own fullscreen button
 - **Compact always-on-top widget** — frameless window that floats above other apps, with a pin toggle
 - **Tabs** — a left sidebar rail (hide it any time with the title-bar arrow or `Ctrl+\`), with adjustable tab size (Small / Medium / Large)
   - Add with `+`, click to switch, drag & drop to reorder
@@ -63,6 +69,7 @@ Shown in the **Mono** theme. There are 76 in Settings, sorted by what drives the
 - **Focus mode** — hide every bit of chrome for distraction-free writing (`Ctrl+Shift+F`, `Esc` to exit).
 - **Command palette** — `Ctrl+P` to fuzzy-jump between tabs, Fast Save, and AI Chat, or run common actions from the keyboard.
 - **Discover** — a shared, community prompt gallery (opens from the **discover** button under Templates). Sign in with email + password, then browse prompts by category (Website, Image, Music, Video, Software, Game…), search, and **❤ like** the good ones. Hit **Use** to drop any prompt into a new tab, or **Copy** it. **Publish** your own with a title, category, and an optional image (drag & drop, auto-compressed) — **Music** prompts can carry an audio clip that plays inline. A built-in content filter (English + Persian) keeps posts clean, right-click any selected text to **Share to Discover**, and an admin panel handles moderation, categories & storage. Don't need it? Hide it in Settings → Tabs. *(Backed by your own free Supabase project — see [`discover-setup/`](discover-setup/).)*
+- **Prompt Lab** — your own private prompt library (the **prompt lab** button in the rail). Save a prompt with a title, category, image, audio, video or an attached file; search and filter what you have. **Multi-select** with a click, `Ctrl+click`, `Shift` for a range or `Ctrl+A` for everything on screen — then move the whole selection to another category, or delete it, in one go
 - **Shared notes** — right-click any tab → **Share & invite…**, type someone's username, and they get an invitation inside PromptPad (plus a desktop notification if the app isn't in front of them). Once they accept, the note becomes a tab for both of you and you **edit the same text live** — a bar above the editor shows who's in the note and who's typing. Edits on different lines both survive; on the same line the incoming text wins unless your cursor is in it. Invite people as an **editor** or a read-only **viewer**; the owner can remove anyone, cancel an invitation, or stop sharing, and guests can leave whenever they like — either way the text stays put as an ordinary note. Needs a Discover account, and can be turned off in Settings → Tabs.
 - **Quick capture** — press `Ctrl+Shift+Space` anywhere (even when the window is hidden) to pop a floating box; type or paste and hit Enter to drop it straight into Fast Save. The shortcut is customizable in Settings.
 - **Images** — paste (`Ctrl+V`), the image button, or drag & drop a file into a note. Thumbnails render inline; **drag a corner to resize**, **right-click to save a copy**, click to zoom. Both resize and right-click-save are toggleable in Settings → Images.

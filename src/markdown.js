@@ -33,6 +33,25 @@
       '" alt=""' + (px ? ' style="width:' + px + 'px"' : '') + '>';
   }
 
+  // Video and voice, on the same terms as an image: same filename whitelist,
+  // same clamped width, same ppimg:// scheme. The preview gets real players
+  // rather than the raw token — a note you are reading should be playable.
+  function videoHtml(file, w) {
+    const px = w ? Math.min(4000, parseInt(w, 10)) : 0;
+    return '<video class="md-video' + (px ? ' md-img-sized' : '') + '" src="ppimg://' + file +
+      '" controls preload="metadata"' + (px ? ' style="width:' + px + 'px"' : '') + '></video>';
+  }
+
+  // The preview is for reading, not editing, so a voice note is a plain audio
+  // player here rather than the editor's hover-to-open chip.
+  function voiceHtml(file, ms) {
+    const n = ms ? Math.max(0, parseInt(ms, 10)) : 0;
+    const secs = Math.round(n / 1000);
+    const label = Math.floor(secs / 60) + ':' + String(secs % 60).padStart(2, '0');
+    return '<span class="md-voice"><audio src="ppimg://' + file + '" controls preload="none">' +
+      '</audio><span class="md-voice-time">' + esc(label) + '</span></span>';
+  }
+
   // Links render as styled text (not clickable) to avoid navigation inside
   // the app; the renderer's click handler opens them externally.
   function linkHtml(label, url) {
@@ -69,9 +88,15 @@
     // 2. code spans — their contents are literal, immune to every rule below
     s = s.replace(/(`+)([^\n]*?[^`])\1(?!`)/g, (_m, _t, code) => ph('<code>' + esc(code) + '</code>'));
 
-    // 3. images (the app's own ppimg:// scheme only)
+    // 3. images, video and voice (the app's own ppimg:// scheme only).
+    //    All three run before rule 4, or [img]/[video]/[voice] would be eaten
+    //    as an ordinary markdown link and render as the word in brackets.
     s = s.replace(/!\[img\]\(ppimg:\/\/([a-zA-Z0-9._-]+)(?:\|(\d+))?\)/g,
       (_m, file, w) => ph(imgHtml(file, w)));
+    s = s.replace(/!\[video\]\(ppimg:\/\/([a-zA-Z0-9._-]+)(?:\|(\d+))?\)/g,
+      (_m, file, w) => ph(videoHtml(file, w)));
+    s = s.replace(/!\[voice\]\(ppimg:\/\/([a-zA-Z0-9._-]+)(?:\|(\d+))?\)/g,
+      (_m, file, ms) => ph(voiceHtml(file, ms)));
 
     // 4. [label](url) — before autolinking, so the href isn't linkified twice
     s = s.replace(/\[([^\]\n]*)\]\(([^)\s]+)\)/g, (_m, label, url) => ph(linkHtml(label, url)));

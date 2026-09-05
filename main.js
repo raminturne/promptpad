@@ -315,6 +315,35 @@ function createWindow(BrowserWindow) {
   mainWindow.on('enter-full-screen', () => sendFullscreenState(true));
   mainWindow.on('leave-full-screen', () => sendFullscreenState(false));
 
+  // HTML fullscreen — the button on a <video> in a note.
+  //
+  // Chromium promotes the element to fill the *page*, and stops there: the
+  // page is this window, so on its own the video grows to the size of a
+  // notepad that is usually a third of the screen and the fullscreen button
+  // looks broken. The window has to be told to follow, which is what these
+  // two events are for.
+  //
+  // The state before the video took over is remembered, so leaving fullscreen
+  // from a window that was already fullscreen does not shrink it. Always-on-
+  // top is dropped for the duration too — the point of fullscreen is that
+  // nothing is on top of it, including our own habit of being on top.
+  let preHtmlFullscreen = null;
+  let preHtmlAlwaysOnTop = null;
+  mainWindow.webContents.on('enter-html-full-screen', () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    preHtmlFullscreen = mainWindow.isFullScreen();
+    preHtmlAlwaysOnTop = mainWindow.isAlwaysOnTop();
+    if (preHtmlAlwaysOnTop) mainWindow.setAlwaysOnTop(false);
+    if (!preHtmlFullscreen) mainWindow.setFullScreen(true);
+  });
+  mainWindow.webContents.on('leave-html-full-screen', () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    if (preHtmlFullscreen === false) mainWindow.setFullScreen(false);
+    if (preHtmlAlwaysOnTop) mainWindow.setAlwaysOnTop(true);
+    preHtmlFullscreen = null;
+    preHtmlAlwaysOnTop = null;
+  });
+
   // Window motion, forwarded so a theme can react to the window being dragged
   // — water slopes and slops, a scene rocks on its springs.
   //
@@ -1055,6 +1084,31 @@ if (!app.requestSingleInstanceLock()) {
       return { filename: name };
     } catch (err) {
       console.error('save-media failed', err);
+      return null;
+    }
+  });
+
+  // Insert a video from disk. Copied into IMAGES_DIR like a picked image, so
+  // the note keeps working after the original file is moved or deleted — the
+  // same bargain images already make.
+  const VIDEO_EXTS = ['mp4', 'webm', 'mov', 'mkv', 'm4v'];
+  ipcMain.handle('pick-video', async () => {
+    if (!mainWindow) return null;
+    const res = await dialog.showOpenDialog(mainWindow, {
+      title: 'Insert video',
+      filters: [{ name: 'Video', extensions: VIDEO_EXTS }],
+      properties: ['openFile']
+    });
+    if (res.canceled || !res.filePaths.length) return null;
+    const src = res.filePaths[0];
+    const ext = path.extname(src).slice(1).toLowerCase();
+    if (!VIDEO_EXTS.includes(ext)) return null;
+    try {
+      const name = newImageName(ext);
+      fs.copyFileSync(src, path.join(IMAGES_DIR, name));
+      return { filename: name };
+    } catch (err) {
+      console.error('pick-video failed', err);
       return null;
     }
   });

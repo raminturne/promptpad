@@ -309,6 +309,8 @@ const placeholderCollapseEl = document.getElementById('placeholderCollapse');
 // todo & image buttons
 const todoBtn = document.getElementById('todoBtn');
 const imgBtn = document.getElementById('imgBtn');
+const voiceNoteBtn = document.getElementById('voiceNoteBtn');
+const videoBtn = document.getElementById('videoBtn');
 // fast save
 const fastSaveViewEl = document.getElementById('fastSaveView');
 const fsMessagesEl = document.getElementById('fsMessages');
@@ -377,6 +379,9 @@ const importConfirmBtn = document.getElementById('importConfirm');
 // lightbox & drop hint
 const lightboxEl = document.getElementById('lightbox');
 const lightboxImgEl = document.getElementById('lightboxImg');
+const lightboxVideoEl = document.getElementById('lightboxVideo');
+const lightboxFsBtnEl = document.getElementById('lightboxFsBtn');
+const lightboxCloseBtnEl = document.getElementById('lightboxCloseBtn');
 const dropHintEl = document.getElementById('dropHint');
 // title-bar search
 const searchBtn = document.getElementById('searchBtn');
@@ -553,6 +558,32 @@ function imgToken(filename, width) {
   return '![img](ppimg://' + filename + (width ? '|' + Math.round(width) : '') + ')';
 }
 
+// Inline video token, the same shape as the image one so everything that
+// already understands "a media file with an optional stored display width"
+// — resize, download, the markdown preview — needs one extra branch rather
+// than a parallel implementation.
+const VIDEO_TOKEN_RE = /!\[video\]\(ppimg:\/\/([a-zA-Z0-9._-]+)(?:\|(\d+))?\)/g;
+
+function videoToken(filename, width) {
+  return '![video](ppimg://' + filename + (width ? '|' + Math.round(width) : '') + ')';
+}
+
+// Inline voice token. The number after the pipe is the clip's length in
+// milliseconds, not a width: a voice note is a fixed-size chip, and knowing
+// how long it runs before the file has loaded is what lets the collapsed pill
+// show "0:14" straight away instead of flashing a dash.
+const VOICE_TOKEN_RE = /!\[voice\]\(ppimg:\/\/([a-zA-Z0-9._-]+)(?:\|(\d+))?\)/g;
+
+function voiceToken(filename, ms) {
+  return '![voice](ppimg://' + filename + (ms ? '|' + Math.round(ms) : '') + ')';
+}
+
+// m:ss, the way every voice message everywhere is labelled.
+function clipLength(ms) {
+  const s = Math.max(0, Math.round((ms || 0) / 1000));
+  return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+}
+
 // Todo line prefix: "- [ ] " / "- [x] " (leading whitespace allowed)
 const TODO_RE = /^(\s*)- \[( |x)\] /;
 
@@ -597,7 +628,11 @@ function findPlaceholderTokens(text) {
   const tokens = [];
   // image tokens contain "[img]", todo markers are "[ ]"/"[x]", and markdown
   // links start with "[text](" — none of these are fillable placeholders
-  const cleaned = (text || '').replace(IMG_TOKEN_RE, '').replace(MDLINK_RE, '');
+  const cleaned = (text || '')
+    .replace(IMG_TOKEN_RE, '')
+    .replace(VIDEO_TOKEN_RE, '')
+    .replace(VOICE_TOKEN_RE, '')
+    .replace(MDLINK_RE, '');
   for (const m of cleaned.matchAll(PLACEHOLDER_RE)) {
     if (m[0] === '[ ]' || m[0] === '[x]') continue;
     if (!seen.has(m[0])) { seen.add(m[0]); tokens.push(m[0]); }
@@ -809,6 +844,8 @@ function highlightLine(el) {
   const phMatches = settings.placeholdersEnabled ? [...text.matchAll(PLACEHOLDER_RE)] : [];
   const todoM = text.match(TODO_RE);
   const imgMatches = [...text.matchAll(IMG_TOKEN_RE)];
+  const videoMatches = [...text.matchAll(VIDEO_TOKEN_RE)];
+  const voiceMatches = [...text.matchAll(VOICE_TOKEN_RE)];
   const boldMatches = [...text.matchAll(MD_BOLD_RE)];
   const strikeMatches = [...text.matchAll(MD_STRIKE_RE)];
   const hiliteMatches = [...text.matchAll(MD_HILITE_RE)];
@@ -817,7 +854,8 @@ function highlightLine(el) {
   // reorders correctly on its own, and an extra span there is pure churn.
   const blockM = detectDir(text) === 'rtl' && !todoM ? text.match(MD_BLOCKMARK_RE) : null;
   el.classList.toggle('todo-done', !!(todoM && todoM[2] === 'x'));
-  if (!phMatches.length && !todoM && !imgMatches.length && !boldMatches.length &&
+  if (!phMatches.length && !todoM && !imgMatches.length && !videoMatches.length &&
+      !voiceMatches.length && !boldMatches.length &&
       !strikeMatches.length && !hiliteMatches.length && !linkMatches.length &&
       !blockM && !hadDecor) return;
 
@@ -836,6 +874,17 @@ function highlightLine(el) {
     for (const m of imgMatches) {
       ranges.push({ start: m.index, end: m.index + m[0].length, cls: 'img-token',
         file: m[1], width: m[2] ? Number(m[2]) : null });
+    }
+    for (const m of videoMatches) {
+      ranges.push({ start: m.index, end: m.index + m[0].length, cls: 'img-token',
+        file: m[1], width: m[2] ? Number(m[2]) : null, video: true });
+    }
+    // Voice is the one piece of media that renders where it is written rather
+    // than under the line. That is the whole point of it: a note can say a
+    // sentence, then a clip, then carry on in the same breath.
+    for (const m of voiceMatches) {
+      ranges.push({ start: m.index, end: m.index + m[0].length, cls: 'voice-token',
+        file: m[1], ms: m[2] ? Number(m[2]) : 0 });
     }
     for (const m of boldMatches) {
       ranges.push({ start: m.index, end: m.index + m[0].length, cls: 'md-bold' });
@@ -907,7 +956,10 @@ function highlightLine(el) {
         span.className = r.cls;
         span.textContent = text.slice(r.start, r.end);
         el.appendChild(span);
-        if (r.file) imgs.push({ file: r.file, width: r.width });
+        // The literal token stays in the DOM (hidden) so getEditorText still
+        // round-trips; the chip that follows carries no text of its own.
+        if (r.cls === 'voice-token') el.appendChild(makeVoiceChip(r.file, r.ms));
+        else if (r.file) imgs.push({ file: r.file, width: r.width, video: r.video });
       }
       last = r.end;
     }
@@ -916,7 +968,8 @@ function highlightLine(el) {
     // thumbnails after the text (contribute no textContent). Wrapped so a
     // resize handle can sit in the corner without disturbing editor text.
     for (const im of imgs) {
-      el.appendChild(makeImgThumb(im.file, im.width));
+      el.appendChild(im.video ? makeVideoThumb(im.file, im.width)
+                              : makeImgThumb(im.file, im.width));
     }
   }
   if (offset != null) placeCaretInLine(el, offset);
@@ -3685,6 +3738,122 @@ function hideToast() {
   toastEl.classList.add('hidden');
 }
 
+// ---------- in-app confirm / alert ----------
+//
+// Never call window.confirm() or window.alert() from here. This window is
+// always-on-top and frameless, and a native dialog inside one is a trap on
+// Windows: the dialog can open *behind* the window, and the renderer sits
+// blocked waiting for a click on something the user cannot see. Worse, when
+// the dialog does go away the window often does not get keyboard focus back —
+// it still looks focused, because it is painted over everything else, but
+// every keystroke goes somewhere else and the only fix is to quit and reopen.
+// That is the "sometimes I can't type any more" bug, and it was reachable from
+// the Lab's delete button.
+//
+// These return a promise instead of blocking, so the renderer keeps running
+// and the caller reads as if it were the native one:
+//
+//     if (await appConfirm('Delete this?')) …
+//
+// Focus is taken deliberately on open and handed back on close, to whatever
+// had it before — usually the editor.
+let appDialogDepth = 0;
+
+function appDialog(opts) {
+  const { message, confirmLabel, cancelLabel, danger } = opts;
+  const returnFocus = document.activeElement;
+  const sel = window.getSelection && window.getSelection().rangeCount
+    ? window.getSelection().getRangeAt(0).cloneRange()
+    : null;
+  appDialogDepth++;
+
+  return new Promise((resolve) => {
+    const overlay = document.createElement('div');
+    overlay.className = 'app-dialog-overlay';
+
+    const box = document.createElement('div');
+    box.className = 'app-dialog';
+
+    const text = document.createElement('p');
+    text.className = 'app-dialog-text';
+    text.textContent = message;
+    box.appendChild(text);
+
+    const row = document.createElement('div');
+    row.className = 'app-dialog-actions';
+
+    let cancelBtn = null;
+    if (cancelLabel !== null) {
+      cancelBtn = document.createElement('button');
+      cancelBtn.type = 'button';
+      cancelBtn.className = 'app-dialog-btn';
+      cancelBtn.textContent = cancelLabel || tr('dialog.cancel', 'Cancel');
+      cancelBtn.addEventListener('click', () => done(false));
+      row.appendChild(cancelBtn);
+    }
+
+    const okBtn = document.createElement('button');
+    okBtn.type = 'button';
+    okBtn.className = 'app-dialog-btn app-dialog-primary' + (danger ? ' app-dialog-danger' : '');
+    okBtn.textContent = confirmLabel || tr('dialog.ok', 'OK');
+    okBtn.addEventListener('click', () => done(true));
+    row.appendChild(okBtn);
+
+    box.appendChild(row);
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+
+    // Keydown is captured, so Escape here never reaches the app underneath and
+    // closes a panel behind the dialog as well.
+    const onKey = (e) => {
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); done(false); }
+      else if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); done(true); }
+      else if (e.key === 'Tab') {
+        // Two buttons, so the trap is just "wrap at the ends".
+        const els = cancelBtn ? [cancelBtn, okBtn] : [okBtn];
+        const i = els.indexOf(document.activeElement);
+        e.preventDefault();
+        els[(i + (e.shiftKey ? -1 : 1) + els.length) % els.length].focus();
+      }
+    };
+    document.addEventListener('keydown', onKey, true);
+    overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) done(false); });
+
+    okBtn.focus();
+
+    let settled = false;
+    function done(value) {
+      if (settled) return;
+      settled = true;
+      document.removeEventListener('keydown', onKey, true);
+      overlay.remove();
+      appDialogDepth = Math.max(0, appDialogDepth - 1);
+      // Hand focus back where it came from. Without this the caret is gone
+      // after the dialog closes and typing does nothing — which is the whole
+      // reason this function exists.
+      try {
+        if (returnFocus && document.contains(returnFocus) && returnFocus.focus) {
+          returnFocus.focus();
+          if (sel && returnFocus.isContentEditable) {
+            const s = window.getSelection();
+            s.removeAllRanges();
+            s.addRange(sel);
+          }
+        }
+      } catch (e) { /* the element went away with the thing we just deleted */ }
+      resolve(value);
+    }
+  });
+}
+
+function appConfirm(message, opts) {
+  return appDialog(Object.assign({ message }, opts || {}));
+}
+
+function appAlert(message, opts) {
+  return appDialog(Object.assign({ message, cancelLabel: null }, opts || {}));
+}
+
 // Build a color swatch row into `container`; onPick(color) fires per swatch.
 // `activeColor` (optional) marks the currently-selected swatch.
 function buildColorRow(container, onPick, activeColor) {
@@ -4709,16 +4878,227 @@ function makeImgThumb(file, width) {
   return wrap;
 }
 
+// ---------- Video thumbnails (editor) ----------
+// Same wrapper and the same resize handle as an image — a video in a note is
+// a picture that moves, and everything downstream (resize, download, the
+// context menu) already knows how to deal with .pp-img-wrap.
+function makeVideoThumb(file, width) {
+  const wrap = document.createElement('span');
+  wrap.className = 'pp-img-wrap pp-video-wrap';
+  wrap.setAttribute('contenteditable', 'false');
+  wrap.dataset.file = file;
+
+  const vid = document.createElement('video');
+  vid.className = 'pp-img pp-video';
+  vid.src = 'ppimg://' + file;
+  vid.controls = true;
+  // No autoplay and no preloaded stream: a note can hold several of these and
+  // the point of the editor is the text, not the video.
+  vid.preload = 'metadata';
+  vid.draggable = false;
+  if (width) {
+    vid.style.width = width + 'px';
+    vid.classList.add('pp-img-sized');
+  }
+  wrap.appendChild(vid);
+
+  if (settings.imageResizable) {
+    const handle = document.createElement('span');
+    handle.className = 'pp-img-resize';
+    handle.title = 'Drag to resize';
+    wrap.appendChild(handle);
+  }
+  return wrap;
+}
+
+// ---------- Voice chips (editor) ----------
+// Collapsed it is a pill the size of a word, so a clip sitting mid-sentence
+// does not blow the line apart. Hovering it (or focusing it from the
+// keyboard) slides the player open; moving away closes it again and stops
+// playback, because a clip still talking from a chip you have scrolled past
+// is worse than one that stopped early.
+//
+// Everything is a single <audio> created up front but with no src until the
+// chip is first opened — a note with twenty clips in it should not open
+// twenty files to render.
+function makeVoiceChip(file, ms) {
+  const wrap = document.createElement('span');
+  wrap.className = 'pp-voice';
+  wrap.setAttribute('contenteditable', 'false');
+  wrap.tabIndex = 0;
+  wrap.dataset.file = file;
+  wrap.title = tr('voice.hover', 'Voice note — hover to play');
+
+  const icon = document.createElement('span');
+  icon.className = 'pp-voice-icon';
+  icon.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true">' +
+    '<rect x="9" y="3" width="6" height="11" rx="3" fill="none" stroke="currentColor" stroke-width="1.9"/>' +
+    '<path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3" fill="none" stroke="currentColor" ' +
+    'stroke-width="1.9" stroke-linecap="round"/></svg>';
+  wrap.appendChild(icon);
+
+  // The clock is a data attribute drawn by CSS content:attr(), not a text
+  // node. getEditorText() reads the line's textContent, so anything with real
+  // text inside the chip would be saved into the note — "0:04" ends up in the
+  // middle of the sentence and comes back next launch as literal characters.
+  // An <img> thumbnail gets this for free by having no text at all; a chip
+  // that shows a number has to be built this way on purpose.
+  const time = document.createElement('span');
+  time.className = 'pp-voice-time';
+  time.dataset.t = clipLength(ms);
+  wrap.appendChild(time);
+
+  // Everything from here on is what slides out.
+  const panel = document.createElement('span');
+  panel.className = 'pp-voice-panel';
+
+  const play = document.createElement('button');
+  play.type = 'button';
+  play.className = 'pp-voice-play';
+  play.tabIndex = -1;
+  play.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l11-6.5z" ' +
+    'fill="currentColor"/></svg>';
+  panel.appendChild(play);
+
+  const bar = document.createElement('span');
+  bar.className = 'pp-voice-bar';
+  const fill = document.createElement('span');
+  fill.className = 'pp-voice-fill';
+  bar.appendChild(fill);
+  panel.appendChild(bar);
+
+  wrap.appendChild(panel);
+
+  const audio = document.createElement('audio');
+  audio.preload = 'none';
+
+  let loaded = false;
+  const load = () => {
+    if (loaded) return;
+    loaded = true;
+    audio.src = 'ppimg://' + file;
+  };
+
+  const setIcon = (playing) => {
+    play.innerHTML = playing
+      ? '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="5" width="3.6" height="14" rx="1" ' +
+        'fill="currentColor"/><rect x="13.4" y="5" width="3.6" height="14" rx="1" fill="currentColor"/></svg>'
+      : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l11-6.5z" fill="currentColor"/></svg>';
+  };
+
+  const toggle = (e) => {
+    if (e) { e.preventDefault(); e.stopPropagation(); }
+    load();
+    if (audio.paused) { audio.play().catch(() => {}); } else { audio.pause(); }
+  };
+  play.addEventListener('mousedown', (e) => e.preventDefault()); // don't move the caret
+  play.addEventListener('click', toggle);
+
+  bar.addEventListener('mousedown', (e) => e.preventDefault());
+  bar.addEventListener('click', (e) => {
+    e.stopPropagation();
+    load();
+    const r = bar.getBoundingClientRect();
+    const p = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+    const dur = audio.duration || (ms / 1000);
+    if (dur) audio.currentTime = p * dur;
+  });
+
+  // One place decides what the chip says, because there are four things that
+  // can change it — playing, seeking, stopping, and the rewind at the end —
+  // and they were fighting. Setting currentTime = 0 when a clip finished
+  // fired a timeupdate *after* the label had been put back to the clip's
+  // length, and that handler unconditionally wrote the elapsed time, so a
+  // finished clip always ended up reading 0:00.
+  //
+  // The rule: at the very start and not playing, the number is how long the
+  // clip is. Anywhere else, it is where you are in it.
+  const paint = () => {
+    const dur = audio.duration || (ms / 1000);
+    const at = audio.currentTime || 0;
+    if (dur) fill.style.width = (at / dur * 100).toFixed(1) + '%';
+    const atStart = at < 0.05 && audio.paused;
+    time.dataset.t = atStart ? clipLength(ms || dur * 1000) : clipLength(at * 1000);
+    wrap.classList.toggle('is-part', !atStart && audio.paused && at > 0.05);
+  };
+
+  audio.addEventListener('play', () => { setIcon(true); wrap.classList.add('is-playing'); });
+  audio.addEventListener('pause', () => { setIcon(false); wrap.classList.remove('is-playing'); paint(); });
+  audio.addEventListener('loadedmetadata', paint);
+  audio.addEventListener('timeupdate', paint);
+  // Reaching the end is the one thing that clears the position.
+  audio.addEventListener('ended', () => {
+    setIcon(false);
+    wrap.classList.remove('is-playing');
+    try { audio.currentTime = 0; } catch (e) {}
+    paint();
+    // Finished while the cursor was elsewhere: fold up. Still hovered means
+    // the player stays open, ready to be played again.
+    if (!hovered) wrap.classList.remove('is-open');
+  });
+
+  // Open on hover, close on leave.
+  //
+  // Closing never moves the playhead. Two separate versions of this got that
+  // wrong: the first paused and rewound whenever the cursor left, so a clip
+  // died a few pixels after you started it; the second let a playing clip run
+  // on but still rewound a paused one, so pausing halfway and then moving the
+  // mouse threw the position away. Where you are in a clip is yours — only
+  // reaching the end clears it. The pill shows that position while collapsed,
+  // so a half-played clip says 0:04 rather than pretending to be untouched.
+  let shutTimer = null;
+  let hovered = false;
+  const collapse = () => {
+    wrap.classList.remove('is-open');
+    paint();
+  };
+  const open = () => {
+    hovered = true;
+    clearTimeout(shutTimer);
+    load();
+    wrap.classList.add('is-open');
+    // Re-opening a clip that was left part-way has to show where it actually
+    // is; without this the bar reads empty until playback resumes and moves
+    // it, which looks like the position was lost after all.
+    paint();
+  };
+  const shut = () => {
+    hovered = false;
+    clearTimeout(shutTimer);
+    // A short grace period, so crossing a gap between the pill and the panel
+    // during the slide does not snap it closed under the cursor.
+    shutTimer = setTimeout(() => {
+      if (!audio.paused) return;   // still talking — leave it be
+      collapse();
+    }, 180);
+  };
+  wrap.addEventListener('mouseenter', open);
+  wrap.addEventListener('mouseleave', shut);
+  wrap.addEventListener('focus', open);
+  wrap.addEventListener('blur', shut);
+  // Space or Enter on the focused chip plays it, so it is reachable without
+  // a mouse at all.
+  wrap.addEventListener('keydown', (e) => {
+    if (e.key === ' ' || e.key === 'Enter') toggle(e);
+  });
+
+  wrap.appendChild(audio);
+  return wrap;
+}
+
 // Persist a resized width back into the line's image token so it survives
 // save/reload and the DOM round-trip.
 function writeImgWidth(line, file, width) {
   if (!line) return;
   const text = line.textContent;
-  let idx = 0, replaced = false;
-  const next = text.replace(IMG_TOKEN_RE, (m, f) => {
-    if (!replaced && f === file) { replaced = true; return imgToken(f, width); }
+  let replaced = false;
+  const rewrite = (make) => (m, f) => {
+    if (!replaced && f === file) { replaced = true; return make(f, width); }
     return m;
-  });
+  };
+  const next = text
+    .replace(IMG_TOKEN_RE, rewrite(imgToken))
+    .replace(VIDEO_TOKEN_RE, rewrite(videoToken));
   if (next !== text) {
     line.textContent = next;
     highlightLine(line);
@@ -4812,7 +5192,7 @@ function removeImageFromLine(line, wrap) {
 document.addEventListener('contextmenu', (e) => {
   const t = e.target;
   if (!(t instanceof Element)) return;
-  const img = t.closest('.pp-img, .md-img, .fs-msg-img, .gallery-img');
+  const img = t.closest('.pp-img, .md-img, .md-video, .fs-msg-img, .gallery-img');
   if (!img) return;
   const file = fileFromImgSrc(img.getAttribute('src'));
   if (!file) return;
@@ -5097,6 +5477,269 @@ imgBtn.addEventListener('click', async () => {
   if (res && res.filename) insertImageToken(res.filename);
 });
 
+// Video goes in on its own line, exactly like an image.
+function insertVideoToken(filename) {
+  insertOwnLineToken(videoToken(filename));
+}
+
+// The shared half of insertImageToken: put `token` on a line of its own,
+// after the line the caret is on.
+function insertOwnLineToken(token) {
+  const t = activeTab();
+  if (!t) return;
+  syncEditorToState();
+  const prev = t.content;
+  const lines = t.content.split('\n');
+  let idx = lines.length - 1;
+  const line = currentLine();
+  if (line) {
+    const domIdx = editorLines().indexOf(line);
+    if (domIdx !== -1) idx = domIdx;
+  }
+  const at = idx + 1;
+  lines.splice(at, 0, token);
+  t.content = lines.join('\n');
+  noteEditForUndo(t, prev);
+  setEditorText(t.content);
+  if (!mdOn()) {
+    const el = editorLines()[at];
+    if (el) {
+      if (document.activeElement !== editorEl) editorEl.focus();
+      placeCaretInLine(el, token.length);
+    }
+  }
+  updateCounts();
+  updatePlaceholderPanel();
+  scheduleSave();
+  if (mdOn()) renderMdPreview();
+}
+
+// A voice note lands *at the caret*, not on a line of its own — the whole
+// point is being able to drop one into the middle of a sentence. If the caret
+// is not in the editor (you clicked the button straight from somewhere else)
+// it goes on the end, which is the only sensible guess.
+function insertVoiceToken(filename, ms) {
+  const t = activeTab();
+  if (!t) return;
+  syncEditorToState();
+  const prev = t.content;
+  const token = voiceToken(filename, ms);
+
+  const lines = t.content.split('\n');
+  let lineIdx = lines.length - 1;
+  let offset = lines[lineIdx] ? lines[lineIdx].length : 0;
+
+  const line = currentLine();
+  if (line) {
+    const domIdx = editorLines().indexOf(line);
+    if (domIdx !== -1) {
+      lineIdx = domIdx;
+      const o = getCaretOffsetIn(line);
+      offset = o == null ? (lines[lineIdx] || '').length : o;
+    }
+  }
+
+  const cur = lines[lineIdx] || '';
+  offset = Math.min(offset, cur.length);
+  // A clip butted straight against a word is unreadable once the chip is
+  // drawn, so give it breathing room — but only where there isn't any.
+  const before = cur.slice(0, offset);
+  const after = cur.slice(offset);
+  const lead = before && !/\s$/.test(before) ? ' ' : '';
+  const trail = after && !/^\s/.test(after) ? ' ' : '';
+  lines[lineIdx] = before + lead + token + trail + after;
+
+  t.content = lines.join('\n');
+  noteEditForUndo(t, prev);
+  setEditorText(t.content);
+  if (!mdOn()) {
+    const el = editorLines()[lineIdx];
+    if (el) {
+      if (document.activeElement !== editorEl) editorEl.focus();
+      placeCaretInLine(el, offset + lead.length + token.length + trail.length);
+    }
+  }
+  updateCounts();
+  updatePlaceholderPanel();
+  scheduleSave();
+  if (mdOn()) renderMdPreview();
+}
+
+// ---------- voice notes: recording ----------
+//
+// Everything here is prefixed vnote*. The app already has a
+// startVoiceRecording()/stopVoiceRecording() pair for speech-to-text,
+// and a second function of the same name does not shadow it or clash at
+// parse time — the later declaration simply wins, so clicking Record
+// called the dictation code with no argument and died on sink.canStart().
+// Nothing looked wrong until the button was pressed.
+//
+// One recorder at a time, driven from the status bar. While it runs the
+// button turns into a live timer with a stop and a discard next to it, so the
+// controls are where you were already looking rather than in a modal that
+// covers the note you are recording about.
+let vnoteRec = null;
+
+function vnoteStopTracks(stream) {
+  try { stream.getTracks().forEach((t) => t.stop()); } catch (e) {}
+}
+
+async function vnoteStart() {
+  if (vnoteRec) return;
+  const t = activeTab();
+  if (!t || mdOn() || fsActive()) return;
+
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+    });
+  } catch (err) {
+    // Denied, or no input at all. Both are worth saying out loud — a button
+    // that silently does nothing reads as broken.
+    await appAlert(err && err.name === 'NotAllowedError'
+      ? 'PromptPad needs permission to use your microphone.'
+      : 'No microphone was found.');
+    return;
+  }
+
+  // webm/opus is what Chromium gives us and what save-media already accepts;
+  // the fallbacks are for the odd build without the opus muxer.
+  const mime = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus']
+    .find((m) => window.MediaRecorder && MediaRecorder.isTypeSupported(m)) || '';
+
+  let rec;
+  try {
+    rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+  } catch (err) {
+    vnoteStopTracks(stream);
+    await appAlert('This machine cannot record audio.');
+    return;
+  }
+
+  const chunks = [];
+  const startedAt = Date.now();
+  rec.addEventListener('dataavailable', (e) => { if (e.data && e.data.size) chunks.push(e.data); });
+
+  // The caret is remembered here rather than read at stop time: by then the
+  // user has clicked the stop button and the editor selection is gone.
+  const caretLine = currentLine();
+  const caretOffset = caretLine ? getCaretOffsetIn(caretLine) : null;
+
+  vnoteRec = { rec, stream, chunks, startedAt, caretLine, caretOffset, keep: true };
+
+  rec.addEventListener('stop', async () => {
+    const info = vnoteRec;
+    vnoteRec = null;
+    vnoteStopTracks(stream);
+    vnoteSetUi(false);
+    if (!info || !info.keep || !chunks.length) return;
+
+    const ms = Date.now() - info.startedAt;
+    // Under a third of a second is a slipped click, not a note.
+    if (ms < 300) { showToast('Recording too short', ''); return; }
+
+    const blob = new Blob(chunks, { type: chunks[0].type || mime || 'audio/webm' });
+    const ext = /ogg/.test(blob.type) ? 'ogg' : 'webm';
+    let filename = null;
+    try {
+      const b64 = await blobToBase64(blob);
+      const res = await window.api.saveMedia(b64, ext);
+      filename = res && res.filename;
+    } catch (e) { console.error('voice save failed', e); }
+    if (!filename) { await appAlert('Could not save that recording.'); return; }
+
+    // Put the caret back where it was before the button was clicked, so the
+    // clip lands mid-sentence where the user left off.
+    if (info.caretLine && info.caretLine.isConnected && info.caretOffset != null) {
+      editorEl.focus();
+      placeCaretInLine(info.caretLine, info.caretOffset);
+    }
+    insertVoiceToken(filename, ms);
+    showToast('Voice note added', '');
+  });
+
+  rec.start();
+  vnoteSetUi(true);
+}
+
+function vnoteStop(keep) {
+  if (!vnoteRec) return;
+  vnoteRec.keep = keep !== false;
+  try { vnoteRec.rec.stop(); } catch (e) {
+    vnoteStopTracks(vnoteRec.stream);
+    vnoteRec = null;
+    vnoteSetUi(false);
+  }
+}
+
+// The status-bar button swaps into the recording state; a timer ticks in it.
+let vnoteTimer = null;
+function vnoteSetUi(on) {
+  if (!voiceNoteBtn) return;
+  voiceNoteBtn.classList.toggle('is-recording', on);
+  voiceNoteBtn.title = on ? 'Stop and insert' : 'Record a voice note';
+
+  // A running clock is no use inside a closed flyout, and neither is the
+  // discard cross. While it records the button comes out to the front of the
+  // row; when it stops, the normal layout decides where it belongs again.
+  if (on) {
+    if (voiceNoteBtn.parentElement === toolbarOverflowPanelEl) {
+      voiceNoteBtn.dataset.vnoteBorrowed = '1';
+      toolbarMainEl.insertBefore(voiceNoteBtn, toolbarMainEl.firstChild);
+      closeToolbarOverflow();
+    }
+  } else if (voiceNoteBtn.dataset.vnoteBorrowed === '1') {
+    delete voiceNoteBtn.dataset.vnoteBorrowed;
+    renderToolbarLayout();
+  }
+
+  clearInterval(vnoteTimer);
+  if (on) {
+    const label = voiceNoteBtn.querySelector('.vn-label');
+    const tick = () => {
+      if (!vnoteRec) return;
+      if (label) label.textContent = clipLength(Date.now() - vnoteRec.startedAt);
+    };
+    tick();
+    vnoteTimer = setInterval(tick, 200);
+  } else {
+    const label = voiceNoteBtn.querySelector('.vn-label');
+    if (label) label.textContent = tr('voice.record', 'Record');
+  }
+}
+
+if (voiceNoteBtn) {
+  voiceNoteBtn.addEventListener('click', (e) => {
+    // The cross inside the button throws the take away; anywhere else on it
+    // stops and inserts.
+    if (vnoteRec && e.target instanceof Element && e.target.closest('.vn-x')) {
+      vnoteStop(false);
+      showToast('Recording discarded', '');
+      return;
+    }
+    if (vnoteRec) vnoteStop(true); else vnoteStart();
+  });
+}
+
+// Escape abandons a take without reaching for the mouse.
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && vnoteRec) {
+    e.preventDefault();
+    e.stopPropagation();
+    vnoteStop(false);
+    showToast('Recording discarded', '');
+  }
+}, true);
+
+if (videoBtn) {
+  videoBtn.addEventListener('click', async () => {
+    if (mdOn() || fsActive() || !activeTab()) return;
+    const res = await window.api.pickVideo();
+    if (res && res.filename) insertVideoToken(res.filename);
+  });
+}
+
 // Anchored, non-global check — IMG_TOKEN_RE carries /g and .test() on a
 // global regex advances lastIndex as a side effect, which would misfire
 // intermittently across back-to-back regenerate clicks.
@@ -5135,18 +5778,79 @@ editorEl.addEventListener('paste', (e) => {
 });
 
 // ---------- Lightbox ----------
+// Zooming a video used to hand its filename to an <img>, which cannot decode
+// it: the overlay dimmed the app and then showed nothing at all. The element
+// is chosen from the extension instead.
+const VIDEO_EXT_RE = /\.(mp4|webm|mov|mkv|m4v)(?:$|\?)/i;
+
 function openLightbox(src) {
   if (!src) return;
-  lightboxImgEl.src = src;
+  const isVideo = VIDEO_EXT_RE.test(src);
+  lightboxImgEl.classList.toggle('hidden', isVideo);
+  lightboxVideoEl.classList.toggle('hidden', !isVideo);
+  if (isVideo) {
+    lightboxImgEl.removeAttribute('src');
+    lightboxVideoEl.src = src;
+    // Zooming a clip is a request to watch it, so it starts — muted playback
+    // is not blocked and this is a local file, but be quiet about a failure
+    // either way rather than throwing into the click handler.
+    lightboxVideoEl.play().catch(() => {});
+  } else {
+    lightboxVideoEl.pause();
+    lightboxVideoEl.removeAttribute('src');
+    lightboxImgEl.src = src;
+  }
   lightboxEl.classList.remove('hidden');
 }
 
-function closeLightbox() {
+// Set when the overlay is what put the window into fullscreen, so closing it
+// hands the window back rather than leaving the app fullscreen behind it.
+let lightboxTookFullscreen = false;
+
+async function closeLightbox() {
   lightboxEl.classList.add('hidden');
   lightboxImgEl.removeAttribute('src');
+  try { lightboxVideoEl.pause(); } catch (e) {}
+  lightboxVideoEl.removeAttribute('src');
+  if (lightboxTookFullscreen) {
+    lightboxTookFullscreen = false;
+    try { applyFullscreen(await window.api.toggleFullscreen()); } catch (e) {}
+  }
 }
 
-lightboxEl.addEventListener('click', closeLightbox);
+// Clicking the backdrop closes; clicking the video or the tools must not, or
+// the play/pause, the scrubber and the buttons are all unusable.
+lightboxEl.addEventListener('click', (e) => {
+  if (e.target === lightboxVideoEl || lightboxVideoEl.contains(e.target)) return;
+  if (e.target instanceof Element && e.target.closest('.lightbox-tools')) return;
+  closeLightbox();
+});
+
+// Fullscreen for the overlay. The window goes fullscreen — the overlay
+// already covers the window — which is the same route the app's own
+// fullscreen button takes and the only one that completes here.
+if (lightboxFsBtnEl) {
+  lightboxFsBtnEl.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    if (settings.handyMode) return; // handy mode owns the window bounds
+    // Remember whether we were the ones who turned it on, so closing the
+    // overlay puts the window back the way it was found.
+    if (!lightboxTookFullscreen) lightboxTookFullscreen = !(await window.api.isFullscreen());
+    applyFullscreen(await window.api.toggleFullscreen());
+  });
+}
+if (lightboxCloseBtnEl) {
+  lightboxCloseBtnEl.addEventListener('click', (e) => { e.stopPropagation(); closeLightbox(); });
+}
+// Escape closes it too — the overlay covers the app, so there is nothing else
+// the key could reasonably mean while it is up.
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !lightboxEl.classList.contains('hidden')) {
+    e.preventDefault();
+    e.stopPropagation();
+    closeLightbox();
+  }
+}, true);
 
 // ---------- Markdown preview interactions ----------
 // Toggle the underlying "- [ ]"/"- [x]" text for a preview todo item.
@@ -5365,6 +6069,10 @@ mdPreviewEl.addEventListener('click', (e) => {
   }
   const img = t.closest('.md-img');
   if (img) { openLightbox(img.getAttribute('src')); return; }
+  // A preview video keeps its own controls; only the surrounding frame zooms,
+  // or clicking play would throw the clip into the overlay instead.
+  const vid = t.closest('.md-video');
+  if (vid) return;
   const link = t.closest('.md-link');
   if (link && link.dataset.href) {
     const url = link.dataset.href;
@@ -8780,11 +9488,13 @@ const TOOLBAR_BUTTONS = [
   { key: 'justify', label: 'Align', el: () => justifyBtn },
   { key: 'clean', label: 'Clean', el: () => cleanBtn },
   { key: 'improve', label: 'Improve Prompt', el: () => improveBtn },
-  { key: 'voice', label: 'Voice to Text', el: () => voiceBtn },
+  { key: 'voice', label: 'Speech to Text', el: () => voiceBtn },
   { key: 'md', label: 'Markdown', el: () => mdBtn },
   { key: 'paste', label: 'Paste', el: () => pasteBtn },
   { key: 'copy', label: 'Copy', el: () => copyBtn },
   { key: 'img', label: 'Image', el: () => imgBtn },
+  { key: 'record', label: 'Record', el: () => voiceNoteBtn },
+  { key: 'video', label: 'Video', el: () => videoBtn },
   { key: 'table', label: 'Table', el: () => tableBtn },
   { key: 'files', label: 'Attach File', el: () => filesBtn }
 ];
@@ -8808,13 +9518,64 @@ function applyToolbarButtons() {
 // the chevron); settings.toolbarOrder/toolbarCollapsed remember the split and
 // per-group order. Show/hide (toolbarPref, above) is a separate concern —
 // this only controls *position*, not visibility.
+// The flyout is positioned in viewport coordinates rather than against
+// .status-actions. It has to be: the panel sits at bottom:100% of the status
+// bar, which is *outside* it, and .statusbar carries `overflow: hidden` so
+// that focus mode can animate its height to zero. Absolutely positioned, the
+// whole panel was therefore clipped away — the chevron lit up, rotated, and
+// showed nothing, which is exactly what "the arrow is broken" looks like.
+//
+// Fixed positioning takes it out of every ancestor's clip. The cost is having
+// to place it by hand, which is the loop below: sit above the chevron, right-
+// aligned to it, and slide back inside the window if that would hang off an
+// edge.
+function positionToolbarOverflow() {
+  const btn = toolbarOverflowBtnEl.getBoundingClientRect();
+  const p = toolbarOverflowPanelEl;
+  p.style.left = '0px';
+  p.style.top = '0px';
+  // offsetWidth/Height, not getBoundingClientRect: this runs while the entry
+  // animation's first frame is on the element, and that frame is scaled to
+  // 93%. Measuring the scaled box put the panel eight pixels too low, sitting
+  // on top of the button it is supposed to sit above. The offset properties
+  // report the laid-out size and ignore transforms.
+  const panel = { width: p.offsetWidth, height: p.offsetHeight };
+  const GAP = 6, EDGE = 8;
+  let left = btn.left;
+  if (left + panel.width > window.innerWidth - EDGE) left = window.innerWidth - EDGE - panel.width;
+  if (left < EDGE) left = EDGE;
+  let top = btn.top - panel.height - GAP;
+  const below = top < EDGE;
+  if (below) top = btn.bottom + GAP;   // no room above: drop below
+  p.style.left = Math.round(left) + 'px';
+  p.style.top = Math.round(top) + 'px';
+  // Grow out of the button rather than out of a corner that has nothing to do
+  // with it: the origin follows wherever the panel ended up relative to it.
+  const originX = Math.max(0, Math.min(panel.width, btn.left + btn.width / 2 - left));
+  p.style.transformOrigin = originX.toFixed(1) + 'px ' + (below ? '0' : '100%');
+}
+
+let toolbarOverflowCloseTimer = null;
+
 function openToolbarOverflow() {
+  clearTimeout(toolbarOverflowCloseTimer);
+  toolbarOverflowPanelEl.classList.remove('is-closing');
   toolbarOverflowPanelEl.classList.remove('hidden');
   toolbarOverflowBtnEl.classList.add('active');
+  positionToolbarOverflow();
 }
+
+// `hidden` is display:none, so the panel cannot transition out of it — it has
+// to finish animating first and only then be taken out of the layout.
 function closeToolbarOverflow() {
-  toolbarOverflowPanelEl.classList.add('hidden');
   toolbarOverflowBtnEl.classList.remove('active');
+  if (toolbarOverflowPanelEl.classList.contains('hidden')) return;
+  clearTimeout(toolbarOverflowCloseTimer);
+  toolbarOverflowPanelEl.classList.add('is-closing');
+  toolbarOverflowCloseTimer = setTimeout(() => {
+    toolbarOverflowPanelEl.classList.add('hidden');
+    toolbarOverflowPanelEl.classList.remove('is-closing');
+  }, 130);
 }
 
 // Icons nudged into the overflow the very first time this ships, purely so
@@ -8853,7 +9614,58 @@ function renderToolbarLayout() {
   // feature whose only affordance only appears after you've already used it.
   toolbarOverflowBtnEl.classList.remove('hidden');
   toolbarOverflowPanelEl.classList.toggle('empty', overflowKeys.length === 0);
+
+  fitToolbar();
 }
+
+// Anything that does not fit in the row goes into the flyout.
+//
+// The row used to be `overflow-x: auto` with the scrollbar hidden, which meant
+// the buttons past the edge were still there and simply could not be seen or
+// reached: at the window's default width it wanted 1324px and had 541. From
+// the outside that reads as "the buttons are gone", and the chevron looks
+// broken because the thing you are looking for is not in it either.
+//
+// Buttons pushed in here are marked, so they are only borrowed: they go back
+// to the row the moment the window is wide enough, and they are never written
+// into settings.toolbarCollapsed, which stays the user's own choice.
+function fitToolbar() {
+  if (!toolbarMainEl || !toolbarOverflowPanelEl) return;
+
+  // Give everything back first, in the saved order, so widening the window
+  // undoes this and the row does not slowly drain into the flyout.
+  const borrowed = [...toolbarOverflowPanelEl.children]
+    .filter((el) => el.dataset.autoOverflow === '1');
+  if (borrowed.length) {
+    const order = settings.toolbarOrder || [];
+    const collapsed = new Set(settings.toolbarCollapsed || []);
+    borrowed.forEach((el) => { delete el.dataset.autoOverflow; });
+    order.filter((k) => !collapsed.has(k)).forEach((k) => {
+      const el = TOOLBAR_BUTTONS.find((b) => b.key === k)?.el();
+      if (el) toolbarMainEl.appendChild(el);
+    });
+  }
+
+  // Then take back only what genuinely does not fit. Measured after a layout
+  // read, one button at a time from the end, because the widths differ.
+  let guard = TOOLBAR_BUTTONS.length + 1;
+  while (guard-- > 0 && toolbarMainEl.scrollWidth > toolbarMainEl.clientWidth + 1) {
+    const last = toolbarMainEl.lastElementChild;
+    if (!last) break;
+    last.dataset.autoOverflow = '1';
+    toolbarOverflowPanelEl.insertBefore(last, toolbarOverflowPanelEl.firstChild);
+  }
+
+  toolbarOverflowPanelEl.classList.toggle('empty', toolbarOverflowPanelEl.children.length === 0);
+}
+
+// The row's width changes with the window, the rail, and the fill panel.
+let fitToolbarTimer = null;
+function scheduleFitToolbar() {
+  clearTimeout(fitToolbarTimer);
+  fitToolbarTimer = setTimeout(fitToolbar, 80);
+}
+window.addEventListener('resize', scheduleFitToolbar);
 
 // Live-move the dragged button to wherever the cursor currently is within a
 // drop container, based on the horizontal midpoint of its siblings.
@@ -8869,8 +9681,17 @@ function toolbarDragAfterElement(container, x) {
 
 function commitToolbarLayoutFromDom() {
   const mainKeys = [...toolbarMainEl.children].map((el) => el.dataset.toolbarKey).filter(Boolean);
-  const overflowKeys = [...toolbarOverflowPanelEl.children].map((el) => el.dataset.toolbarKey).filter(Boolean);
-  settings.toolbarOrder = [...mainKeys, ...overflowKeys];
+  // A button that fitToolbar() borrowed is in the flyout because the window is
+  // narrow, not because the user put it there — recording it as collapsed
+  // would make a temporary shortage permanent, and it would never come back
+  // when the window was widened again.
+  const overflowKeys = [...toolbarOverflowPanelEl.children]
+    .filter((el) => el.dataset.autoOverflow !== '1')
+    .map((el) => el.dataset.toolbarKey).filter(Boolean);
+  const borrowedKeys = [...toolbarOverflowPanelEl.children]
+    .filter((el) => el.dataset.autoOverflow === '1')
+    .map((el) => el.dataset.toolbarKey).filter(Boolean);
+  settings.toolbarOrder = [...mainKeys, ...borrowedKeys, ...overflowKeys];
   settings.toolbarCollapsed = overflowKeys;
   saveSettingsNow();
   renderToolbarLayout();
@@ -8886,6 +9707,9 @@ function initToolbarDragDrop() {
       e.dataTransfer.effectAllowed = 'move';
       e.dataTransfer.setData('text/plain', key);
       btn.classList.add('dragging');
+      // Dragging it makes wherever it lands a deliberate choice, so it stops
+      // being one of fitToolbar()'s borrowed buttons.
+      delete btn.dataset.autoOverflow;
     });
     btn.addEventListener('dragend', () => {
       btn.classList.remove('dragging');
@@ -12457,7 +13281,7 @@ async function dcSaveToLab(post, btn) {
     if (btn) btn.textContent = 'Saved ✓';
   } catch (err) {
     if (btn) { btn.disabled = false; btn.textContent = label || 'Save'; }
-    alert((err && err.message) || 'Could not save to Lab.');
+    await appAlert((err && err.message) || 'Could not save to Lab.');
   }
 }
 
@@ -12574,7 +13398,7 @@ function dcOpenPostUnsafe(post) {
 }
 
 async function dcReportPost(post, btn) {
-  if (!dcProfile) { alert('Sign in to report a post.'); return; }
+  if (!dcProfile) { await appAlert('Sign in to report a post.'); return; }
   const label = btn ? btn.textContent : '';
   if (btn) { btn.disabled = true; btn.textContent = 'Reporting…'; }
   try {
@@ -12583,7 +13407,7 @@ async function dcReportPost(post, btn) {
     if (btn) btn.textContent = 'Reported ✓';
   } catch (err) {
     if (btn) { btn.disabled = false; btn.textContent = label || 'Report'; }
-    alert((err && err.message) || 'Could not report this post.');
+    await appAlert((err && err.message) || 'Could not report this post.');
   }
 }
 
@@ -12595,7 +13419,7 @@ async function dcDeletePost(post, cardEl) {
     if (error) throw error;
     if (cardEl) cardEl.remove();
   } catch (err) {
-    alert((err && err.message) || 'Delete failed.');
+    await appAlert((err && err.message) || 'Delete failed.');
   }
 }
 
@@ -12883,7 +13707,7 @@ async function dcRenderAdmin() {
       if (error) throw error;
       await dcLoadCategories();
       dcRenderAdmin();
-    } catch (err) { alert((err && err.message) || 'Could not add category.'); }
+    } catch (err) { await appAlert((err && err.message) || 'Could not add category.'); }
   });
   addRow.appendChild(slugI); addRow.appendChild(labelI); addRow.appendChild(addBtn);
   catBox.appendChild(addRow);
@@ -13005,7 +13829,7 @@ function dcModRow(post) {
       post.status = status;
       dcRenderAdmin();
       dcRefreshPendingBadge();
-    } catch (err) { alert((err && err.message) || 'Update failed.'); }
+    } catch (err) { await appAlert((err && err.message) || 'Update failed.'); }
   };
   if (post.status !== 'approved') {
     const ok = dcEl('button', 'dc-mini-btn dc-mini-primary', 'Approve');
@@ -13026,7 +13850,7 @@ function dcModRow(post) {
         const { error } = await dcClient.from('profiles').update({ is_blocked: !blocked }).eq('id', post.user_id);
         if (error) throw error;
         dcRenderAdmin();
-      } catch (err) { alert((err && err.message) || 'Failed to update user.'); }
+      } catch (err) { await appAlert((err && err.message) || 'Failed to update user.'); }
     });
     acts.appendChild(blk);
   }
@@ -13084,7 +13908,7 @@ function dcReportRow(entry) {
       const { error } = await dcClient.from('reports').delete().in('id', entry.ids);
       if (error) throw error;
       dcRenderAdmin();
-    } catch (err) { alert((err && err.message) || 'Failed to dismiss.'); }
+    } catch (err) { await appAlert((err && err.message) || 'Failed to dismiss.'); }
   });
   acts.appendChild(dismiss);
   row.appendChild(acts);
@@ -13131,7 +13955,7 @@ function dcUserRow(u) {
         const { error } = await dcClient.from('profiles').update({ is_blocked: !u.is_blocked }).eq('id', u.id);
         if (error) throw error;
         dcRenderAdmin();
-      } catch (err) { alert((err && err.message) || 'Failed to update user.'); }
+      } catch (err) { await appAlert((err && err.message) || 'Failed to update user.'); }
     });
     acts.appendChild(blk);
   }
@@ -13198,6 +14022,15 @@ let labSearch = '';
 let labFilter = 'all';
 let labModalOpen = false;
 
+// ---------- multi-select ----------
+// Ids rather than objects, so a selection survives a re-render, a filter
+// change and an edit. Anything selected that has since been deleted is
+// dropped by labSelection() rather than tracked, which keeps every other
+// code path from having to care.
+const labSelected = new Set();
+let labAnchorId = null;   // for shift-click ranges
+let labVisibleIds = [];   // what the feed is showing right now, in order
+
 function labCatLabel(slug) {
   const c = LAB_CATEGORIES.find((x) => x.slug === slug);
   return c ? c.label : (slug || '');
@@ -13260,9 +14093,121 @@ function labRenderBrowse() {
   LAB_CATEGORIES.forEach((c) => chips.appendChild(mk(c.slug, c.label)));
   controls.appendChild(chips);
   labBodyEl.appendChild(controls);
+  // The feed is built first: it is what decides which ids are visible, and
+  // the bar's "Select all" needs that list.
   const feed = dcEl('div', 'dc-feed');
-  labBodyEl.appendChild(feed);
   labRenderFeed(feed);
+  feed.classList.toggle('has-selection', labSelected.size > 0);
+  if (labSelected.size) labBodyEl.appendChild(labSelectionBar());
+  labBodyEl.appendChild(feed);
+}
+
+// The live selection, in feed order, with anything deleted since dropped.
+function labSelection() {
+  const byId = new Map(labItems().map((i) => [i.id, i]));
+  const out = [];
+  for (const id of labSelected) {
+    const it = byId.get(id);
+    if (it) out.push(it); else labSelected.delete(id);
+  }
+  return out;
+}
+
+function labClearSelection() {
+  if (!labSelected.size) return;
+  labSelected.clear();
+  labAnchorId = null;
+  labRenderBrowse();
+}
+
+// Click behaviour on a card, matching the tab rail and every file manager:
+// plain click selects only this one, ctrl/cmd toggles, shift extends from the
+// last thing clicked. Plain click *while nothing is selected* is not a
+// selection at all — it opens the prompt, which is what the card is for.
+function labPick(item, e) {
+  const id = item.id;
+  if (e.shiftKey && labAnchorId) {
+    const a = labVisibleIds.indexOf(labAnchorId);
+    const b = labVisibleIds.indexOf(id);
+    if (a >= 0 && b >= 0) {
+      const [lo, hi] = a < b ? [a, b] : [b, a];
+      for (let i = lo; i <= hi; i++) labSelected.add(labVisibleIds[i]);
+    } else {
+      labSelected.add(id);
+    }
+  } else if (e.ctrlKey || e.metaKey) {
+    if (labSelected.has(id)) labSelected.delete(id); else labSelected.add(id);
+    labAnchorId = id;
+  } else {
+    const only = labSelected.size === 1 && labSelected.has(id);
+    labSelected.clear();
+    if (!only) { labSelected.add(id); labAnchorId = id; }
+  }
+  labRenderBrowse();
+}
+
+// The bar only exists while something is selected — an always-visible toolbar
+// with nothing to act on is just a row of disabled buttons.
+function labSelectionBar() {
+  const picked = labSelection();
+  const bar = dcEl('div', 'lab-selbar');
+
+  bar.appendChild(dcEl('span', 'lab-selbar-count',
+    picked.length + ' ' + tr('lab.selected', picked.length === 1 ? 'selected' : 'selected')));
+
+  // Move to category. The whole reason the selection exists for most people:
+  // filing a pile of prompts at once instead of opening each one.
+  const move = dcEl('select', 'lab-selbar-move');
+  const ph = dcEl('option', '', tr('lab.moveTo', 'Move to…'));
+  ph.value = ''; ph.disabled = true; ph.selected = true;
+  move.appendChild(ph);
+  LAB_CATEGORIES.forEach((c) => {
+    const o = dcEl('option', '', c.label); o.value = c.slug; move.appendChild(o);
+  });
+  move.addEventListener('change', () => {
+    const slug = move.value;
+    if (!slug) return;
+    const n = picked.length;
+    picked.forEach((it) => { it.category = slug; });
+    labPersist();
+    labRenderBrowse();
+    showToast(n + ' moved to ' + labCatLabel(slug), '');
+  });
+  bar.appendChild(move);
+
+  const all = dcEl('button', 'dc-mini-btn', tr('lab.selectAll', 'Select all'));
+  all.addEventListener('click', () => {
+    labVisibleIds.forEach((id) => labSelected.add(id));
+    labRenderBrowse();
+  });
+  bar.appendChild(all);
+
+  const del = dcEl('button', 'dc-mini-btn dc-mini-danger', tr('lab.delete', 'Delete'));
+  del.addEventListener('click', async () => {
+    const n = picked.length;
+    const ok = await appConfirm(
+      n === 1
+        ? 'Delete this prompt from your Lab?'
+        : 'Delete ' + n + ' prompts from your Lab?',
+      { danger: true, confirmLabel: tr('lab.delete', 'Delete') });
+    if (!ok) return;
+    const doomed = new Set(picked.map((i) => i.id));
+    const arr = labItems();
+    for (let i = arr.length - 1; i >= 0; i--) if (doomed.has(arr[i].id)) arr.splice(i, 1);
+    labSelected.clear();
+    labAnchorId = null;
+    labPersist();
+    labRenderBrowse();
+    showToast(n === 1 ? 'Prompt deleted' : n + ' prompts deleted', '');
+  });
+  bar.appendChild(del);
+
+  const clear = dcEl('button', 'lab-selbar-clear', '×');
+  clear.title = tr('lab.clearSelection', 'Clear selection');
+  clear.addEventListener('click', labClearSelection);
+  bar.appendChild(clear);
+
+  return bar;
 }
 
 function labRenderFeed(feed) {
@@ -13270,6 +14215,7 @@ function labRenderFeed(feed) {
   let items = labItems().slice().sort((a, b) => (b.ts || 0) - (a.ts || 0));
   if (labFilter !== 'all') items = items.filter((i) => i.category === labFilter);
   if (labSearch) items = items.filter((i) => ((i.title || '') + ' ' + (i.prompt || '')).toLowerCase().includes(labSearch));
+  labVisibleIds = items.map((i) => i.id);
   if (!items.length) {
     const empty = dcEl('div', 'dc-empty');
     empty.appendChild(dcEl('div', 'dc-empty-title', labItems().length ? 'Nothing matches.' : 'Your Prompt Lab is empty'));
@@ -13282,26 +14228,44 @@ function labRenderFeed(feed) {
 
 function labCard(item) {
   const card = dcEl('div', 'dc-card');
+  const picked = labSelected.has(item.id);
+  card.classList.toggle('is-picked', picked);
+
+  // While a selection is running, a click anywhere on the card extends or
+  // changes it instead of opening the prompt — otherwise you would have to
+  // hold ctrl for every card after the first, and one slip would throw the
+  // whole selection away and open a modal on top of it.
+  const openOrPick = (e) => {
+    if (labSelected.size || e.ctrlKey || e.metaKey || e.shiftKey) { labPick(item, e); return; }
+    labOpen(item);
+  };
+
+  const pick = dcEl('button', 'lab-pick');
+  pick.title = tr('lab.select', 'Select');
+  pick.setAttribute('aria-pressed', picked ? 'true' : 'false');
+  pick.addEventListener('click', (e) => { e.stopPropagation(); labPick(item, e); });
+  card.appendChild(pick);
+
   if (item.video && !item.image) {
     const v = dcEl('video', 'dc-card-img'); v.src = labMediaUrl(item.video); v.muted = true; v.preload = 'metadata';
-    v.addEventListener('click', () => labOpen(item));
+    v.addEventListener('click', openOrPick);
     card.appendChild(v);
   } else {
     const im = dcEl('img', 'dc-card-img' + (item.image ? '' : ' is-default'));
     im.loading = 'lazy'; im.src = labMediaUrl(item.image) || dcDefaultImage(item.category); im.alt = '';
-    im.addEventListener('click', () => labOpen(item));
+    im.addEventListener('click', openOrPick);
     card.appendChild(im);
   }
   const body = dcEl('div', 'dc-card-body');
   const top = dcEl('div', 'dc-card-top');
   const title = dcEl('div', 'dc-card-title', item.title || tr('card.untitled', 'Untitled'));
-  title.addEventListener('click', () => labOpen(item));
+  title.addEventListener('click', openOrPick);
   top.appendChild(title);
   if (item.category) top.appendChild(dcEl('span', 'dc-card-cat', labCatLabel(item.category)));
   body.appendChild(top);
   if (item.audio) body.appendChild(dcAudioPlayer(labMediaUrl(item.audio)));
   const pr = dcEl('div', 'dc-card-prompt', item.prompt || '');
-  pr.addEventListener('click', () => labOpen(item));
+  pr.addEventListener('click', openOrPick);
   body.appendChild(pr);
   const foot = dcEl('div', 'dc-card-foot');
   const actions = dcEl('div', 'dc-card-actions');
@@ -13363,7 +14327,11 @@ function labOpen(item) {
     acts.appendChild(share);
   }
   const del = dcEl('button', 'dc-mini-btn dc-mini-danger', 'Delete');
-  del.addEventListener('click', () => { if (confirm('Delete this prompt from your Lab?')) { labDelete(item); close(); } });
+  del.addEventListener('click', async () => {
+    if (await appConfirm('Delete this prompt from your Lab?', { danger: true, confirmLabel: 'Delete' })) {
+      labDelete(item); close();
+    }
+  });
   acts.appendChild(del);
   pane.appendChild(acts);
   modal.appendChild(pane);
@@ -13500,10 +14468,10 @@ function labAddModal(item) {
 }
 
 async function labShare(item, btn) {
-  if (!window.DISCOVER_CONFIGURED || !settings.discoverEnabled) { alert('Discover is turned off (enable it in Settings → Tabs).'); return; }
-  if (!dcClient || !dcSession) { alert('Open the Discover tab and sign in, then share again.'); switchToDiscover(); return; }
-  if (!dcProfile) { alert('Loading your Discover profile — try again in a moment.'); return; }
-  if (item.video && !confirm('Video isn’t shared to Discover (too large). Share the prompt' +
+  if (!window.DISCOVER_CONFIGURED || !settings.discoverEnabled) { await appAlert('Discover is turned off (enable it in Settings → Tabs).'); return; }
+  if (!dcClient || !dcSession) { await appAlert('Open the Discover tab and sign in, then share again.'); switchToDiscover(); return; }
+  if (!dcProfile) { await appAlert('Loading your Discover profile — try again in a moment.'); return; }
+  if (item.video && !await appConfirm('Video isn’t shared to Discover (too large). Share the prompt' +
       (item.image ? ' + image' : '') + (item.category === 'music' && item.audio ? ' + music' : '') + '?')) return;
   const label = btn ? btn.textContent : '';
   if (btn) { btn.disabled = true; btn.textContent = 'Sharing…'; }
@@ -13515,12 +14483,29 @@ async function labShare(item, btn) {
       title: item.title, prompt: item.prompt, category: item.category, imageBlob, audioBlob,
       onStatus: (m) => { if (btn) btn.textContent = m; }
     });
-    if (btn) btn.textContent = 'Shared ✓'; else alert('Shared to Discover!');
+    if (btn) btn.textContent = 'Shared ✓'; else await appAlert('Shared to Discover!');
   } catch (err) {
-    alert((err && err.message) || 'Share failed.');
+    await appAlert((err && err.message) || 'Share failed.');
     if (btn) { btn.disabled = false; btn.textContent = label || 'Share'; }
   }
 }
+
+// Escape drops the selection, Ctrl+A takes all of what is on screen. Both
+// only while the Lab is the visible view and nothing is on top of it, so
+// neither steals the shortcut from the editor.
+document.addEventListener('keydown', (e) => {
+  if (!labActive() || labModalOpen || appDialogDepth) return;
+  const a = document.activeElement;
+  if (a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.isContentEditable)) return;
+  if (e.key === 'Escape' && labSelected.size) {
+    e.preventDefault(); e.stopPropagation();
+    labClearSelection();
+  } else if ((e.ctrlKey || e.metaKey) && (e.key === 'a' || e.key === 'A') && labVisibleIds.length) {
+    e.preventDefault();
+    labVisibleIds.forEach((id) => labSelected.add(id));
+    labRenderBrowse();
+  }
+}, true);
 
 // Paste an image while on the Lab browse screen → open the add modal with it.
 document.addEventListener('paste', (e) => {

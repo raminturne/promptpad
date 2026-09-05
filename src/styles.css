@@ -905,26 +905,63 @@ body {
   position: relative; /* anchors the overflow flyout panel */
 }
 .status-actions > .copy-btn { flex-shrink: 0; } /* overflow chevron */
-/* reorderable toolbar buttons — shrinks/scrolls first if too many are visible */
+/* Reorderable toolbar buttons. This used to scroll horizontally with the
+   scrollbar hidden, which quietly parked every button past the right edge
+   somewhere unreachable — see fitToolbar(), which now moves whatever does not
+   fit into the flyout instead. Hidden, not auto: if anything ever escapes the
+   measurement it should be obviously clipped rather than secretly scrollable. */
 .toolbar-main {
   display: flex;
   align-items: center;
   gap: 5px;
   min-width: 0;
   flex-shrink: 1;
-  overflow-x: auto;
-  scrollbar-width: none;
+  overflow: hidden;
 }
-.toolbar-main::-webkit-scrollbar { height: 0; display: none; }
 .toolbar-main .copy-btn { flex-shrink: 0; }
 
-.toolbar-overflow-btn { transition: transform 0.14s; }
-.toolbar-overflow-btn.active { color: var(--accent); border-color: var(--accent); transform: rotate(180deg); }
-.toolbar-overflow-panel {
+/* ── the overflow chevron ─────────────────────────────────────────────────
+   It used to rotate 180deg, which reads as the same arrow upside down and
+   says nothing about what the button now does. Instead the two arms of the
+   chevron slide together into a close cross, and the pair turns a quarter
+   turn on the way — a cross is symmetrical under 90deg, so it costs nothing
+   at rest and gives the morph somewhere to travel. */
+.toolbar-overflow-btn.active { color: var(--accent); border-color: var(--accent); }
+
+.ovf-glyph {
+  position: relative;
+  display: block;
+  width: 12px;
+  height: 12px;
+  transition: transform .28s cubic-bezier(.3, .9, .3, 1.35);
+}
+.ovf-glyph i {
   position: absolute;
-  bottom: 100%;
+  top: 50%;
+  left: 50%;
+  width: 8px;
+  height: 1.9px;
+  margin: -0.95px 0 0 -4px;
+  border-radius: 2px;
+  background: currentColor;
+  transition: transform .28s cubic-bezier(.3, .9, .3, 1.35);
+}
+/* "^" — a "/" on the left of centre and a "\" on the right */
+.ovf-glyph i:first-child { transform: translateX(-2.7px) rotate(-45deg); }
+.ovf-glyph i:last-child  { transform: translateX(2.7px)  rotate(45deg); }
+
+/* "x" — the same two arms, with the gap closed */
+.toolbar-overflow-btn.active .ovf-glyph { transform: rotate(90deg); }
+.toolbar-overflow-btn.active .ovf-glyph i:first-child { transform: rotate(-45deg); }
+.toolbar-overflow-btn.active .ovf-glyph i:last-child  { transform: rotate(45deg); }
+/* Fixed, not absolute: .statusbar is `overflow: hidden` for the focus-mode
+   height animation, and this panel lives above it, so anchoring it to the
+   status bar clipped it out of existence. positionToolbarOverflow() places
+   it. */
+.toolbar-overflow-panel {
+  position: fixed;
   left: 0;
-  margin-bottom: 6px;
+  top: 0;
   display: flex;
   align-items: center;
   gap: 5px;
@@ -936,9 +973,60 @@ body {
   border-radius: 10px;
   box-shadow: 0 10px 28px rgba(0, 0, 0, .45);
   z-index: 20;
-  animation: pop 0.14s cubic-bezier(0.2, 0.8, 0.3, 1);
+  transform-origin: bottom left;   /* re-pointed at the button in JS */
+  animation: ovfPanelIn .24s cubic-bezier(.2, .9, .3, 1.25);
 }
 .toolbar-overflow-panel .copy-btn { flex-shrink: 0; }
+
+/* The panel grows out of the button, and its contents arrive just behind it —
+   a stagger rather than everything appearing at once, which is what makes a
+   flyout feel like it opened rather than blinked. */
+@keyframes ovfPanelIn {
+  from { opacity: 0; transform: translateY(5px) scale(.93); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes ovfPanelOut {
+  from { opacity: 1; transform: none; }
+  to   { opacity: 0; transform: translateY(3px) scale(.96); }
+}
+.toolbar-overflow-panel.is-closing {
+  animation: ovfPanelOut .13s ease forwards;
+  pointer-events: none;
+}
+@keyframes ovfItemIn {
+  from { opacity: 0; transform: translateY(6px) scale(.9); }
+  to   { opacity: 1; transform: none; }
+}
+.toolbar-overflow-panel .copy-btn {
+  animation: ovfItemIn .3s cubic-bezier(.2, .9, .3, 1.3) backwards;
+}
+.toolbar-overflow-panel .copy-btn:nth-child(1) { animation-delay: 14ms; }
+.toolbar-overflow-panel .copy-btn:nth-child(2) { animation-delay: 36ms; }
+.toolbar-overflow-panel .copy-btn:nth-child(3) { animation-delay: 58ms; }
+.toolbar-overflow-panel .copy-btn:nth-child(4) { animation-delay: 80ms; }
+.toolbar-overflow-panel .copy-btn:nth-child(5) { animation-delay: 102ms; }
+.toolbar-overflow-panel .copy-btn:nth-child(6) { animation-delay: 124ms; }
+.toolbar-overflow-panel .copy-btn:nth-child(7) { animation-delay: 146ms; }
+.toolbar-overflow-panel .copy-btn:nth-child(8) { animation-delay: 168ms; }
+.toolbar-overflow-panel .copy-btn:nth-child(9) { animation-delay: 190ms; }
+.toolbar-overflow-panel .copy-btn:nth-child(10) { animation-delay: 212ms; }
+.toolbar-overflow-panel .copy-btn:nth-child(11) { animation-delay: 234ms; }
+.toolbar-overflow-panel .copy-btn:nth-child(12) { animation-delay: 256ms; }
+.toolbar-overflow-panel .copy-btn:nth-child(13) { animation-delay: 278ms; }
+.toolbar-overflow-panel .copy-btn:nth-child(14) { animation-delay: 300ms; }
+.toolbar-overflow-panel .copy-btn:nth-child(15) { animation-delay: 322ms; }
+.toolbar-overflow-panel .copy-btn:nth-child(16) { animation-delay: 344ms; }
+/* On the way out they leave together — staggering a close just makes it feel
+   slow. */
+.toolbar-overflow-panel.is-closing .copy-btn { animation: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ovf-glyph, .ovf-glyph i { transition: none; }
+  .toolbar-overflow-panel,
+  .toolbar-overflow-panel .copy-btn,
+  .toolbar-overflow-panel.is-closing { animation: none; }
+}
+
 .toolbar-overflow-panel.empty {
   min-width: 170px;
   min-height: 34px;
@@ -2401,6 +2489,199 @@ body {
 /* The raw ![img](…) token stays in the DOM (so the text round-trips) but is
    never shown — only its thumbnail renders. Delete via right-click → Remove. */
 .editor-area .img-token { display: none; }
+/* The literal ![voice](…) stays in the DOM so getEditorText round-trips; only
+   the chip after it is ever seen. */
+.editor-area .voice-token { display: none; }
+
+/* ── voice notes ──────────────────────────────────────────────────────────
+   Collapsed, a chip is about the width of a word, so a clip dropped into the
+   middle of a sentence does not break the line apart. Hovering slides the
+   player out of its right edge.
+
+   The open/close is a width transition on the panel rather than a display
+   swap, because this sits inside a contenteditable: anything that adds or
+   removes a box mid-line makes the caret jump, and the caret jumping while
+   you are writing is far worse than a chip that opens slightly slower. */
+.editor-area .pp-voice {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  vertical-align: -3px;
+  margin: 0 2px;
+  padding: 2px 8px 2px 6px;
+  max-width: 100%;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: var(--elevated);
+  color: var(--muted-2);
+  font-size: 11px;
+  line-height: 1.5;
+  cursor: pointer;
+  user-select: none;
+  transition: border-color .16s, background .16s, color .16s;
+}
+.editor-area .pp-voice:hover,
+.editor-area .pp-voice:focus-visible,
+.editor-area .pp-voice.is-open {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+  outline: none;
+}
+.editor-area .pp-voice-icon { display: inline-flex; flex: none; }
+.editor-area .pp-voice-icon svg { width: 12px; height: 12px; display: block; }
+/* Drawn from the attribute, never as a text node — see makeVoiceChip(). */
+.editor-area .pp-voice-time {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.2px;
+  min-width: 2.4em;
+  text-align: center;
+}
+.editor-area .pp-voice-time::after { content: attr(data-t); }
+
+/* The part that slides. Zero width and clipped when shut; nothing inside can
+   be tabbed to or clicked until it opens. */
+.editor-area .pp-voice-panel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 0;
+  opacity: 0;
+  overflow: hidden;
+  pointer-events: none;
+  transition: max-width .26s cubic-bezier(.22, .8, .3, 1),
+              opacity .18s ease,
+              margin-inline-start .26s cubic-bezier(.22, .8, .3, 1);
+}
+.editor-area .pp-voice.is-open .pp-voice-panel {
+  max-width: 160px;
+  opacity: 1;
+  margin-inline-start: 3px;
+  pointer-events: auto;
+}
+
+.editor-area .pp-voice-play {
+  flex: none;
+  width: 18px; height: 18px;
+  display: grid; place-items: center;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--bg);
+  cursor: pointer;
+}
+.editor-area .pp-voice-play svg { width: 11px; height: 11px; display: block; }
+
+.editor-area .pp-voice-bar {
+  position: relative;
+  width: 108px;
+  height: 3px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--accent) 26%, transparent);
+  cursor: pointer;
+}
+.editor-area .pp-voice-fill {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  width: 0;
+  border-radius: 2px;
+  background: var(--accent);
+}
+/* While it is actually playing the pill keeps a steady glow, so you can find
+   which clip is talking in a long note. */
+.editor-area .pp-voice.is-playing {
+  box-shadow: 0 0 0 1px var(--accent), 0 0 10px var(--accent-glow);
+}
+/* Collapsed but stopped part-way through. The clock already shows the
+   position; this is the quieter signal that the number is a position and not
+   the length of the clip. */
+.editor-area .pp-voice.is-part {
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  color: var(--accent);
+}
+.editor-area .pp-voice.is-part .pp-voice-time::before {
+  content: '';
+  display: inline-block;
+  width: 4px; height: 4px;
+  margin-inline-end: 3px;
+  vertical-align: 1px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.editor-area .pp-voice audio { display: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .editor-area .pp-voice-panel { transition: none; }
+}
+
+/* ── video in a note ──────────────────────────────────────────────────────
+   Shares .pp-img-wrap with images so resize, download and the context menu
+   all keep working; only the element inside differs. */
+.editor-area .pp-video {
+  display: block;
+  max-height: 220px;
+  max-width: 100%;
+  border-radius: 8px;
+  border: 1px solid var(--border-strong);
+  margin: 4px 0 2px;
+  background: #000;
+  cursor: default;
+}
+.editor-area .pp-video.pp-img-sized { max-height: none; }
+.md-preview .md-video {
+  display: block;
+  max-height: 300px;
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 6px 0;
+  background: #000;
+}
+.md-preview .md-video.md-img-sized { max-height: none; }
+
+/* The recording state: the button goes red and pulses, and the two controls
+   after it come in. */
+.copy-btn.is-recording {
+  border-color: var(--danger);
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  animation: voicePulse 1.4s ease-in-out infinite;
+}
+@keyframes voicePulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--danger) 40%, transparent); }
+  60%      { box-shadow: 0 0 0 4px transparent; }
+}
+.copy-btn.is-recording .vn-label { font-variant-numeric: tabular-nums; min-width: 2.6em; }
+
+/* Idle: a microphone. Recording: a red dot and a discard cross, in the same
+   button, so the toolbar's overflow menu only ever has one item to move. */
+.copy-btn .vn-dot,
+.copy-btn .vn-x { display: none; }
+.copy-btn.is-recording .vn-mic { display: none; }
+.copy-btn.is-recording .vn-dot {
+  display: block;
+  width: 8px; height: 8px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--danger);
+}
+.copy-btn.is-recording .vn-x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px; height: 15px;
+  flex: none;
+  margin-inline-start: 2px;
+  border-radius: 50%;
+  color: var(--muted-2);
+  cursor: pointer;
+}
+.copy-btn.is-recording .vn-x:hover { background: var(--danger); color: #fff; }
+@media (prefers-reduced-motion: reduce) {
+  .copy-btn.is-recording { animation: none; }
+}
 .editor-area .pp-img {
   display: block;
   max-height: 180px;
@@ -2446,11 +2727,45 @@ body {
   cursor: zoom-out;
   animation: fade 0.14s ease;
 }
-.lightbox img {
+.lightbox img,
+.lightbox video {
   max-width: 100%;
   max-height: 100%;
   border-radius: 10px;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+}
+/* The zoom-out cursor belongs to the backdrop. Over the video itself the
+   pointer has to go back to normal, because the controls under it are real. */
+.lightbox video {
+  cursor: default;
+  background: #000;
+}
+.lightbox video.hidden,
+.lightbox img.hidden { display: none; }
+
+.lightbox-tools {
+  position: absolute;
+  top: 14px;
+  inset-inline-end: 14px;
+  display: flex;
+  gap: 6px;
+  cursor: default;
+}
+.lightbox-tool {
+  width: 30px; height: 30px;
+  display: grid; place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(4px);
+  color: rgba(255, 255, 255, 0.82);
+  cursor: pointer;
+  transition: background .14s, color .14s, border-color .14s;
+}
+.lightbox-tool:hover {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.34);
+  color: #fff;
 }
 
 /* =========================================================
@@ -2768,6 +3083,69 @@ body {
 .toast.toast-show {
   opacity: 1;
   transform: translate(-50%, 0);
+}
+
+/* ── in-app confirm / alert ───────────────────────────────────────────────
+   Replaces window.confirm() and window.alert(). See appDialog() in
+   renderer.js for why a native dialog cannot be used in this window.
+   z-index sits above the emoji panel (10001) and the toast, because this is
+   the one thing on screen that is waiting for an answer. */
+.app-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10050;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.55);
+  animation: appDialogIn 0.14s ease;
+}
+.app-dialog {
+  width: min(360px, 100%);
+  padding: 18px 18px 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  background: var(--sidebar);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.5);
+  animation: appDialogPop 0.16s cubic-bezier(.2, .9, .3, 1.2);
+}
+.app-dialog-text {
+  margin: 0 0 16px;
+  color: var(--text);
+  font-size: 12.5px;
+  line-height: 1.6;
+  white-space: pre-line;
+}
+.app-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.app-dialog-btn {
+  height: 28px;
+  padding: 0 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted-2);
+  font-family: var(--font);
+  font-size: 11.5px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.app-dialog-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.app-dialog-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.app-dialog-primary { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.app-dialog-danger { border-color: var(--danger); color: var(--danger); background: transparent; }
+.app-dialog-danger:hover { border-color: var(--danger); color: #fff; background: var(--danger); }
+
+@keyframes appDialogIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes appDialogPop {
+  from { opacity: 0; transform: translateY(6px) scale(0.97); }
+  to   { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .app-dialog-overlay, .app-dialog { animation: none; }
 }
 
 .toast-name {
@@ -3587,6 +3965,113 @@ body {
 .dc-card {
   border: 1px solid var(--border-strong); border-radius: 10px; overflow: hidden;
   background: var(--elevated); display: flex; flex-direction: column;
+}
+
+/* ── Prompt Lab multi-select ──────────────────────────────────────────────
+   The tick sits over the thumbnail's top-left corner. It is invisible until
+   you hover the card or something is already selected: a grid of permanent
+   checkboxes reads as a form, and most visits to the Lab are to find one
+   prompt, not to file twenty. */
+.lab-pick {
+  position: absolute;
+  top: 8px; left: 8px;
+  z-index: 2;
+  width: 20px; height: 20px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(3px);
+  cursor: pointer;
+  opacity: 0;
+  transform: scale(0.85);
+  transition: opacity .14s ease, transform .14s ease, background .14s, border-color .14s;
+}
+.dc-card { position: relative; }
+.dc-card:hover .lab-pick,
+.dc-feed.has-selection .lab-pick,
+.lab-pick:focus-visible { opacity: 1; transform: none; }
+
+/* The tick itself, drawn rather than shipped as a glyph so it inherits the
+   accent and stays crisp at 20px. */
+.lab-pick::after {
+  content: '';
+  position: absolute;
+  left: 5px; top: 5px;
+  width: 8px; height: 4px;
+  border-left: 2px solid #fff;
+  border-bottom: 2px solid #fff;
+  transform: rotate(-45deg) scale(0.6);
+  opacity: 0;
+  transition: opacity .12s ease, transform .12s cubic-bezier(.2, .9, .3, 1.4);
+}
+.dc-card.is-picked .lab-pick {
+  opacity: 1;
+  transform: none;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.dc-card.is-picked .lab-pick::after { opacity: 1; transform: rotate(-45deg) scale(1); }
+
+.dc-card.is-picked {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent), 0 6px 20px var(--accent-glow);
+}
+.dc-card.is-picked .dc-card-img { opacity: 0.72; }
+
+/* The action bar, which only exists while something is selected. */
+.lab-selbar {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  margin: 0 14px 8px;
+  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--accent);
+  border-radius: 9px;
+  background: var(--elevated-hi);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+  animation: labSelbarIn .16s cubic-bezier(.2, .9, .3, 1.2);
+}
+@keyframes labSelbarIn {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: none; }
+}
+.lab-selbar-count {
+  color: var(--accent);
+  font-size: 11.5px;
+  letter-spacing: 0.3px;
+  margin-inline-end: auto;
+  white-space: nowrap;
+}
+.lab-selbar-move {
+  height: 24px;
+  padding: 0 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 11px;
+  cursor: pointer;
+}
+.lab-selbar-clear {
+  width: 24px; height: 24px;
+  display: grid; place-items: center;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+.lab-selbar-clear:hover { background: var(--elevated); color: var(--text); }
+
+@media (prefers-reduced-motion: reduce) {
+  .lab-pick, .lab-pick::after, .lab-selbar { animation: none; transition: none; }
 }
 .dc-card-img {
   width: 100%; aspect-ratio: 16 / 10; object-fit: cover; display: block; cursor: zoom-in;

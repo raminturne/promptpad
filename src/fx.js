@@ -4023,6 +4023,26 @@
       document.addEventListener('keydown', onKey, true);
       this._onKey = onKey;
 
+      // The sheen's geometry. The gradient line runs EXT past both ends of
+      // the surface so the band can sit off-screen (see the tick), and the
+      // phase range is chosen so that the band's outermost stop lands exactly
+      // on 0 and 1 at the extremes — addColorStop throws on anything outside
+      // that, and a band that has to be clamped stops travelling.
+      // HALF is the band's half-width. The phase travels from just off one
+      // edge to just off the other — far enough that the sheen leaves
+      // completely and there is a beat before the next one, not so far that
+      // the surface sits dead for four seconds out of every nineteen, which
+      // is what it did when the phase ran to ±0.3.
+      //
+      // EXT then has to be at least HALF - PH_MIN for the outermost colour
+      // stop to stay inside [0,1]; addColorStop throws on anything else, and
+      // a throw in the tick ends the theme until the app is restarted.
+      const HALF = 0.07;
+      const PH_MIN = -0.16;
+      const PH_MAX = 1.16;
+      const EXT = 0.25;
+      const SPAN = 1 + EXT * 2;
+
       let phase = 0.15;
       let last = performance.now();
       const tick = (now) => {
@@ -4033,22 +4053,48 @@
         // materials apart at a glance, so it is worth being strict about.
         kick = Math.max(0, kick - dt * 1.4);
         phase += dt * (0.055 + kick * 0.22);
-        if (phase > 1.3) phase = -0.3;
+        if (phase > PH_MAX) phase = PH_MIN;
 
         const w = spec.w;
         const h = spec.h;
         sctx.clearRect(0, 0, w, h);
         sctx.globalCompositeOperation = 'lighter';
-        const at = Math.max(0, Math.min(1, phase));
-        const g = sctx.createLinearGradient(0, 0, w, h * 0.55);
+        // The highlight is a five-stop band riding `phase` across the surface.
+        //
+        // The trap here is that a canvas gradient's colour stops must all sit
+        // inside [0,1] and be non-decreasing, so the obvious approach — put
+        // the band at `phase` and clamp — cannot express a band that is
+        // partly off the edge. Clamping squashes the leading half of it flat
+        // against offset 1 instead, so the sheen reached the right-hand side,
+        // stopped moving, dimmed out where it stood, and vanished. Measured
+        // over a sweep: the peak sat at 0.998 then 0.991 while its brightness
+        // halved, then went to nothing for eight seconds.
+        //
+        // So the gradient line is drawn LONGER than the surface — EXT past
+        // each end — and `phase` is mapped into it. The band can then be
+        // genuinely off-screen while every stop stays in range and in order,
+        // and it slides off the edge the way a reflection does instead of
+        // dying against it.
         const a = 0.10 + kick * 0.14;
-        g.addColorStop(0, 'rgba(0,0,0,0)');
-        g.addColorStop(Math.max(0, at - 0.07), 'rgba(0,0,0,0)');
-        g.addColorStop(Math.max(0.001, at - 0.02), 'rgba(214,226,238,' + (a * 0.5).toFixed(3) + ')');
+        const dim = 'rgba(214,226,238,' + (a * 0.5).toFixed(3) + ')';
+        const clear = 'rgba(0,0,0,0)';
+        // Surface position -> offset along the extended line.
+        const half = HALF / SPAN;
+        const near = 0.02 / SPAN;
+        // Guarded, so a stray frame time can never hand addColorStop an
+        // offset outside [0,1] — that throws, and a throw inside the tick
+        // kills the theme for the rest of the session.
+        const at = Math.min(1 - half, Math.max(half, (phase + EXT) / SPAN));
+        const g = sctx.createLinearGradient(
+          -EXT * w, -EXT * h * 0.55,
+          (1 + EXT) * w, (1 + EXT) * h * 0.55);
+        g.addColorStop(0, clear);
+        g.addColorStop(at - half, clear);
+        g.addColorStop(at - near, dim);
         g.addColorStop(at, 'rgba(236,244,252,' + a.toFixed(3) + ')');
-        g.addColorStop(Math.min(0.999, at + 0.02), 'rgba(214,226,238,' + (a * 0.5).toFixed(3) + ')');
-        g.addColorStop(Math.min(1, at + 0.07), 'rgba(0,0,0,0)');
-        g.addColorStop(1, 'rgba(0,0,0,0)');
+        g.addColorStop(at + near, dim);
+        g.addColorStop(at + half, clear);
+        g.addColorStop(1, clear);
         sctx.fillStyle = g;
         sctx.fillRect(0, 0, w, h);
         sctx.globalCompositeOperation = 'source-over';

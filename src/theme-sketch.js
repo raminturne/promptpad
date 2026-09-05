@@ -283,6 +283,86 @@
       dot(g, h1(i + 2) * w + Math.sin(tm + i) * 2, y, 0.9, 'rgba(230,238,250,0.85)');
     }
   };
+  // Snow Street '97 shared the retro family's card with Barrel Fire, so two
+  // very different scenes showed the same picture of a burning drum. This is
+  // its own street: the lit shopfront in the middle, a lamp throwing a cone
+  // onto the snow, a car crossing every few seconds, and weather.
+  S.snowstreet = (g, w, h, tm, t) => {
+    const ground = h * 0.74;
+
+    // Night sky, warmer near the horizon the way a snowy city is.
+    const sky = g.createLinearGradient(0, 0, 0, ground);
+    sky.addColorStop(0, 'rgba(6,8,20,0.92)');
+    sky.addColorStop(1, 'rgba(38,30,50,0.92)');
+    g.fillStyle = sky; g.fillRect(0, 0, w, ground);
+
+    // Terraces either side, with a few windows on.
+    for (let x = -2; x < w + 6; x += 9) {
+      const bh = h * (0.2 + h1(x) * 0.22);
+      const top = ground - bh;
+      g.fillStyle = 'rgba(14,15,30,1)';
+      g.fillRect(x, top, 8, bh);
+      g.fillStyle = 'rgba(70,80,110,0.5)';
+      g.fillRect(x, top, 8, 1);                       // snow on the roof
+      for (let r = 0; r < 3; r++) {
+        if (h1(x * 3 + r) < 0.62) continue;
+        g.fillStyle = 'rgba(240,206,140,0.85)';
+        g.fillRect(x + 2 + (r % 2) * 3, top + 3 + r * 5, 2, 3);
+      }
+    }
+
+    // The shop: a bright window in the middle, and the light it spills.
+    const sx = w * 0.36, sw = w * 0.3, sy = ground - h * 0.3;
+    g.fillStyle = 'rgba(24,18,24,1)';
+    g.fillRect(sx, sy, sw, h * 0.3);
+    const spill = g.createLinearGradient(0, sy, 0, ground + h * 0.1);
+    spill.addColorStop(0, 'rgba(255,206,132,0.32)');
+    spill.addColorStop(1, 'rgba(255,206,132,0)');
+    g.fillStyle = spill;
+    g.fillRect(sx - sw * 0.35, sy, sw * 1.7, ground - sy + h * 0.1);
+    g.fillStyle = 'rgba(252,214,146,0.95)';
+    g.fillRect(sx + 2, sy + h * 0.09, sw - 4, h * 0.14);
+    // Stock on the shelf, as coloured specks.
+    for (let i = 0; i < 7; i++) {
+      g.fillStyle = ['#c43e34', '#3e8ccc', '#e8ca42', '#58b25c'][i % 4];
+      g.fillRect(sx + 4 + i * ((sw - 8) / 7), sy + h * 0.17, 1.5, 2.5);
+    }
+    g.fillStyle = 'rgba(255,72,132,0.9)';                       // neon over the door
+    g.fillRect(sx + sw * 0.25, sy + h * 0.04, sw * 0.5, 1.6);
+
+    // Snow on the ground, and the road across it.
+    g.fillStyle = 'rgba(196,206,226,0.95)'; g.fillRect(0, ground, w, h - ground);
+    g.fillStyle = 'rgba(30,32,44,0.95)';    g.fillRect(0, ground + h * 0.09, w, h * 0.1);
+
+    // A lamp, with its cone in the air and its pool on the snow.
+    const lx = w * 0.14, lh = h * 0.34;
+    g.fillStyle = 'rgba(18,20,30,1)'; g.fillRect(lx, ground - lh, 1.5, lh);
+    g.fillStyle = 'rgba(255,238,200,1)'; g.fillRect(lx - 1, ground - lh, 3.5, 2);
+    const cone = g.createRadialGradient(lx + 0.75, ground - lh + 1, 0, lx + 0.75, ground - lh + 1, h * 0.4);
+    cone.addColorStop(0, 'rgba(255,216,160,0.34)');
+    cone.addColorStop(1, 'rgba(255,216,160,0)');
+    g.fillStyle = cone; g.fillRect(0, ground - lh - 2, w * 0.4, h);
+
+    // A car, right to left, every few seconds.
+    const cp = (tm * 0.3) % 2.2;
+    if (cp < 1) {
+      const cx = w * 1.1 - cp * (w * 1.3), cy = ground + h * 0.1;
+      g.fillStyle = 'rgba(118,30,30,1)';
+      g.fillRect(cx, cy, w * 0.17, h * 0.07);
+      g.fillStyle = 'rgba(255,244,214,0.95)';
+      g.fillRect(cx - 1.5, cy + h * 0.03, 2, 1.6);              // headlight
+      g.fillStyle = 'rgba(255,60,50,0.9)';
+      g.fillRect(cx + w * 0.17 - 1, cy + h * 0.03, 1.5, 1.4);   // tail light
+    }
+
+    // Weather, blowing across rather than straight down.
+    for (let i = 0; i < 26; i++) {
+      const y = (tm * 7 + h1(i) * h * 1.4) % (h * 1.1);
+      const x = (h1(i + 5) * w - tm * 5 + Math.sin(tm * 0.8 + i) * 3 + w) % w;
+      dot(g, x, y, h1(i + 9) > 0.75 ? 1.2 : 0.8, 'rgba(232,240,252,0.9)');
+    }
+  };
+
   S.lasttrain = (g, w, h, tm, t) => {
     g.fillStyle = 'rgba(9,11,24,0.75)'; g.fillRect(0, 0, w, h);
     // Conifers.

@@ -49,6 +49,7 @@ contextBridge.exposeInMainWorld('api', {
   toggleMinimize: () => ipcRenderer.invoke('toggle-minimize'),
   toggleTray: () => ipcRenderer.invoke('toggle-tray'),
   pickImage: () => ipcRenderer.invoke('pick-image'),
+  pickVideo: () => ipcRenderer.invoke('pick-video'),
   saveImage: (base64, ext) => ipcRenderer.invoke('save-image', base64, ext),
   saveMedia: (base64, ext) => ipcRenderer.invoke('save-media', base64, ext),
   // `ai` is { provider, model, apiKey, baseUrl, models } — see aiOpts() in the

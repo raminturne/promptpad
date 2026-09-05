@@ -406,10 +406,11 @@
             <span id="tokenCount">~0 tokens</span>
           </div>
           <div class="status-actions">
+            <!-- Two bars rather than a chevron glyph, so the icon can morph
+                 into a close cross instead of flipping upside down: the arms
+                 slide together and the pair turns. See .ovf-glyph. -->
             <button id="toolbarOverflowBtn" class="copy-btn toolbar-overflow-btn hidden" title="More">
-              <svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true">
-                <polyline points="6 15 12 9 18 15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-              </svg>
+              <span class="ovf-glyph" aria-hidden="true"><i></i><i></i></span>
             </button>
             <div id="toolbarOverflowPanel" class="toolbar-overflow-panel hidden"></div>
             <div id="toolbarMain" class="toolbar-main">
@@ -469,7 +470,7 @@
                 <line x1="12" y1="18" x2="12" y2="21" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
                 <line x1="8" y1="21" x2="16" y2="21" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
               </svg>
-              <span class="btn-label">Voice</span>
+              <span class="btn-label">Speech to text</span>
             </button>
             <button id="mdBtn" class="copy-btn" title="Markdown preview (Ctrl+M)">
               <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
@@ -502,6 +503,38 @@
                 <path d="M4 17.5l4.5-4.5 3.5 3.5 3-3 5 5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
               </svg>
               <span class="btn-label">Image</span>
+            </button>
+            <!-- Voice sits next to Image because both are "put a thing in the
+                 note", and it is on the status bar rather than in a menu so a
+                 clip is one click away while you are already typing. While it
+                 records, the label becomes a running clock and the two
+                 buttons after it appear. -->
+            <!-- One toolbar item, not three. Stop and discard used to be
+                 separate buttons beside this one, which broke the moment the
+                 overflow menu moved Record into the flyout and left them
+                 stranded in the main row. While it records the label becomes a
+                 clock and the discard cross appears inside the same button:
+                 clicking the button stops and inserts, clicking the cross
+                 throws the take away. -->
+            <button id="voiceNoteBtn" class="copy-btn has-new-badge" title="Record a voice note">
+              <svg class="vn-mic" viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
+                <rect x="9" y="3" width="6" height="11" rx="3" fill="none" stroke="currentColor" stroke-width="1.7"/>
+                <path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+              </svg>
+              <span class="vn-dot" aria-hidden="true"></span>
+              <span class="btn-label vn-label">Record</span>
+              <span class="vn-x" role="button" title="Discard recording" aria-label="Discard recording">
+                <svg viewBox="0 0 24 24" width="10" height="10" aria-hidden="true">
+                  <path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/>
+                </svg>
+              </span>
+            </button>
+            <button id="videoBtn" class="copy-btn has-new-badge" title="Insert video">
+              <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
+                <rect x="3" y="5" width="13" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/>
+                <path d="M16 10.5l5-3v9l-5-3z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+              </svg>
+              <span class="btn-label">Video</span>
             </button>
             <button id="tableBtn" class="copy-btn" title="Insert table">
               <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
@@ -1821,8 +1854,30 @@
     </div>
 
     <!-- Image lightbox -->
+    <!-- The zoom overlay holds either an image or a video; whichever is not
+         in use is hidden and has its src cleared, so a paused video is never
+         left decoding behind a picture. -->
     <div id="lightbox" class="lightbox hidden">
       <img id="lightboxImg" alt="" />
+      <video id="lightboxVideo" class="hidden" controls playsinline></video>
+      <!-- The overlay's own fullscreen, rather than the one built into the
+           <video> controls. The native button asks Chromium to promote the
+           element, which does not complete inside this window; this asks the
+           main process for the same OS fullscreen the app's own F11 uses, and
+           the overlay already covers the whole window. -->
+      <div class="lightbox-tools">
+        <button id="lightboxFsBtn" class="lightbox-tool" title="Fullscreen (F11)">
+          <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true">
+            <path d="M4 9V5.5A1.5 1.5 0 0 1 5.5 4H9M20 9V5.5A1.5 1.5 0 0 0 18.5 4H15M4 15v3.5A1.5 1.5 0 0 0 5.5 20H9M20 15v3.5A1.5 1.5 0 0 1 18.5 20H15"
+                  fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          </svg>
+        </button>
+        <button id="lightboxCloseBtn" class="lightbox-tool" title="Close (Esc)">
+          <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true">
+            <path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </button>
+      </div>
     </div>
 
     <!-- Drag & drop hint -->

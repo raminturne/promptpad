@@ -6446,3 +6446,39 @@ html.no-anim *::after {
 /* Snow Street '97 — makeRetro creates and positions its own canvas; this rule
    only takes effect if your makeRetro applies the fx class. Kept for the contract. */
 .fx-snowstreet-canvas { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; }
+
+/* ── Fast Save voice notes ────────────────────────────────────────────────
+   The composer's record button, and the player a saved clip renders as. */
+.fs-input-btn .fsv-dot { display: none; }
+.fs-input-btn.is-recording .fsv-mic { display: none; }
+.fs-input-btn.is-recording {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+.fs-input-btn.is-recording .fsv-dot {
+  display: block;
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  background: var(--danger);
+  animation: fsvPulse 1.3s ease-in-out infinite;
+}
+@keyframes fsvPulse { 0%, 100% { opacity: 1; } 55% { opacity: .3; } }
+.fs-voice-timer {
+  align-self: center;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--danger);
+  letter-spacing: .5px;
+  min-width: 2.6em;
+  text-align: center;
+}
+.fs-voice-cancel { color: var(--muted); }
+.fs-voice-cancel:hover { color: var(--danger); border-color: var(--danger); }
+
+/* A clip in a message. dcAudioPlayer() already draws the transport; this
+   only sizes it for the narrower bubble. */
+.fs-msg-audio { width: 100%; min-width: 190px; margin: 2px 0 4px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .fs-input-btn.is-recording .fsv-dot { animation: none; }
+}

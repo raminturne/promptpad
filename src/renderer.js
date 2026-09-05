@@ -439,6 +439,10 @@ const tableCancel = document.getElementById('tableCancel');
 const tableSave = document.getElementById('tableSave');
 // image context menu
 const imgContextMenu = document.getElementById('imgContextMenu');
+const voiceContextMenu = document.getElementById('voiceContextMenu');
+const fsVoiceBtn = document.getElementById('fsVoiceBtn');
+const fsVoiceTimerEl = document.getElementById('fsVoiceTimer');
+const fsVoiceCancelBtn = document.getElementById('fsVoiceCancel');
 const textContextMenu = document.getElementById('textContextMenu');
 const aiActionsMenu = document.getElementById('aiActionsMenu');
 const mdCommandsMenu = document.getElementById('mdCommandsMenu');
@@ -576,6 +580,20 @@ const VOICE_TOKEN_RE = /!\[voice\]\(ppimg:\/\/([a-zA-Z0-9._-]+)(?:\|(\d+))?\)/g;
 
 function voiceToken(filename, ms) {
   return '![voice](ppimg://' + filename + (ms ? '|' + Math.round(ms) : '') + ')';
+}
+
+// How long a clip runs, in seconds, or 0 when nothing knows.
+//
+// A WebM written by MediaRecorder has no duration in its header — the muxer
+// cannot know it while it is still recording — so <audio>.duration reads
+// Infinity until the whole file has been seeked through. Infinity is truthy,
+// which is what made `audio.duration || fallback` quietly useless: it kept
+// the Infinity, the progress bar never moved, and the label read
+// "Infinity:NaN". Anything asking for a duration has to go through here.
+function audioSeconds(audio, fallbackMs) {
+  const d = audio && audio.duration;
+  if (typeof d === 'number' && isFinite(d) && d > 0) return d;
+  return fallbackMs ? fallbackMs / 1000 : 0;
 }
 
 // m:ss, the way every voice message everywhere is labelled.
@@ -2709,6 +2727,12 @@ function renderFsMessages() {
       row.appendChild(chip);
     }
 
+    if (m.audio) {
+      const player = dcAudioPlayer('ppimg://' + m.audio, m.audioMs);
+      player.classList.add('fs-msg-audio');
+      row.appendChild(player);
+    }
+
     if (m.text) {
       const body = document.createElement('div');
       body.className = 'fs-msg-text';
@@ -2728,6 +2752,8 @@ function renderFsMessages() {
       '<rect x="9" y="9" width="11" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/>' +
       '<path d="M5 15V5a2 2 0 0 1 2-2h8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>';
     copyB.addEventListener('click', async () => {
+      // Nothing to put on the clipboard for a clip; the button is hidden for
+      // those, so this only ever runs with real text.
       try { await navigator.clipboard.writeText(m.text || ''); } catch (e) { console.error(e); }
       copyB.classList.add('copied');
       setTimeout(() => copyB.classList.remove('copied'), 900);
@@ -2795,7 +2821,7 @@ function fsSendMessage() {
   if (fsEditingId) {
     const m = fsMessages().find((x) => x.id === fsEditingId);
     if (m) {
-      if (!text.trim() && !m.image) {
+      if (!text.trim() && !m.image && !m.audio && !m.file) {
         // cleared a text-only message → delete it
         state.fastSave.messages = fsMessages().filter((x) => x.id !== m.id);
       } else {
@@ -2824,6 +2850,53 @@ function fsSendMessage() {
   renderTabs(); // refresh the count badge
   scheduleSave();
   fsInputEl.focus();
+}
+
+// ---------- Fast Save voice notes ----------
+//
+// A recording becomes its own message as soon as it stops — it is not staged
+// beside the text box the way an image or a file is. Something you have just
+// said is finished; making you press send afterwards would only give you a
+// chance to lose it.
+function fsAddVoice(filename, ms) {
+  fsMessages().push({ id: uid(), ts: Date.now(), text: '', audio: filename, audioMs: ms });
+  renderFsMessages();
+  renderTabs();          // the count badge
+  scheduleSave();
+  showToast('Voice note saved', '');
+  // Newest at the bottom, so the one just recorded should be on screen.
+  if (fsMessagesEl) fsMessagesEl.scrollTop = fsMessagesEl.scrollHeight;
+}
+
+let fsVoiceTimer = null;
+function fsVoiceSetUi(on) {
+  if (!fsVoiceBtn) return;
+  fsVoiceBtn.classList.toggle('is-recording', on);
+  fsVoiceBtn.title = on ? 'Stop and save' : 'Record a voice note';
+  if (fsVoiceCancelBtn) fsVoiceCancelBtn.classList.toggle('hidden', !on);
+  if (fsVoiceTimerEl) fsVoiceTimerEl.classList.toggle('hidden', !on);
+  clearInterval(fsVoiceTimer);
+  if (on) {
+    const tick = () => {
+      if (!vnoteRec || !fsVoiceTimerEl) return;
+      fsVoiceTimerEl.textContent = clipLength(Date.now() - vnoteRec.startedAt);
+    };
+    tick();
+    fsVoiceTimer = setInterval(tick, 200);
+  }
+}
+
+if (fsVoiceBtn) {
+  fsVoiceBtn.addEventListener('click', () => {
+    if (vnoteRec) { vnoteStop(true); return; }
+    vnoteStart({ toFastSave: true, onUi: fsVoiceSetUi });
+  });
+}
+if (fsVoiceCancelBtn) {
+  fsVoiceCancelBtn.addEventListener('click', () => {
+    vnoteStop(false);
+    showToast('Recording discarded', '');
+  });
 }
 
 // Stage / clear a file for the next Fast Save message.
@@ -5006,7 +5079,7 @@ function makeVoiceChip(file, ms) {
     load();
     const r = bar.getBoundingClientRect();
     const p = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
-    const dur = audio.duration || (ms / 1000);
+    const dur = audioSeconds(audio, ms);
     if (dur) audio.currentTime = p * dur;
   });
 
@@ -5020,7 +5093,7 @@ function makeVoiceChip(file, ms) {
   // The rule: at the very start and not playing, the number is how long the
   // clip is. Anywhere else, it is where you are in it.
   const paint = () => {
-    const dur = audio.duration || (ms / 1000);
+    const dur = audioSeconds(audio, ms);
     const at = audio.currentTime || 0;
     if (dur) fill.style.width = (at / dur * 100).toFixed(1) + '%';
     const atStart = at < 0.05 && audio.paused;
@@ -5178,6 +5251,127 @@ function fileFromImgSrc(src) {
   const m = /^ppimg:\/\/([a-zA-Z0-9._-]+)/.exec(src || '');
   return m ? m[1] : null;
 }
+
+// ---------- voice-note context menu ----------
+//
+// Deleting a clip used to mean putting the caret next to an invisible token
+// and holding backspace over text you could not see. Everything that acts on
+// one clip goes through here instead.
+//
+// The chip is found by position rather than by filename: the same recording
+// can legitimately appear twice in a line, and "the second one" is the only
+// way to say which was right-clicked.
+let voiceCtxTarget = null;
+
+function voiceIndexInLine(line, chip) {
+  const chips = [...line.querySelectorAll('.pp-voice')];
+  return Math.max(0, chips.indexOf(chip));
+}
+
+// Rewrite the nth voice token on a line. `make` gets the current filename and
+// duration and returns the replacement text — '' deletes it.
+function rewriteVoiceToken(line, nth, make) {
+  if (!line) return false;
+  let seen = -1;
+  let hit = false;
+  const next = line.textContent.replace(VOICE_TOKEN_RE, (m, file, ms) => {
+    seen++;
+    if (seen !== nth) return m;
+    hit = true;
+    return make(file, ms ? Number(ms) : 0);
+  });
+  if (!hit) return false;
+  line.textContent = next;
+  highlightLine(line);
+  handleEditorChanged();
+  return true;
+}
+
+function showVoiceContextMenu(e, target) {
+  voiceCtxTarget = target;
+  const label = voiceContextMenu.querySelector('[data-voice-play-label]');
+  if (label) label.textContent = target.playing ? 'Pause' : 'Play';
+
+  voiceContextMenu.style.left = e.clientX + 'px';
+  voiceContextMenu.style.top = e.clientY + 'px';
+  voiceContextMenu.classList.remove('hidden');
+  requestAnimationFrame(() => {
+    const rect = voiceContextMenu.getBoundingClientRect();
+    const vw = document.documentElement.clientWidth;
+    const vh = document.documentElement.clientHeight;
+    if (rect.right > vw - 4) voiceContextMenu.style.left = Math.max(4, vw - rect.width - 4) + 'px';
+    if (rect.bottom > vh - 4) voiceContextMenu.style.top = Math.max(4, vh - rect.height - 4) + 'px';
+  });
+}
+
+function hideVoiceContextMenu() {
+  voiceContextMenu.classList.add('hidden');
+  voiceCtxTarget = null;
+}
+
+document.addEventListener('contextmenu', (e) => {
+  const t = e.target;
+  if (!(t instanceof Element)) return;
+  const chip = t.closest('.pp-voice');
+  if (!chip || !chip.closest('#editor')) return;
+  e.preventDefault();
+  e.stopPropagation();
+  const line = chip.closest('.ln');
+  const audio = chip.querySelector('audio');
+  showVoiceContextMenu(e, {
+    chip, line,
+    nth: line ? voiceIndexInLine(line, chip) : 0,
+    file: chip.dataset.file,
+    playing: !!(audio && !audio.paused)
+  });
+}, true);
+
+voiceContextMenu.addEventListener('click', async (e) => {
+  const item = e.target.closest('[data-voice-action]');
+  if (!item || !voiceCtxTarget) return;
+  const { chip, line, nth, file } = voiceCtxTarget;
+  const action = item.dataset.voiceAction;
+  hideVoiceContextMenu();
+
+  if (action === 'play') {
+    const audio = chip.querySelector('audio');
+    if (!audio) return;
+    chip.classList.add('is-open');
+    if (!audio.getAttribute('src')) audio.src = 'ppimg://' + file;
+    if (audio.paused) audio.play().catch(() => {}); else audio.pause();
+
+  } else if (action === 'save') {
+    try { await window.api.downloadImage(file); } catch (err) { console.error(err); }
+
+  } else if (action === 'delete') {
+    // The clip may still be talking; it is about to lose its element.
+    try { const a = chip.querySelector('audio'); if (a) a.pause(); } catch (err) {}
+    // Take the space that was left around it too, or deleting a clip from
+    // mid-sentence leaves a double gap behind.
+    const gone = rewriteVoiceToken(line, nth, () => '');
+    if (gone) {
+      line.textContent = line.textContent.replace(/[ \t]{2,}/g, ' ');
+      highlightLine(line);
+      handleEditorChanged();
+      showToast('Voice note deleted', '');
+    }
+
+  } else if (action === 'replace') {
+    // Record now, and swap the token when the new clip lands rather than
+    // deleting first — a failed or abandoned recording should leave the
+    // note exactly as it was.
+    vnoteStart({
+      replace: { line, nth },
+      onDone: () => showToast('Voice note replaced', '')
+    });
+  }
+});
+
+document.addEventListener('click', (e) => {
+  if (!voiceContextMenu.classList.contains('hidden') && !voiceContextMenu.contains(e.target)) {
+    hideVoiceContextMenu();
+  }
+});
 
 // Remove one image token (the one behind `wrap`) from its editor line.
 function removeImageFromLine(line, wrap) {
@@ -5590,10 +5784,19 @@ function vnoteStopTracks(stream) {
   try { stream.getTracks().forEach((t) => t.stop()); } catch (e) {}
 }
 
-async function vnoteStart() {
+// opts:
+//   replace: { line, nth }  swap that voice token instead of inserting
+//   toFastSave: true        the clip becomes a Fast Save message
+//   onDone: fn              called after the clip has landed
+// With none of them the clip goes in at the caret, which is the button's
+// own behaviour.
+async function vnoteStart(opts) {
   if (vnoteRec) return;
+  opts = opts || {};
   const t = activeTab();
-  if (!t || mdOn() || fsActive()) return;
+  // Fast Save has its own recorder button and is not an editor, so the
+  // editor's preconditions do not apply to it.
+  if (!opts.toFastSave && (!t || mdOn() || fsActive())) return;
 
   let stream;
   try {
@@ -5632,13 +5835,16 @@ async function vnoteStart() {
   const caretLine = currentLine();
   const caretOffset = caretLine ? getCaretOffsetIn(caretLine) : null;
 
-  vnoteRec = { rec, stream, chunks, startedAt, caretLine, caretOffset, keep: true };
+  vnoteRec = { rec, stream, chunks, startedAt, caretLine, caretOffset, keep: true, opts };
+  // Whoever started the recording owns the running state — the toolbar
+  // button, or Fast Save's own.
+  const setUi = opts.onUi || vnoteSetUi;
 
   rec.addEventListener('stop', async () => {
     const info = vnoteRec;
     vnoteRec = null;
     vnoteStopTracks(stream);
-    vnoteSetUi(false);
+    setUi(false);
     if (!info || !info.keep || !chunks.length) return;
 
     const ms = Date.now() - info.startedAt;
@@ -5655,6 +5861,27 @@ async function vnoteStart() {
     } catch (e) { console.error('voice save failed', e); }
     if (!filename) { await appAlert('Could not save that recording.'); return; }
 
+    const o = info.opts || {};
+
+    if (o.toFastSave) {
+      fsAddVoice(filename, ms);
+      if (o.onDone) o.onDone();
+      return;
+    }
+
+    if (o.replace) {
+      // The line may have been edited or re-rendered while recording, so it
+      // is checked rather than assumed. If it has gone, the clip is still
+      // worth keeping — it drops in at the caret instead of vanishing.
+      const { line, nth } = o.replace;
+      if (line && line.isConnected &&
+          rewriteVoiceToken(line, nth, () => voiceToken(filename, ms))) {
+        if (o.onDone) o.onDone();
+        return;
+      }
+      showToast('That clip had moved — added at the caret', '');
+    }
+
     // Put the caret back where it was before the button was clicked, so the
     // clip lands mid-sentence where the user left off.
     if (info.caretLine && info.caretLine.isConnected && info.caretOffset != null) {
@@ -5662,20 +5889,21 @@ async function vnoteStart() {
       placeCaretInLine(info.caretLine, info.caretOffset);
     }
     insertVoiceToken(filename, ms);
-    showToast('Voice note added', '');
+    if (o.onDone) o.onDone(); else showToast('Voice note added', '');
   });
 
   rec.start();
-  vnoteSetUi(true);
+  setUi(true);
 }
 
 function vnoteStop(keep) {
   if (!vnoteRec) return;
   vnoteRec.keep = keep !== false;
+  const setUi = (vnoteRec.opts && vnoteRec.opts.onUi) || vnoteSetUi;
   try { vnoteRec.rec.stop(); } catch (e) {
     vnoteStopTracks(vnoteRec.stream);
     vnoteRec = null;
-    vnoteSetUi(false);
+    setUi(false);
   }
 }
 
@@ -13186,7 +13414,9 @@ async function dcLoadAndRenderFeed(feed) {
 }
 
 // A compact, themed audio player (the native <audio controls> can't be styled).
-function dcAudioPlayer(url) {
+// `knownMs` is the recorded length for clips the app made itself, which is
+// the only way to label a MediaRecorder WebM — see audioSeconds().
+function dcAudioPlayer(url, knownMs) {
   const wrap = dcEl('div', 'dc-player');
   const audio = document.createElement('audio');
   audio.src = url; audio.preload = 'metadata';
@@ -13198,6 +13428,7 @@ function dcAudioPlayer(url) {
   const time = dcEl('span', 'dc-player-time', '0:00');
 
   const fmt = (s) => { s = Math.floor(s || 0); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
+  if (knownMs) time.textContent = '0:00 / ' + fmt(knownMs / 1000);
   play.addEventListener('click', (e) => { e.stopPropagation(); audio.paused ? audio.play() : audio.pause(); });
   audio.addEventListener('play', () => {
     // only one player at a time — pause whatever else is playing
@@ -13207,15 +13438,19 @@ function dcAudioPlayer(url) {
   });
   audio.addEventListener('pause', () => { play.innerHTML = ICON_PLAY; });
   audio.addEventListener('ended', () => { play.innerHTML = ICON_PLAY; fill.style.width = '0%'; });
-  audio.addEventListener('loadedmetadata', () => { time.textContent = '0:00 / ' + fmt(audio.duration); });
-  audio.addEventListener('timeupdate', () => {
-    if (audio.duration) fill.style.width = (audio.currentTime / audio.duration * 100) + '%';
-    time.textContent = fmt(audio.currentTime) + (audio.duration ? ' / ' + fmt(audio.duration) : '');
-  });
+  const total = () => audioSeconds(audio, knownMs);
+  const paint = () => {
+    const dur = total();
+    if (dur) fill.style.width = (audio.currentTime / dur * 100) + '%';
+    time.textContent = fmt(audio.currentTime) + (dur ? ' / ' + fmt(dur) : '');
+  };
+  audio.addEventListener('loadedmetadata', paint);
+  audio.addEventListener('timeupdate', paint);
   track.addEventListener('click', (e) => {
     e.stopPropagation();
     const r = track.getBoundingClientRect();
-    if (audio.duration) audio.currentTime = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * audio.duration;
+    const dur = total();
+    if (dur) audio.currentTime = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * dur;
   });
   wrap.appendChild(play); wrap.appendChild(track); wrap.appendChild(time); wrap.appendChild(audio);
   return wrap;

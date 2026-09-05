@@ -323,6 +323,24 @@
                   <path d="M20 11.5l-7.6 7.6a4 4 0 0 1-5.7-5.7l8-8a2.6 2.6 0 0 1 3.7 3.7l-8 8a1.2 1.2 0 0 1-1.7-1.7l7-7" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>
               </button>
+              <!-- Unlike the two above, this one does not stage anything for
+                   the next message: a recording becomes a message on its own
+                   the moment it stops, which is how every messenger does it
+                   and is the only thing that makes sense for something you
+                   dictated rather than picked. -->
+              <button id="fsVoiceBtn" class="fs-input-btn has-new-badge" title="Record a voice note">
+                <svg class="fsv-mic" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+                  <rect x="9" y="3" width="6" height="11" rx="3" fill="none" stroke="currentColor" stroke-width="1.7"/>
+                  <path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+                </svg>
+                <span class="fsv-dot" aria-hidden="true"></span>
+              </button>
+              <span id="fsVoiceTimer" class="fs-voice-timer hidden"></span>
+              <button id="fsVoiceCancel" class="fs-input-btn fs-voice-cancel hidden" title="Discard recording">
+                <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+                  <path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+              </button>
               <textarea id="fsInput" class="fs-input" rows="1" spellcheck="false"
                 placeholder="Type and press Enter to save… (Shift+Enter = new line)"></textarea>
               <button id="fsSend" class="fs-send" title="Save (Enter)">
@@ -1780,6 +1798,31 @@
       <div class="ctx-item ctx-item--icon ctx-danger" data-img-action="delete" data-img-only="editor">
         <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><line x1="6" y1="6" x2="18" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="18" y1="6" x2="6" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
         Remove from note
+      </div>
+    </div>
+
+    <!-- Voice-note menu. A clip has its own because there is nothing to
+         download or copy to the clipboard, and because the useful thing —
+         recording over it — has no equivalent for a picture. Deleting one
+         used to mean finding an invisible token with the arrow keys. -->
+    <div id="voiceContextMenu" class="ctx-menu hidden">
+      <div class="ctx-item ctx-item--icon" data-voice-action="play">
+        <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><path d="M8 5.5v13l11-6.5z" fill="currentColor"/></svg>
+        <span data-voice-play-label>Play</span>
+      </div>
+      <div class="ctx-sep"></div>
+      <div class="ctx-item ctx-item--icon" data-voice-action="replace">
+        <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        Record over it
+      </div>
+      <div class="ctx-item ctx-item--icon" data-voice-action="save">
+        <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M4 19h16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Save audio…
+      </div>
+      <div class="ctx-sep"></div>
+      <div class="ctx-item ctx-item--icon ctx-danger" data-voice-action="delete">
+        <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><line x1="6" y1="6" x2="18" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="18" y1="6" x2="6" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        Delete voice note
       </div>
     </div>
 

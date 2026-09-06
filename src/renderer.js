@@ -10426,34 +10426,39 @@ function buildThemeMini(t, key) {
 // while you decide which colour you like.
 let miniItems = [];
 let miniRaf = null;
-let miniLast = 0;
-let miniBox = null;   // { w, h } — one card's canvas, shared by all of them
+let miniBox = null;    // one card's canvas, shared — the grid is uniform
+let miniHot = null;    // the item under the pointer, or null
 
 function stopMiniSketches() {
   if (miniRaf != null) cancelAnimationFrame(miniRaf);
   miniRaf = null;
   miniItems = [];
   miniBox = null;
+  miniHot = null;
 }
 
+// Still by default, moving under the pointer.
+//
+// Every card used to animate all the time. That is seventy-six scenes running
+// while you read a list of names — the busiest thing in the app at the moment
+// you are least interested in motion, and on a slow machine the one that
+// makes the pane feel heavy. A card now draws a single frame and stops. Hover
+// it and it runs; move away and it freezes on the frame it reached.
 function startMiniSketches() {
   stopMiniSketches();
   if (!tbGrid || !window.PP_SKETCH) return;
   miniItems = [...tbGrid.querySelectorAll('canvas.tb-mini-fx')].map((el) => ({
-    el, key: el.dataset.theme, theme: THEMES[el.dataset.theme], g: null
+    el, key: el.dataset.theme, theme: THEMES[el.dataset.theme], g: null, t: 0
   })).filter((it) => it.theme);
   if (!miniItems.length) return;
-  // With motion off, one frame each and no loop at all.
-  if (!animationsOn()) {
-    requestAnimationFrame(() => drawMiniFrame(performance.now()));
-    return;
-  }
-  miniRaf = requestAnimationFrame(tickMini);
+
+  // One still frame each. Two rAFs deep because the grid has only just been
+  // attached and has no boxes to measure until it has been laid out.
+  requestAnimationFrame(() => requestAnimationFrame(() => drawMiniFrame(0, true)));
 }
 
 // The grid is uniform, so one card answers for all of them. Reading a single
-// offsetWidth costs one layout; reading fifty-nine of them costs fifty-nine,
-// and does it on every tick.
+// offsetWidth costs one layout; reading fifty-nine costs fifty-nine.
 function measureMiniBox() {
   const first = miniItems.find((it) => it.el.isConnected);
   if (!first) return null;
@@ -10462,40 +10467,82 @@ function measureMiniBox() {
   return (w && h) ? { w, h } : null;
 }
 
-function drawMiniFrame(now) {
+function miniPrepare(it, dpr, bw, bh) {
+  if (it.g) return true;
+  it.el.width = bw;
+  it.el.height = bh;
+  it.g = it.el.getContext('2d');
+  it.g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return true;
+}
+
+// `all` draws every card one frame — used when the grid first appears and
+// after a resize. Otherwise only the hovered card is redrawn.
+function drawMiniFrame(time, all) {
   if (!miniItems.length) return;
   if (!miniBox) {
     miniBox = measureMiniBox();
-    if (!miniBox) return;   // grid not laid out yet; try again next tick
+    if (!miniBox) return;
   }
   const { w, h } = miniBox;
-  const time = now / 1000;
   const dpr = Math.min(2, window.devicePixelRatio || 1);
   const bw = Math.max(1, Math.round(w * dpr));
   const bh = Math.max(1, Math.round(h * dpr));
-  for (const it of miniItems) {
-    if (!it.g) {
-      it.el.width = bw;
-      it.el.height = bh;
-      it.g = it.el.getContext('2d');
-      it.g.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  if (all) {
+    // A different starting time per card, so a grid of still frames does not
+    // look like the same instant repeated — the rain in one is not at the
+    // same height as the rain in the next.
+    let i = 0;
+    for (const it of miniItems) {
+      miniPrepare(it, dpr, bw, bh);
+      it.t = 0.35 + (i++ % 17) * 0.31;
+      PP_SKETCH.draw(it.key, it.theme, it.g, w, h, it.t);
     }
-    PP_SKETCH.draw(it.key, it.theme, it.g, w, h, time);
+    return;
   }
+
+  const it = miniHot;
+  if (!it) return;
+  miniPrepare(it, dpr, bw, bh);
+  it.t += 1 / 12;                       // the rate these were drawn for
+  PP_SKETCH.draw(it.key, it.theme, it.g, w, h, it.t);
 }
 
-// A resize changes every card's box at once. Drop the contexts and the shared
-// measurement so the next frame takes both again.
+// A resize changes every card's box at once: drop the contexts and the shared
+// measurement, then repaint the still frames.
 function resetMiniSizes() {
   miniBox = null;
   for (const it of miniItems) it.g = null;
+  if (miniItems.length) requestAnimationFrame(() => drawMiniFrame(0, true));
 }
 
+let miniLast = 0;
 function tickMini(now) {
+  if (!miniHot) { miniRaf = null; return; }      // nothing to animate
   miniRaf = requestAnimationFrame(tickMini);
-  if (now - miniLast < 80) return;
+  if (now - miniLast < 80) return;               // 12fps; they are thumbnails
   miniLast = now;
   drawMiniFrame(now);
+}
+
+function miniSetHot(el) {
+  const next = el ? miniItems.find((it) => it.el === el) : null;
+  if (next === miniHot) return;
+  miniHot = next;
+  if (miniHot && animationsOn() && miniRaf == null) {
+    miniLast = 0;
+    miniRaf = requestAnimationFrame(tickMini);
+  }
+}
+
+// Delegated, so the handlers survive every re-render of the grid.
+if (tbGrid) {
+  tbGrid.addEventListener('pointerover', (e) => {
+    const card = e.target instanceof Element ? e.target.closest('.tb-card') : null;
+    miniSetHot(card ? card.querySelector('canvas.tb-mini-fx') : null);
+  });
+  tbGrid.addEventListener('pointerleave', () => miniSetHot(null));
 }
 
 function starIcon(on) {

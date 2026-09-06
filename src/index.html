@@ -323,11 +323,18 @@
                   <path d="M20 11.5l-7.6 7.6a4 4 0 0 1-5.7-5.7l8-8a2.6 2.6 0 0 1 3.7 3.7l-8 8a1.2 1.2 0 0 1-1.7-1.7l7-7" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>
               </button>
-              <!-- Unlike the two above, this one does not stage anything for
-                   the next message: a recording becomes a message on its own
-                   the moment it stops, which is how every messenger does it
-                   and is the only thing that makes sense for something you
-                   dictated rather than picked. -->
+              <textarea id="fsInput" class="fs-input" rows="1" spellcheck="false"
+                placeholder="Type and press Enter to save… (Shift+Enter = new line)"></textarea>
+              <!-- On the right, with Send. These two are the pair that commit
+                   something; emoji, image and file on the left all stage
+                   something for later. Putting the recorder among them also
+                   crowded the row enough to clip the input's placeholder. -->
+              <span id="fsVoiceTimer" class="fs-voice-timer hidden"></span>
+              <button id="fsVoiceCancel" class="fs-input-btn fs-voice-cancel hidden" title="Discard recording">
+                <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+                  <path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+              </button>
               <button id="fsVoiceBtn" class="fs-input-btn has-new-badge" title="Record a voice note">
                 <svg class="fsv-mic" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
                   <rect x="9" y="3" width="6" height="11" rx="3" fill="none" stroke="currentColor" stroke-width="1.7"/>
@@ -335,14 +342,6 @@
                 </svg>
                 <span class="fsv-dot" aria-hidden="true"></span>
               </button>
-              <span id="fsVoiceTimer" class="fs-voice-timer hidden"></span>
-              <button id="fsVoiceCancel" class="fs-input-btn fs-voice-cancel hidden" title="Discard recording">
-                <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
-                  <path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                </svg>
-              </button>
-              <textarea id="fsInput" class="fs-input" rows="1" spellcheck="false"
-                placeholder="Type and press Enter to save… (Shift+Enter = new line)"></textarea>
               <button id="fsSend" class="fs-send" title="Save (Enter)">
                 <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
                   <polyline points="6 14 12 8 18 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>

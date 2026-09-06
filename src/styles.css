@@ -2913,12 +2913,18 @@ body {
 .fs-inputbar {
   display: flex;
   align-items: flex-end;
-  gap: 8px;
+  gap: 7px;
   padding: 10px 12px;
   border-top: 1px solid var(--border);
   background: var(--elevated);
   flex-shrink: 0;
 }
+/* The buttons keep their size; only the text field gives way. Without this
+   a narrow window shrinks the icons into slivers instead of shortening the
+   input, which is the one thing in the row that can afford to be shorter. */
+.fs-inputbar > .fs-input-btn,
+.fs-inputbar > .fs-send,
+.fs-inputbar > .fs-voice-timer { flex: 0 0 auto; }
 .fs-input {
   flex: 1;
   min-width: 0;
@@ -6483,6 +6489,7 @@ html.no-anim *::after {
 @keyframes fsvPulse { 0%, 100% { opacity: 1; } 55% { opacity: .3; } }
 .fs-voice-timer {
   align-self: center;
+  margin-bottom: 8px;          /* the row is bottom-aligned to the textarea */
   font-size: 11px;
   font-variant-numeric: tabular-nums;
   color: var(--danger);

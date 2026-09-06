@@ -96,6 +96,27 @@
   // window's real pixel size. Anything soft — glows, gradients, clouds — can
   // be drawn small and stretched by the CSS at a fraction of the fill cost;
   // `scale` sets that up so the drawing code can still work in CSS pixels.
+  // Resizing a canvas clears it. Most of these scenes redraw at 15fps, so
+  // between the resize and the next tick the canvas is black — and a
+  // drag-resize fires `resize` continuously, which is why several themes
+  // appeared to blink on and off while the window was being dragged.
+  //
+  // The reallocation waits for the drag to settle. Until then the browser
+  // stretches the buffer it already has over the new box: very slightly soft
+  // for a moment, against a canvas that would otherwise be black.
+  //
+  // The returned function is what gets added and removed as the listener, so
+  // a runtime's stop() keeps working unchanged.
+  function settledResize(fn, ms) {
+    let timer = null;
+    const wrapped = () => {
+      clearTimeout(timer);
+      timer = setTimeout(fn, ms || 140);
+    };
+    wrapped.cancel = () => clearTimeout(timer);
+    return wrapped;
+  }
+
   function makeCanvas(parent, className, scale) {
     const canvas = document.createElement('canvas');
     canvas.className = className;
@@ -633,8 +654,9 @@
         drops = new Array(cols).fill(0).map(() => Math.random() * rows);
       };
       resize();
-      window.addEventListener('resize', resize);
-      this._resize = resize;
+      const onResize = settledResize(resize);
+      window.addEventListener('resize', onResize);
+      this._resize = onResize;
 
       let last = performance.now();
       const tick = (now) => {
@@ -705,8 +727,9 @@
         boltCanvas.width = w; boltCanvas.height = h;
       };
       resize();
-      window.addEventListener('resize', resize);
-      this._resize = resize;
+      const onResize = settledResize(resize);
+      window.addEventListener('resize', onResize);
+      this._resize = onResize;
 
       const rand = (a, c) => a + Math.random() * (c - a);
 
@@ -890,8 +913,9 @@
         canvas.height = h;
       };
       resize();
-      window.addEventListener('resize', resize);
-      this._resize = resize;
+      const onResize = settledResize(resize);
+      window.addEventListener('resize', onResize);
+      this._resize = onResize;
 
       const rand = (a, b) => a + Math.random() * (b - a);
 
@@ -1202,8 +1226,9 @@
       const c = makeCanvas(l, 'fx-ghost-canvas');
       const ctx = c.ctx;
       const resize = () => c.resize();
-      window.addEventListener('resize', resize);
-      this._resize = resize;
+      const onResize = settledResize(resize);
+      window.addEventListener('resize', onResize);
+      this._resize = onResize;
 
       const RTL_RE = /[֐-ࣿיִ-﷿ﹰ-﻿]/;
       const LIFE = 5.5;        // long, because the fade is the whole point
@@ -1459,8 +1484,9 @@
       const c = makeCanvas(b, 'fx-ink-canvas');
       const ctx = c.ctx;
       const resize = () => c.resize();
-      window.addEventListener('resize', resize);
-      this._resize = resize;
+      const onResize = settledResize(resize);
+      window.addEventListener('resize', onResize);
+      this._resize = onResize;
 
       const rand = (a, d) => a + Math.random() * (d - a);
       const LIFE = 9;
@@ -1585,8 +1611,9 @@
       const c = makeCanvas(l, 'fx-embers-canvas');
       const ctx = c.ctx;
       const resize = () => c.resize();
-      window.addEventListener('resize', resize);
-      this._resize = resize;
+      const onResize = settledResize(resize);
+      window.addEventListener('resize', onResize);
+      this._resize = onResize;
 
       const rand = (a, b) => a + Math.random() * (b - a);
       const MAX = 220;
@@ -1781,8 +1808,9 @@
         }
       };
       buildBoard();
-      window.addEventListener('resize', buildBoard);
-      this._resize = buildBoard;
+      const onBuildboard = settledResize(buildBoard);
+      window.addEventListener('resize', onBuildboard);
+      this._resize = onBuildboard;
 
       const nearest = (x, y) => {
         let best = -1;
@@ -1927,8 +1955,9 @@
       const c = makeCanvas(b, 'fx-aurora-canvas', 0.34);
       const ctx = c.ctx;
       const resize = () => c.resize();
-      window.addEventListener('resize', resize);
-      this._resize = resize;
+      const onResize = settledResize(resize);
+      window.addEventListener('resize', onResize);
+      this._resize = onResize;
 
       const RIBBONS = [
         { hue: 152, y: 0.30, amp: 0.10, len: 1.5, speed: 0.055, a: 0.30 },
@@ -2022,8 +2051,9 @@
       };
       const resize = () => { c.resize(); buildStars(); };
       resize();
-      window.addEventListener('resize', resize);
-      this._resize = resize;
+      const onResize = settledResize(resize);
+      window.addEventListener('resize', onResize);
+      this._resize = onResize;
 
       let comets = [];
       let nextCometAt = 0;
@@ -2131,8 +2161,9 @@
       let dirty = true;
 
       const resize = () => { c.resize(); dirty = true; };
-      window.addEventListener('resize', resize);
-      this._resize = resize;
+      const onResize = settledResize(resize);
+      window.addEventListener('resize', onResize);
+      this._resize = onResize;
 
       const onKey = (e) => {
         if (!e.key || (e.key.length !== 1 && e.key !== 'Enter' && e.key !== 'Backspace')) return;
@@ -2231,8 +2262,9 @@
       const c = makeCanvas(l, 'fx-blackout-canvas');
       const ctx = c.ctx;
       const resize = () => c.resize();
-      window.addEventListener('resize', resize);
-      this._resize = resize;
+      const onResize = settledResize(resize);
+      window.addEventListener('resize', onResize);
+      this._resize = onResize;
 
       const FLOOR = 0.30;      // how much light the room is given, always
       // Deliberately not a variable: an earlier version had the candle flare
@@ -2674,8 +2706,9 @@
       const root = document.documentElement.style;
 
       const resize = () => { c.resize(); ctx.clearRect(0, 0, c.w, c.h); headX = 0; lastY = null; };
-      window.addEventListener('resize', resize);
-      this._resize = resize;
+      const onResize = settledResize(resize);
+      window.addEventListener('resize', onResize);
+      this._resize = onResize;
 
       // Typing cadence, as keystrokes in a sliding window. The BPM target is
       // read off this rather than off inter-key gaps directly — gaps are
@@ -2832,8 +2865,9 @@
       };
       const resize = () => { col.resize(); par.resize(); buildMotes(); };
       resize();
-      window.addEventListener('resize', resize);
-      this._resize = resize;
+      const onResize = settledResize(resize);
+      window.addEventListener('resize', onResize);
+      this._resize = onResize;
 
       let depth = 0;
       let target = 0;
@@ -3046,8 +3080,9 @@
       };
 
       const resize = () => { c.resize(); dirty = true; };
-      window.addEventListener('resize', resize);
-      this._resize = resize;
+      const onResize = settledResize(resize);
+      window.addEventListener('resize', onResize);
+      this._resize = onResize;
 
       // The deletion is read off the keyboard, not off the note's length,
       // because the length also jumps when you switch tabs — and a gold seam
@@ -3117,8 +3152,9 @@
       const c = makeCanvas(l, 'fx-blueprint-canvas');
       const ctx = c.ctx;
       const resize = () => c.resize();
-      window.addEventListener('resize', resize);
-      this._resize = resize;
+      const onResize = settledResize(resize);
+      window.addEventListener('resize', onResize);
+      this._resize = onResize;
 
       let marks = [];
       let lastAt = 0;
@@ -3224,8 +3260,9 @@
       };
       const resize = () => { c.resize(); build(); };
       resize();
-      window.addEventListener('resize', resize);
-      this._resize = resize;
+      const onResize = settledResize(resize);
+      window.addEventListener('resize', onResize);
+      this._resize = onResize;
 
       // How interested the school is in the caret right now. Typing feeds it.
       let interest = 0;
@@ -3459,8 +3496,9 @@
 
       const resize = () => { cloth.resize(); shine.resize(); drawWeave(); };
       resize();
-      window.addEventListener('resize', resize);
-      this._resize = resize;
+      const onResize = settledResize(resize);
+      window.addEventListener('resize', onResize);
+      this._resize = onResize;
 
       let glints = [];
       const onKey = (e) => {
@@ -3576,8 +3614,9 @@
       };
       const resize = () => { c.resize(); ctx.clearRect(0, 0, c.w, c.h); seed(); };
       resize();
-      window.addEventListener('resize', resize);
-      this._resize = resize;
+      const onResize = settledResize(resize);
+      window.addEventListener('resize', onResize);
+      this._resize = onResize;
 
       let lastKey = performance.now() - 4000;   // start with a little ice
       const onKey = (e) => {
@@ -3697,8 +3736,9 @@
 
       const resize = () => c.resize();
       resize();
-      window.addEventListener('resize', resize);
-      this._resize = resize;
+      const onResize = settledResize(resize);
+      window.addEventListener('resize', onResize);
+      this._resize = onResize;
 
       const mix = (a, d, k) => Math.round(a + (d - a) * k);
 
@@ -3861,8 +3901,9 @@
       };
       const resize = () => { c.resize(); build(); };
       resize();
-      window.addEventListener('resize', resize);
-      this._resize = resize;
+      const onResize = settledResize(resize);
+      window.addEventListener('resize', onResize);
+      this._resize = onResize;
 
       let jolt = 0;
       const onKey = (e) => {
@@ -4012,8 +4053,9 @@
       };
       const resize = () => { metal.resize(); spec.resize(); drawMetal(); };
       resize();
-      window.addEventListener('resize', resize);
-      this._resize = resize;
+      const onResize = settledResize(resize);
+      window.addEventListener('resize', onResize);
+      this._resize = onResize;
 
       let kick = 0;
       const onKey = (e) => {
@@ -4153,8 +4195,9 @@
       };
       const resize = () => { pile.resize(); glow.resize(); drawPile(); };
       resize();
-      window.addEventListener('resize', resize);
-      this._resize = resize;
+      const onResize = settledResize(resize);
+      window.addEventListener('resize', onResize);
+      this._resize = onResize;
 
       let warm = 0;
       const onKey = (e) => {
@@ -4293,8 +4336,9 @@
 
       const resize = () => { c.resize(); draw(); };
       resize();
-      window.addEventListener('resize', resize);
-      this._resize = resize;
+      const onResize = settledResize(resize);
+      window.addEventListener('resize', onResize);
+      this._resize = onResize;
       // No rAF at all. Stone is the one material in this set that has no
       // business animating, and a slab that shimmers reads as plastic.
     },
@@ -4336,8 +4380,9 @@
       const ctx = c.ctx;
       const resize = () => c.resize();
       resize();
-      window.addEventListener('resize', resize);
-      this._resize = resize;
+      const onResize = settledResize(resize);
+      window.addEventListener('resize', onResize);
+      this._resize = onResize;
 
       let scan = 0;      // scanline scroll phase, px
       let glitch = 0;     // 0..1, decays — how hard the signal is glitching right now
@@ -4487,8 +4532,9 @@
         build();
       };
       resize();
-      window.addEventListener('resize', resize);
-      this._resize = resize;
+      const onResize = settledResize(resize);
+      window.addEventListener('resize', onResize);
+      this._resize = onResize;
 
       // Push the surface down at a point. Spread over a few cells so a drop
       // makes a ring rather than a single-pixel spike.
@@ -4735,8 +4781,9 @@
 
       const resize = () => { c.w = window.innerWidth; c.h = window.innerHeight; build(); };
       resize();
-      window.addEventListener('resize', resize);
-      this._resize = resize;
+      const onResize = settledResize(resize);
+      window.addEventListener('resize', onResize);
+      this._resize = onResize;
 
       const rand = (a, d) => a + Math.random() * (d - a);
 
@@ -4891,8 +4938,9 @@
       if (!b) return;
       const c = makeCanvas(b, 'fx-almanac-canvas');
       const resize = () => c.resize();
-      window.addEventListener('resize', resize);
-      this._resize = resize;
+      const onResize = settledResize(resize);
+      window.addEventListener('resize', onResize);
+      this._resize = onResize;
 
       const rand = (a, d) => a + Math.random() * (d - a);
 
@@ -5043,8 +5091,9 @@
       countKeySamples();
       const resize = () => c.resize();
       resize();
-      window.addEventListener('resize', resize);
-      this._resize = resize;
+      const onResize = settledResize(resize);
+      window.addEventListener('resize', onResize);
+      this._resize = onResize;
 
       const rand = (a, d) => a + Math.random() * (d - a);
       let caps = [];
@@ -5171,8 +5220,9 @@
       countKeySamples();
       const resize = () => c.resize();
       resize();
-      window.addEventListener('resize', resize);
-      this._resize = resize;
+      const onResize = settledResize(resize);
+      window.addEventListener('resize', onResize);
+      this._resize = onResize;
 
       const rand = (a, d) => a + Math.random() * (d - a);
       let strikes = [];
@@ -5286,8 +5336,9 @@
       const c = makeCanvas(b, 'fx-moon-canvas');
       const resize = () => c.resize();
       resize();
-      window.addEventListener('resize', resize);
-      this._resize = resize;
+      const onResize = settledResize(resize);
+      window.addEventListener('resize', onResize);
+      this._resize = onResize;
 
       const rand = (a, d) => a + Math.random() * (d - a);
 
@@ -5408,8 +5459,9 @@
       const c = makeCanvas(b, 'fx-bubbles-canvas');
       const resize = () => c.resize();
       resize();
-      window.addEventListener('resize', resize);
-      this._resize = resize;
+      const onResize = settledResize(resize);
+      window.addEventListener('resize', onResize);
+      this._resize = onResize;
 
       const rand = (a, d) => a + Math.random() * (d - a);
       let bubbles = [];
@@ -5629,8 +5681,9 @@
         nextFrame = 0;      // repaint on the very next frame, not in 66ms
       };
       resize();
-      window.addEventListener('resize', resize);
-      this._resize = resize;
+      const onResize = settledResize(resize);
+      window.addEventListener('resize', onResize);
+      this._resize = onResize;
 
       const onKey = (e) => {
         if (!e.key || (e.key.length !== 1 && e.key !== 'Enter' && e.key !== ' ')) return;
@@ -5920,8 +5973,9 @@
         nextFrame = 0;      // same as Barrel Fire: repaint at once, not in 66ms
       };
       resize();
-      window.addEventListener('resize', resize);
-      this._resize = resize;
+      const onResize = settledResize(resize);
+      window.addEventListener('resize', onResize);
+      this._resize = onResize;
 
       const onKey = (e) => {
         if (!e.key || (e.key.length !== 1 && e.key !== 'Enter')) return;
@@ -6148,8 +6202,9 @@
       const c = makeCanvas(b, 'fx-downpour-canvas');
       const resize = () => c.resize();
       resize();
-      window.addEventListener('resize', resize);
-      this._resize = resize;
+      const onResize = settledResize(resize);
+      window.addEventListener('resize', onResize);
+      this._resize = onResize;
 
       const rand = (a, d) => a + Math.random() * (d - a);
 
@@ -6292,8 +6347,9 @@
       const c = makeCanvas(l, 'fx-hearth-canvas');
       const resize = () => c.resize();
       resize();
-      window.addEventListener('resize', resize);
-      this._resize = resize;
+      const onResize = settledResize(resize);
+      window.addEventListener('resize', onResize);
+      this._resize = onResize;
 
       const rand = (a, d) => a + Math.random() * (d - a);
       this._sampled = false;
@@ -6428,8 +6484,9 @@
         strings.forEach((s, i) => { s.y = (i + 1) / (strings.length + 1) * c.h; });
       };
       c.resize(); build();
-      window.addEventListener('resize', resize);
-      this._resize = resize;
+      const onResize = settledResize(resize);
+      window.addEventListener('resize', onResize);
+      this._resize = onResize;
 
       let idx = 4;
       const onKey = (e) => {
@@ -6527,8 +6584,9 @@
       };
       const resize = () => { c.resize(); seed(); };
       resize();
-      window.addEventListener('resize', resize);
-      this._resize = resize;
+      const onResize = settledResize(resize);
+      window.addEventListener('resize', onResize);
+      this._resize = onResize;
 
       const onKey = (e) => {
         if (!e.key || e.key.length !== 1) return;
@@ -6738,8 +6796,9 @@
       };
       const resize = () => { c.resize(); build(); };
       resize();
-      window.addEventListener('resize', resize);
-      this._resize = resize;
+      const onResize = settledResize(resize);
+      window.addEventListener('resize', onResize);
+      this._resize = onResize;
 
       let mx = -1e6, my = -1e6, pmx = -1e6, pmy = -1e6;
       const onMove = (e) => { mx = e.clientX; my = e.clientY; };
@@ -6925,8 +6984,9 @@
       let lastKey = 0;
 
       const resize = () => c.resize();
-      window.addEventListener('resize', resize);
-      this._resize = resize;
+      const onResize = settledResize(resize);
+      window.addEventListener('resize', onResize);
+      this._resize = onResize;
 
       // The turn a character makes. Letters near the start of the alphabet
       // curl one way and later ones the other, with vowels turning harder —
@@ -7069,8 +7129,9 @@
       if (!b) return;
       const c = makeCanvas(b, 'fx-tide-canvas');
       const resize = () => c.resize();
-      window.addEventListener('resize', resize);
-      this._resize = resize;
+      const onResize = settledResize(resize);
+      window.addEventListener('resize', onResize);
+      this._resize = onResize;
 
       const M2 = 12 * 3600 + 25 * 60 + 12;    // seconds, principal lunar
       const S2 = 12 * 3600;                   // seconds, principal solar
@@ -7293,8 +7354,9 @@
 
       const resize = () => { grid.resize(); c.resize(); drawGrid(); };
       resize();
-      window.addEventListener('resize', resize);
-      this._resize = resize;
+      const onResize = settledResize(resize);
+      window.addEventListener('resize', onResize);
+      this._resize = onResize;
 
       // Partials the typing has stacked on. `h` is the harmonic, `a` the
       // amplitude it started at, `born` when it arrived.
@@ -7450,8 +7512,9 @@
         if (cols.length > capacity()) cols = cols.slice(-capacity());
       };
       resize();
-      window.addEventListener('resize', resize);
-      this._resize = resize;
+      const onResize = settledResize(resize);
+      window.addEventListener('resize', onResize);
+      this._resize = onResize;
 
       // The tape has to exist before anything is typed or the theme is an
       // empty band for the first minute. Seed it with something plausible —
@@ -7705,8 +7768,9 @@
         nextFrame = 0;
       };
       resize();
-      window.addEventListener('resize', resize);
-      this._resize = resize;
+      const onResize = settledResize(resize);
+      window.addEventListener('resize', onResize);
+      this._resize = onResize;
 
       const onKey = (e) => {
         if (e.repeat || !e.key || e.key.length !== 1) return;
@@ -8499,8 +8563,9 @@
         for (const p of S.clumps) { p.x *= sx; p.y *= sy; }
         S.flips.clear();   // keyed by absolute window cell; the grid moved
       };
-      window.addEventListener('resize', resize);
-      this._resize = resize;
+      const onResize = settledResize(resize);
+      window.addEventListener('resize', onResize);
+      this._resize = onResize;
 
       const onKey = (e) => {
         if (e.repeat || !e.key || e.key.length !== 1) return;
@@ -8592,8 +8657,9 @@
       };
       const resize = () => { c.resize(); build(); };
       resize();
-      window.addEventListener('resize', resize);
-      this._resize = resize;
+      const onResize = settledResize(resize);
+      window.addEventListener('resize', onResize);
+      this._resize = onResize;
 
       // ── the chorus
       const ctxA = audio();
@@ -8814,8 +8880,9 @@
       };
       const resize = () => { c.resize(); build(); };
       resize();
-      window.addEventListener('resize', resize);
-      this._resize = resize;
+      const onResize = settledResize(resize);
+      window.addEventListener('resize', onResize);
+      this._resize = onResize;
 
       const ctxA = audio();
       let rush = null, mid = null, whistle = null, whistleGain = null;
@@ -9069,8 +9136,9 @@
       };
       const resize = () => { c.resize(); build(); };
       resize();
-      window.addEventListener('resize', resize);
-      this._resize = resize;
+      const onResize = settledResize(resize);
+      window.addEventListener('resize', onResize);
+      this._resize = onResize;
 
       // Draught: a slow random walk with occasional pushes, plus whatever the
       // typing adds.
@@ -9238,8 +9306,9 @@
         }
       };
       resize();
-      window.addEventListener('resize', resize);
-      this._resize = resize;
+      const onResize = settledResize(resize);
+      window.addEventListener('resize', onResize);
+      this._resize = onResize;
 
       const drop = (x, y) => {
         const r = rand(7, 13);
@@ -9436,8 +9505,9 @@
         }
       };
       resize();
-      window.addEventListener('resize', resize);
-      this._resize = resize;
+      const onResize = settledResize(resize);
+      window.addEventListener('resize', onResize);
+      this._resize = onResize;
 
       const drop = (x, y) => {
         const col = INKS[Math.floor(Math.random() * INKS.length)];
@@ -9584,8 +9654,9 @@
       };
       const resize = () => { c.resize(); build(); };
       resize();
-      window.addEventListener('resize', resize);
-      this._resize = resize;
+      const onResize = settledResize(resize);
+      window.addEventListener('resize', onResize);
+      this._resize = onResize;
 
       let start = performance.now();
       const onKey = (e) => {
@@ -9689,8 +9760,9 @@
         }
       };
       resize();
-      window.addEventListener('resize', resize);
-      this._resize = resize;
+      const onResize = settledResize(resize);
+      window.addEventListener('resize', onResize);
+      this._resize = onResize;
 
       // One impact: a stack of ripples, each stored as its own set of radii
       // around the circle so the shell is irregular the way a real one is.
@@ -9868,8 +9940,9 @@
       };
       const resize = () => { c.resize(); build(); };
       resize();
-      window.addEventListener('resize', resize);
-      this._resize = resize;
+      const onResize = settledResize(resize);
+      window.addEventListener('resize', onResize);
+      this._resize = onResize;
 
       const onKey = (e) => {
         if (e.repeat || !e.key || e.key.length !== 1) return;
@@ -10063,8 +10136,9 @@
       };
       const resize = () => { R.resize(); build(); nextFrame = 0; };
       resize();
-      window.addEventListener('resize', resize);
-      this._resize = resize;
+      const onResize = settledResize(resize);
+      window.addEventListener('resize', onResize);
+      this._resize = onResize;
 
       const onKey = (e) => {
         if (e.repeat || !e.key || e.key.length !== 1) return;
@@ -10392,8 +10466,9 @@
       };
       const resize = () => { R.resize(); build(); nextFrame = 0; };
       resize();
-      window.addEventListener('resize', resize);
-      this._resize = resize;
+      const onResize = settledResize(resize);
+      window.addEventListener('resize', onResize);
+      this._resize = onResize;
 
       let lastKey = -1e9;
       const onKey = (e) => {
@@ -10830,8 +10905,9 @@
       };
       const resize = () => { R.resize(); build(); nextFrame = 0; };
       resize();
-      window.addEventListener('resize', resize);
-      this._resize = resize;
+      const onResize = settledResize(resize);
+      window.addEventListener('resize', onResize);
+      this._resize = onResize;
 
       const onKey = (e) => {
         if (e.repeat || !e.key || e.key.length !== 1) return;
@@ -11416,8 +11492,9 @@
         }
       };
       resize();
-      window.addEventListener('resize', resize);
-      this._resize = resize;
+      const onResize = settledResize(resize);
+      window.addEventListener('resize', onResize);
+      this._resize = onResize;
 
       // ---- the frame ------------------------------------------------------
       const tick = (now) => {

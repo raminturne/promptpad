@@ -10916,6 +10916,11 @@ function setSettingsPane(id) {
   const leaving = settingsPane;
   settingsPane = id;
   panes.forEach((p) => p.classList.toggle('hidden', p.dataset.pane !== id));
+  // The panes used to appear instantly while everything around them moved,
+  // which made switching tabs in Settings feel like a different, older app.
+  // replayAnim restarts the animation even when the same pane is re-selected.
+  const shown = [...panes].find((p) => p.dataset.pane === id);
+  if (shown && leaving !== id) replayAnim(shown, 'pane-entering');
   // Leaving the pane banks the "new theme" marks and hands the window size
   // back; entering it does the reverse.
   if (leaving === 'theme' && id !== 'theme') closeThemeBrowser();

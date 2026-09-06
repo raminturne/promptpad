@@ -6500,3 +6500,121 @@ html.no-anim *::after {
 @media (prefers-reduced-motion: reduce) {
   .fs-input-btn.is-recording .fsv-dot { animation: none; }
 }
+
+
+/* ═══════════════════════════════════════════════════════════════════════
+   MOTION
+   ─────────────────────────────────────────────────────────────────────
+   Transform and opacity only. Those are the two properties the compositor
+   owns: the browser animates them on its own thread without re-running
+   layout or paint, so they cost the same on a slow machine as a fast one.
+   Animating a width, a top, or a box-shadow does not — each frame is a
+   fresh layout or repaint, and that is how an app that "has animations"
+   becomes an app that stutters.
+
+   Everything here is under html.no-anim, so Settings -> General -> Motion
+   still turns all of it off in one go.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* Settings panes, on the same curve as the main views. */
+@keyframes pane-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: none; }
+}
+.pane-entering { animation: pane-in .2s cubic-bezier(.22, .8, .3, 1); }
+
+/* One press response for everything that is a button.
+   :active only, so there is no idle cost, and scale() rather than a colour
+   change so the feedback is instant on a machine that is busy repainting
+   something else. */
+.copy-btn:active,
+.win-btn:active,
+.set-tab:active,
+.tb-chip:active,
+.dc-mini-btn:active,
+.dc-chip:active,
+.fs-input-btn:active,
+.ctx-item:active,
+.templates-btn:active,
+.iconbtn:active { transform: scale(0.96); }
+.copy-btn, .win-btn, .set-tab, .tb-chip, .dc-mini-btn, .dc-chip,
+.fs-input-btn, .templates-btn {
+  transition: transform .09s ease, background .14s, border-color .14s, color .14s;
+}
+
+/* A sliding underline was tried here and removed: the active settings tab
+   already wears a box, and two indicators on one control is not more polish,
+   it is two things to read. */
+
+/* Rail buttons and tabs lift very slightly under the pointer. 1px, because
+   the point is that the row feels alive, not that things jump about. */
+.tab, .templates-btn, .add-btn {
+  transition: background .14s ease, box-shadow .16s ease, color .14s ease,
+              transform .12s cubic-bezier(.22, .8, .3, 1);
+}
+.tab:hover:not(.dragging),
+.templates-btn:hover,
+.add-btn:hover { transform: translateX(1px); }
+.tab:active, .templates-btn:active, .add-btn:active { transform: scale(0.985); }
+
+/* The placeholder chips in the editor settle in when a line gains one, so a
+   value you just filled arrives rather than blinks. */
+@keyframes ph-in {
+  from { opacity: .3; transform: scale(.92); }
+  to   { opacity: 1; transform: none; }
+}
+.editor-area .placeholder-tag { animation: ph-in .16s cubic-bezier(.22, .9, .3, 1.3); }
+
+/* A voice chip arriving in the middle of a line. */
+@keyframes chip-in {
+  from { opacity: 0; transform: scale(.7); }
+  to   { opacity: 1; transform: none; }
+}
+.editor-area .pp-voice { animation: chip-in .22s cubic-bezier(.22, .9, .3, 1.35); }
+
+/* Fast Save messages already fade in; give the composer's own controls the
+   same settle when one is staged. */
+@keyframes stage-in {
+  from { opacity: 0; transform: translateY(4px) scale(.96); }
+  to   { opacity: 1; transform: none; }
+}
+.fs-pending { animation: stage-in .18s cubic-bezier(.22, .8, .3, 1); }
+
+/* Context menus grow out of the corner the pointer is at, which is the one
+   the menu is positioned from. */
+@keyframes ctx-in {
+  from { opacity: 0; transform: scale(.94); }
+  to   { opacity: 1; transform: none; }
+}
+.ctx-menu:not(.hidden) {
+  transform-origin: top left;
+  animation: ctx-in .13s cubic-bezier(.22, .9, .3, 1.2);
+}
+
+/* The settings overlay itself. */
+@keyframes overlay-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes sheet-in {
+  from { opacity: 0; transform: translateY(10px) scale(.985); }
+  to   { opacity: 1; transform: none; }
+}
+.overlay:not(.hidden) { animation: overlay-in .14s ease; }
+.settings-card, .qc-card { animation: sheet-in .2s cubic-bezier(.22, .8, .3, 1); }
+
+/* Star a theme and the star reacts. */
+@keyframes star-pop {
+  0%   { transform: scale(1); }
+  45%  { transform: scale(1.35); }
+  100% { transform: scale(1); }
+}
+.tb-card-star.on { animation: star-pop .28s cubic-bezier(.22, .9, .3, 1.4); }
+
+/* The counts tick over rather than snapping, so a big paste reads as the
+   number moving instead of a different number appearing. */
+.counts > span { transition: opacity .12s ease; }
+
+@media (prefers-reduced-motion: reduce) {
+  .pane-entering, .editor-area .placeholder-tag, .editor-area .pp-voice,
+  .fs-pending, .ctx-menu:not(.hidden), .overlay:not(.hidden),
+  .settings-card, .qc-card, .tb-card-star.on { animation: none; }
+  .tab:hover:not(.dragging), .templates-btn:hover, .add-btn:hover { transform: none; }
+}

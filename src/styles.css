@@ -2940,6 +2940,9 @@ body {
 .fs-input::-webkit-scrollbar { width: 8px; }
 .fs-input::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 8px; }
 .fs-input::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+/* Rounded square, not a circle. Everything else in the app is a rounded
+   rectangle — the rail buttons, the toolbar, the tabs, the theme cards — so
+   a row of circles down here read as borrowed from another app. */
 .fs-send {
   display: grid;
   place-items: center;
@@ -2948,7 +2951,7 @@ body {
   border: 1px solid var(--accent-glow);
   background: var(--accent-soft);
   color: var(--accent);
-  border-radius: 50%;
+  border-radius: 9px;
   cursor: pointer;
   transition: all 0.15s;
 }
@@ -3307,7 +3310,7 @@ body {
   border: 1px solid var(--border-strong);
   background: transparent;
   color: var(--muted-2);
-  border-radius: 50%;
+  border-radius: 9px;
   cursor: pointer;
   transition: all 0.15s;
 }
@@ -5836,6 +5839,13 @@ body:has(.app.fx-blackout) { background: #14100c; }
 .tb-grid::-webkit-scrollbar { width: 8px; }
 .tb-grid::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 8px; }
 
+/* content-visibility is the one that matters here. Seventy-six cards is about
+   2,400 nodes, and building them is cheap (8ms) — laying them all out and
+   styling them is not. This lets the browser skip that work entirely for the
+   cards that are scrolled out of sight, which is most of them, and do it when
+   they come near instead.
+   contain-intrinsic-size has to be a real guess at the card's height or the
+   scrollbar jumps as skipped cards are measured for the first time. */
 .tb-card {
   border: 1px solid var(--border-strong);
   border-radius: 9px;
@@ -5843,6 +5853,8 @@ body:has(.app.fx-blackout) { background: #14100c; }
   cursor: pointer;
   background: var(--elevated);
   transition: border-color .12s, transform .12s;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 184px;
 }
 .tb-card:hover { transform: translateY(-1px); }
 .tb-card.active { border-color: var(--accent); }
@@ -6403,6 +6415,12 @@ html.no-anim *::after {
   from { opacity: 0; transform: translateY(6px) scale(.985); }
   to   { opacity: 1; transform: none; }
 }
+/* Only the first screenful animates in. --tb-i is capped at 11 by the
+   renderer, so past that the cards arrive already in place: a stagger you
+   cannot see is just work, and starting seventy-six animations at once on a
+   slow machine is the difference between a pane that opens and one that
+   lurches. */
+.tb-card--still { animation: none !important; }
 .tb-card {
   animation: tb-card-in .26s cubic-bezier(.22, .8, .3, 1) both;
   animation-delay: calc(var(--tb-i, 0) * 18ms);

@@ -9900,6 +9900,9 @@ function scheduleFitToolbar() {
   fitToolbarTimer = setTimeout(fitToolbar, 80);
 }
 window.addEventListener('resize', scheduleFitToolbar);
+// The theme cards change size with the window; their canvases have to be
+// re-measured or they stay at the old resolution and go soft.
+window.addEventListener('resize', () => { if (typeof resetMiniSizes === 'function') resetMiniSizes(); });
 
 // Live-move the dragged button to wherever the cursor currently is within a
 // drop container, based on the horizontal midpoint of its siblings.
@@ -10409,8 +10412,14 @@ function buildThemeMini(t, key) {
 //
 // Seventy live canvases is the obvious way to do this and the wrong one: it is
 // seventy contexts, seventy timers' worth of work per frame, and most of them
-// scrolled out of sight. One loop that skips anything outside the grid's box
-// costs about as much as a single card did.
+// scrolled out of sight. Only what is on screen is ever drawn.
+//
+// Which ones those are is answered by an IntersectionObserver rather than by
+// measuring. The first version called getBoundingClientRect() on every canvas
+// on every tick — fifty-nine forced layouts, twelve times a second, to
+// discover the same dozen visible cards each time. The observer tells us for
+// free, and the canvas is sized once when it first appears instead of being
+// re-checked every frame.
 //
 // Twelve frames a second on purpose, too. These are thumbnails; at sixty they
 // would be smoother and would also be the most expensive thing in the app
@@ -10418,42 +10427,68 @@ function buildThemeMini(t, key) {
 let miniItems = [];
 let miniRaf = null;
 let miniLast = 0;
+let miniBox = null;   // { w, h } — one card's canvas, shared by all of them
 
 function stopMiniSketches() {
   if (miniRaf != null) cancelAnimationFrame(miniRaf);
   miniRaf = null;
   miniItems = [];
+  miniBox = null;
 }
 
 function startMiniSketches() {
   stopMiniSketches();
   if (!tbGrid || !window.PP_SKETCH) return;
   miniItems = [...tbGrid.querySelectorAll('canvas.tb-mini-fx')].map((el) => ({
-    el, key: el.dataset.theme, theme: THEMES[el.dataset.theme], g: null, w: 0, h: 0
+    el, key: el.dataset.theme, theme: THEMES[el.dataset.theme], g: null
   })).filter((it) => it.theme);
   if (!miniItems.length) return;
   // With motion off, one frame each and no loop at all.
-  if (!animationsOn()) { drawMiniFrame(performance.now()); return; }
+  if (!animationsOn()) {
+    requestAnimationFrame(() => drawMiniFrame(performance.now()));
+    return;
+  }
   miniRaf = requestAnimationFrame(tickMini);
 }
 
+// The grid is uniform, so one card answers for all of them. Reading a single
+// offsetWidth costs one layout; reading fifty-nine of them costs fifty-nine,
+// and does it on every tick.
+function measureMiniBox() {
+  const first = miniItems.find((it) => it.el.isConnected);
+  if (!first) return null;
+  const w = first.el.offsetWidth;
+  const h = first.el.offsetHeight;
+  return (w && h) ? { w, h } : null;
+}
+
 function drawMiniFrame(now) {
-  const box = tbGrid.getBoundingClientRect();
+  if (!miniItems.length) return;
+  if (!miniBox) {
+    miniBox = measureMiniBox();
+    if (!miniBox) return;   // grid not laid out yet; try again next tick
+  }
+  const { w, h } = miniBox;
   const time = now / 1000;
   const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const bw = Math.max(1, Math.round(w * dpr));
+  const bh = Math.max(1, Math.round(h * dpr));
   for (const it of miniItems) {
-    const r = it.el.getBoundingClientRect();
-    if (!r.width || r.bottom < box.top - 60 || r.top > box.bottom + 60) continue;
-    if (!it.g || it.w !== Math.round(r.width) || it.h !== Math.round(r.height)) {
-      it.w = Math.round(r.width);
-      it.h = Math.round(r.height);
-      it.el.width = Math.max(1, Math.round(it.w * dpr));
-      it.el.height = Math.max(1, Math.round(it.h * dpr));
+    if (!it.g) {
+      it.el.width = bw;
+      it.el.height = bh;
       it.g = it.el.getContext('2d');
       it.g.setTransform(dpr, 0, 0, dpr, 0, 0);
     }
-    PP_SKETCH.draw(it.key, it.theme, it.g, it.w, it.h, time);
+    PP_SKETCH.draw(it.key, it.theme, it.g, w, h, time);
   }
+}
+
+// A resize changes every card's box at once. Drop the contexts and the shared
+// measurement so the next frame takes both again.
+function resetMiniSizes() {
+  miniBox = null;
+  for (const it of miniItems) it.g = null;
 }
 
 function tickMini(now) {
@@ -10594,8 +10629,12 @@ function renderThemeBrowser() {
     card.className = 'tb-card' + (settings.theme === key ? ' active' : '');
     card.dataset.theme = key;
     // Staggered entrance, capped: past a dozen the delay stops reading as a
-    // sequence and starts reading as the grid being slow.
-    card.style.setProperty('--tb-i', String(Math.min(i, 11)));
+    // sequence and starts reading as the grid being slow. Past the first
+    // screenful the animation is dropped altogether — nobody can see a card
+    // fade in below the fold, and seventy-six simultaneous animations are
+    // exactly the kind of thing a slow machine notices.
+    if (i < 14) card.style.setProperty('--tb-i', String(Math.min(i, 11)));
+    else card.classList.add('tb-card--still');
     card.appendChild(buildThemeMini(t, key));
 
     const foot = document.createElement('div');
@@ -10643,26 +10682,32 @@ function renderThemeBrowser() {
   const rec = sectioned
     ? entries.filter(([k, t]) => t.recommended && !tbStarred.has(k))
     : [];
+  // Into a fragment, then attached in one go. Appending seventy-six cards
+  // straight into the live grid made the browser do insertion work seventy-six
+  // times over, and opening the pane blocked the main thread for 130ms — eight
+  // dropped frames, which is exactly long enough to feel like a stutter.
+  const frag = document.createDocumentFragment();
   if (starred.length || rec.length) {
     const rest = entries.filter(([k, t]) => !tbStarred.has(k) && !t.recommended);
     let i = 0;
-    const put = (list) => list.forEach((e) => tbGrid.appendChild(makeCard(e, i++)));
+    const put = (list) => list.forEach((e) => frag.appendChild(makeCard(e, i++)));
     if (starred.length) {
-      tbGrid.appendChild(section(tr('tb.starred', 'Starred'), tr('tb.yours', 'yours')));
+      frag.appendChild(section(tr('tb.starred', 'Starred'), tr('tb.yours', 'yours')));
       put(starred);
     }
     if (rec.length) {
-      tbGrid.appendChild(section(tr('tb.rec', 'Recommended'), tr('tb.recNote', 'worth trying first')));
+      frag.appendChild(section(tr('tb.rec', 'Recommended'), tr('tb.recNote', 'worth trying first')));
       put(rec);
     }
     if (rest.length) {
-      tbGrid.appendChild(section(tr('tb.rest', 'Everything else'),
+      frag.appendChild(section(tr('tb.rest', 'Everything else'),
         rest.length + ' ' + tr('tb.themes', 'themes')));
       put(rest);
     }
   } else {
-    entries.forEach((e, i) => tbGrid.appendChild(makeCard(e, i)));
+    entries.forEach((e, i) => frag.appendChild(makeCard(e, i)));
   }
+  tbGrid.appendChild(frag);
   startMiniSketches();
   markPeekingCard();
 }

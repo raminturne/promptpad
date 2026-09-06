@@ -2816,9 +2816,29 @@ function renderFsMessages() {
   if (!q) fsMessagesEl.scrollTop = fsMessagesEl.scrollHeight;
 }
 
+// Grow a textarea to fit its text, up to `max` pixels.
+//
+// Two things this has to get right, and the three hand-written copies of it
+// got neither:
+//
+// * Chromium counts the placeholder towards scrollHeight. Fast Save's wraps
+//   to four lines in a narrow window, so measuring an empty box asked for 97
+//   pixels of room for text that is not there.
+// * box-sizing is border-box: the height we assign includes the borders,
+//   scrollHeight does not. Assigning it straight leaves the field two pixels
+//   shorter than its own text, which is a scrollbar that never goes away.
+function growTextarea(ta, max) {
+  const ph = ta.placeholder;
+  if (!ta.value && ph) ta.placeholder = '';
+  ta.style.height = 'auto';
+  const border = ta.offsetHeight - ta.clientHeight;
+  const h = ta.scrollHeight + border;
+  ta.style.height = (max ? Math.min(max, h) : h) + 'px';
+  if (ph) ta.placeholder = ph;
+}
+
 function fsAutoGrow() {
-  fsInputEl.style.height = 'auto';
-  fsInputEl.style.height = Math.min(120, fsInputEl.scrollHeight) + 'px';
+  growTextarea(fsInputEl, 120);
 }
 
 function setFsPendingImage(filename) {
@@ -3208,8 +3228,7 @@ function clearAiChat() {
 }
 
 function aiAutoGrow() {
-  aiInputEl.style.height = 'auto';
-  aiInputEl.style.height = Math.min(120, aiInputEl.scrollHeight) + 'px';
+  growTextarea(aiInputEl, 120);
 }
 
 function updateAiInputDir() {
@@ -12193,8 +12212,10 @@ mdBtn.addEventListener('click', () => setMdPreview(!mdOn()));
 let mdEditEl = null;   // the live textarea, if any
 
 function mdAutoGrow(ta) {
-  ta.style.height = 'auto';
-  ta.style.height = ta.scrollHeight + 'px';
+  // No cap: a block edit is as tall as the block. This one hides its overflow
+  // rather than scrolling, so the two missing pixels clipped the last line
+  // instead of showing a bar.
+  growTextarea(ta, 0);
 }
 
 function commitMdBlockEdit(cancel) {

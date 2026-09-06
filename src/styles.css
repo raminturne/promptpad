@@ -2946,6 +2946,10 @@ body {
   user-select: text;
 }
 .fs-input:focus { border-color: var(--accent); }
+/* An empty field shows its placeholder, and Chromium lets a long placeholder
+   overflow and scroll like real content. Nothing here is scrollable until
+   there is something typed. */
+.fs-input:placeholder-shown { overflow-y: hidden; }
 .fs-input::-webkit-scrollbar { width: 8px; }
 .fs-input::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 8px; }
 .fs-input::-webkit-scrollbar-thumb:hover { background: var(--muted); }

@@ -238,17 +238,24 @@
             <span id="fsHeaderTitle" class="fs-header-title">Fast Save</span>
             <div class="fs-header-actions">
               <button id="fsSearchBtn" class="fs-header-btn" title="Search messages">
-                <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
-                  <circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" stroke-width="1.7"/>
-                  <line x1="16" y1="16" x2="21" y2="21" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+                <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                  <circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="1.9"/>
+                  <line x1="15.4" y1="15.4" x2="20.5" y2="20.5" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>
                 </svg>
               </button>
+              <!-- A photograph, not a grid. Four rounded squares is the mark
+                   every phone uses for "apps"; it says nothing about pictures.
+                   This is a frame with a horizon and a sun in it, and a second
+                   frame behind it saying there is more than one. -->
               <button id="fsGalleryBtn" class="fs-header-btn" title="Media gallery">
-                <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
-                  <rect x="3" y="5" width="8" height="8" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.6"/>
-                  <rect x="13" y="5" width="8" height="8" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.6"/>
-                  <rect x="3" y="15" width="8" height="4" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.6"/>
-                  <rect x="13" y="15" width="8" height="4" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.6"/>
+                <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                  <path d="M7.5 3.5h13a1 1 0 0 1 1 1v10" fill="none" stroke="currentColor"
+                        stroke-width="1.7" stroke-linecap="round" opacity=".55"/>
+                  <rect x="2.5" y="6.5" width="15" height="14" rx="2.2" fill="none"
+                        stroke="currentColor" stroke-width="1.7"/>
+                  <circle cx="7.2" cy="11.2" r="1.55" fill="currentColor"/>
+                  <path d="M2.5 17.2l4.3-4.1 3.4 3.2 2.9-2.7 4.4 4.2v1.6a2.2 2.2 0 0 1-2.2 2.1H4.7a2.2 2.2 0 0 1-2.2-2.1z"
+                        fill="currentColor"/>
                 </svg>
               </button>
             </div>
@@ -267,6 +274,8 @@
           <div id="fsSelectBar" class="fs-selectbar hidden">
             <span id="fsSelectCount">0 selected</span>
             <div class="fs-selectbar-actions">
+              <button id="fsSelectAll" class="fs-selectbar-btn">Select all</button>
+              <button id="fsSelectCopy" class="fs-selectbar-btn">Copy</button>
               <button id="fsSelectDelete" class="fs-selectbar-del">Delete</button>
               <button id="fsSelectClear" class="fs-selectbar-clear">Clear</button>
             </div>
@@ -304,7 +313,7 @@
             </div>
             <div class="fs-inputbar">
               <button id="fsEmojiBtn" class="fs-input-btn" title="Emoji">
-                <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true">
                   <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.6"/>
                   <circle cx="9" cy="10" r="1" fill="currentColor"/>
                   <circle cx="15" cy="10" r="1" fill="currentColor"/>
@@ -312,14 +321,14 @@
                 </svg>
               </button>
               <button id="fsImgBtn" class="fs-input-btn" title="Attach image">
-                <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true">
                   <rect x="3" y="4" width="18" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/>
                   <circle cx="9" cy="10" r="1.7" fill="currentColor"/>
                   <path d="M4 17.5l4.5-4.5 3.5 3.5 3-3 5 5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>
               </button>
               <button id="fsFileBtn" class="fs-input-btn" title="Attach file">
-                <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true">
                   <path d="M20 11.5l-7.6 7.6a4 4 0 0 1-5.7-5.7l8-8a2.6 2.6 0 0 1 3.7 3.7l-8 8a1.2 1.2 0 0 1-1.7-1.7l7-7" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>
               </button>
@@ -331,19 +340,19 @@
                    crowded the row enough to clip the input's placeholder. -->
               <span id="fsVoiceTimer" class="fs-voice-timer hidden"></span>
               <button id="fsVoiceCancel" class="fs-input-btn fs-voice-cancel hidden" title="Discard recording">
-                <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true">
                   <path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
                 </svg>
               </button>
               <button id="fsVoiceBtn" class="fs-input-btn has-new-badge" title="Record a voice note">
-                <svg class="fsv-mic" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+                <svg class="fsv-mic" viewBox="0 0 24 24" width="19" height="19" aria-hidden="true">
                   <rect x="9" y="3" width="6" height="11" rx="3" fill="none" stroke="currentColor" stroke-width="1.7"/>
                   <path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
                 </svg>
                 <span class="fsv-dot" aria-hidden="true"></span>
               </button>
               <button id="fsSend" class="fs-send" title="Save (Enter)">
-                <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true">
                   <polyline points="6 14 12 8 18 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>
               </button>

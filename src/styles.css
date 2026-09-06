@@ -1349,7 +1349,10 @@ body {
   animation: fade 0.16s ease;
 }
 
-@keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes fade {
+  from { opacity: 0; backdrop-filter: blur(0px); }
+  to   { opacity: 1; backdrop-filter: blur(3px); }
+}
 
 .settings-card {
   width: 100%;
@@ -2952,7 +2955,10 @@ body {
 .fs-send {
   display: grid;
   place-items: center;
-  width: 34px; height: 34px;
+  /* 38, to match the text field beside it: padding 8 + a 1.5 line of 13.5px
+     + the border. The row is bottom-aligned, so a shorter button sat four
+     pixels low against the input's centre. */
+  width: 38px; height: 38px;
   flex-shrink: 0;
   border: 1px solid var(--accent-glow);
   background: var(--accent-soft);
@@ -3274,7 +3280,7 @@ body {
 .fs-header-btn {
   display: grid;
   place-items: center;
-  width: 26px; height: 24px;
+  width: 30px; height: 28px;
   border: none;
   background: transparent;
   color: var(--muted);
@@ -3311,7 +3317,10 @@ body {
 .fs-input-btn {
   display: grid;
   place-items: center;
-  width: 34px; height: 34px;
+  /* 38, to match the text field beside it: padding 8 + a 1.5 line of 13.5px
+     + the border. The row is bottom-aligned, so a shorter button sat four
+     pixels low against the input's centre. */
+  width: 38px; height: 38px;
   flex-shrink: 0;
   border: 1px solid var(--border-strong);
   background: transparent;
@@ -5845,13 +5854,12 @@ body:has(.app.fx-blackout) { background: #14100c; }
 .tb-grid::-webkit-scrollbar { width: 8px; }
 .tb-grid::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 8px; }
 
-/* content-visibility is the one that matters here. Seventy-six cards is about
-   2,400 nodes, and building them is cheap (8ms) — laying them all out and
-   styling them is not. This lets the browser skip that work entirely for the
-   cards that are scrolled out of sight, which is most of them, and do it when
-   they come near instead.
-   contain-intrinsic-size has to be a real guess at the card's height or the
-   scrollbar jumps as skipped cards are measured for the first time. */
+/* content-visibility: auto was here and has been taken out again.
+   It did make the open faster — the browser skipped laying out the cards you
+   could not see — but it does that by deferring the work to the moment each
+   one scrolls into view, and that showed up as fifteen dropped frames in a
+   fast scroll. Now that the grid is built during idle time instead (see
+   tbBuild), the layout happens then too, and there is nothing left to defer. */
 .tb-card {
   border: 1px solid var(--border-strong);
   border-radius: 9px;
@@ -5859,8 +5867,6 @@ body:has(.app.fx-blackout) { background: #14100c; }
   cursor: pointer;
   background: var(--elevated);
   transition: border-color .12s, transform .12s;
-  content-visibility: auto;
-  contain-intrinsic-size: auto 184px;
 }
 .tb-card:hover { transform: translateY(-1px); }
 .tb-card.active { border-color: var(--accent); }
@@ -6072,7 +6078,14 @@ body:has(.app.fx-blackout) { background: #14100c; }
 }
 .find-bar.closing { animation: bar-lift .16s ease forwards; overflow: hidden; }
 
-@keyframes overlay-out { from { opacity: 1; } to { opacity: 0; } }
+/* backdrop-filter does not follow the element's opacity: it keeps applying at
+   full strength until the element is out of the layout, so fading the overlay
+   left the blur standing and then dropped it in one frame once `hidden`
+   landed. It has to be animated on its own. */
+@keyframes overlay-out {
+  from { opacity: 1; backdrop-filter: blur(3px); }
+  to   { opacity: 0; backdrop-filter: blur(0px); }
+}
 .overlay.closing { animation: overlay-out .15s ease forwards; }
 
 @keyframes card-out {
@@ -6427,6 +6440,16 @@ html.no-anim *::after {
    slow machine is the difference between a pane that opens and one that
    lurches. */
 .tb-card--still { animation: none !important; }
+
+/* Cards built later, as you scroll into them. A plain fade, no movement and
+   no stagger: they are arriving under the pointer while the grid is already
+   moving, and anything that also slides would fight the scroll. */
+@keyframes tb-late-in { from { opacity: 0; } to { opacity: 1; } }
+.tb-card--late {
+  animation: tb-late-in .22s ease both !important;
+  animation-delay: 0s !important;
+}
+
 .tb-card {
   animation: tb-card-in .26s cubic-bezier(.22, .8, .3, 1) both;
   animation-delay: calc(var(--tb-i, 0) * 18ms);
@@ -6481,7 +6504,7 @@ html.no-anim *::after {
 }
 .fs-input-btn.is-recording .fsv-dot {
   display: block;
-  width: 10px; height: 10px;
+  width: 12px; height: 12px;
   border-radius: 50%;
   background: var(--danger);
   animation: fsvPulse 1.3s ease-in-out infinite;
@@ -6598,13 +6621,18 @@ html.no-anim *::after {
   animation: ctx-in .13s cubic-bezier(.22, .9, .3, 1.2);
 }
 
-/* The settings overlay itself. */
-@keyframes overlay-in { from { opacity: 0; } to { opacity: 1; } }
+/* The settings card and the quick-capture card arrive rather than blink.
+   There was an `.overlay:not(.hidden)` rule here too and it had to go: it
+   matches with the same specificity as `.overlay.closing` but sits later in
+   the file, so it won — and replaced the close animation with the open one.
+   Nothing then fired animationend, hideWithAnim sat waiting for it, and the
+   background blur hung around until a fallback timeout dropped it in a single
+   frame. The .overlay rule already animates itself on open; this only ever
+   needed to be about the card. */
 @keyframes sheet-in {
   from { opacity: 0; transform: translateY(10px) scale(.985); }
   to   { opacity: 1; transform: none; }
 }
-.overlay:not(.hidden) { animation: overlay-in .14s ease; }
 .settings-card, .qc-card { animation: sheet-in .2s cubic-bezier(.22, .8, .3, 1); }
 
 /* Star a theme and the star reacts. */
@@ -6621,7 +6649,66 @@ html.no-anim *::after {
 
 @media (prefers-reduced-motion: reduce) {
   .pane-entering, .editor-area .placeholder-tag, .editor-area .pp-voice,
-  .fs-pending, .ctx-menu:not(.hidden), .overlay:not(.hidden),
+  .fs-pending, .ctx-menu:not(.hidden),
   .settings-card, .qc-card, .tb-card-star.on { animation: none; }
   .tab:hover:not(.dragging), .templates-btn:hover, .add-btn:hover { transform: none; }
+}
+
+/* ── Fast Save multi-select ───────────────────────────────────────────────
+   The tick that makes the feature findable. Hidden until you hover a bubble
+   or a selection is already running: a permanent checkbox on every message
+   turns a chat into a form. */
+.fs-msg { position: relative; }
+.fs-msg-pick {
+  position: absolute;
+  top: 6px;
+  inset-inline-start: -26px;
+  width: 18px; height: 18px;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  background: var(--bg);
+  cursor: pointer;
+  opacity: 0;
+  transform: scale(.85);
+  transition: opacity .14s ease, transform .14s ease, background .14s, border-color .14s;
+}
+.fs-msg:hover .fs-msg-pick,
+.fs-messages.has-selection .fs-msg-pick,
+.fs-msg-pick:focus-visible { opacity: 1; transform: none; }
+.fs-msg-pick::after {
+  content: '';
+  position: absolute;
+  left: 4px; top: 4px;
+  width: 7px; height: 3.5px;
+  border-left: 2px solid var(--bg);
+  border-bottom: 2px solid var(--bg);
+  transform: rotate(-45deg) scale(.6);
+  opacity: 0;
+  transition: opacity .12s ease, transform .12s cubic-bezier(.2, .9, .3, 1.4);
+}
+.fs-msg.selected .fs-msg-pick {
+  opacity: 1;
+  transform: none;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.fs-msg.selected .fs-msg-pick::after { opacity: 1; transform: rotate(-45deg) scale(1); }
+
+.fs-selectbar-btn {
+  height: 24px;
+  padding: 0 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted-2);
+  font-family: var(--font);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all .15s;
+}
+.fs-selectbar-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+
+@media (prefers-reduced-motion: reduce) {
+  .fs-msg-pick, .fs-msg-pick::after { transition: none; }
 }

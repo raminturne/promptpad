@@ -509,6 +509,8 @@ const fsPendingFileRemove = document.getElementById('fsPendingFileRemove');
 const fsHeaderTitle = document.getElementById('fsHeaderTitle');
 const fsSelectBar = document.getElementById('fsSelectBar');
 const fsSelectCount = document.getElementById('fsSelectCount');
+const fsSelectAllBtn = document.getElementById('fsSelectAll');
+const fsSelectCopyBtn = document.getElementById('fsSelectCopy');
 const fsSelectDelete = document.getElementById('fsSelectDelete');
 const fsSelectClear = document.getElementById('fsSelectClear');
 
@@ -2678,12 +2680,25 @@ function renderFsMessages() {
       (selectedMsgIds.has(m.id) ? ' selected' : '');
     row.dataset.msgId = m.id;
 
-    // Ctrl+click anywhere on the bubble (not on a button/image) toggles select.
+    // A tick in the corner, invisible until you hover the bubble or a
+    // selection is already running. Ctrl+click used to be the only way in and
+    // nothing on screen said so, which is the same as not having the feature.
+    const pick = document.createElement('button');
+    pick.className = 'fs-msg-pick';
+    pick.type = 'button';
+    pick.title = 'Select';
+    pick.addEventListener('click', (e) => { e.stopPropagation(); fsPick(m.id, e); });
+    row.appendChild(pick);
+
+    // Once something is selected, a plain click extends the selection rather
+    // than doing nothing — otherwise every bubble after the first needs a
+    // modifier held down.
     row.addEventListener('click', (e) => {
-      if (!e.ctrlKey) return;
-      if (e.target.closest('button') || e.target.closest('img')) return;
+      if (e.target.closest('button') || e.target.closest('img') ||
+          e.target.closest('audio') || e.target.closest('video')) return;
+      if (!selectedMsgIds.size && !e.ctrlKey && !e.metaKey && !e.shiftKey) return;
       e.preventDefault();
-      toggleMsgSelection(m.id);
+      fsPick(m.id, e);
     });
 
     if (m.image) {
@@ -2693,7 +2708,10 @@ function renderFsMessages() {
       img.decoding = 'async';
       img.src = 'ppimg://' + m.image;
       img.draggable = false;
-      img.addEventListener('click', (e) => { if (e.ctrlKey) { toggleMsgSelection(m.id); return; } openLightbox('ppimg://' + m.image); });
+      img.addEventListener('click', (e) => {
+        if (e.ctrlKey || e.metaKey || e.shiftKey || selectedMsgIds.size) { fsPick(m.id, e); return; }
+        openLightbox('ppimg://' + m.image);
+      });
       row.appendChild(img);
     }
 
@@ -2912,36 +2930,115 @@ function setFsPendingFile(meta) {
 }
 
 // ---------- Fast Save: message multi-select ----------
+//
+// The same rules as the Prompt Lab and as every file manager: plain click
+// selects only this one, ctrl toggles, shift takes the range from the last
+// thing clicked.
+let fsAnchorId = null;
+
+function fsVisibleIds() {
+  return [...fsMessagesEl.querySelectorAll('.fs-msg[data-msg-id]')]
+    .map((el) => el.dataset.msgId);
+}
+
+function fsPick(id, e) {
+  const mods = e && (e.ctrlKey || e.metaKey);
+  if (e && e.shiftKey && fsAnchorId) {
+    const ids = fsVisibleIds();
+    const a = ids.indexOf(fsAnchorId);
+    const b = ids.indexOf(id);
+    if (a >= 0 && b >= 0) {
+      const [lo, hi] = a < b ? [a, b] : [b, a];
+      for (let i = lo; i <= hi; i++) selectedMsgIds.add(ids[i]);
+    } else {
+      selectedMsgIds.add(id);
+    }
+  } else if (mods) {
+    if (selectedMsgIds.has(id)) selectedMsgIds.delete(id); else selectedMsgIds.add(id);
+    fsAnchorId = id;
+  } else {
+    const only = selectedMsgIds.size === 1 && selectedMsgIds.has(id);
+    selectedMsgIds.clear();
+    if (!only) { selectedMsgIds.add(id); fsAnchorId = id; }
+  }
+  updateFsSelectBar();
+  renderFsMessages();
+}
+
 function toggleMsgSelection(id) {
   if (selectedMsgIds.has(id)) selectedMsgIds.delete(id);
   else selectedMsgIds.add(id);
+  fsAnchorId = id;
   updateFsSelectBar();
   renderFsMessages();
+}
+
+function fsSelectAll() {
+  fsVisibleIds().forEach((id) => selectedMsgIds.add(id));
+  updateFsSelectBar();
+  renderFsMessages();
+}
+
+// Newest last, so the copy reads in the order they were written.
+async function fsCopySelected() {
+  const picked = fsMessages().filter((m) => selectedMsgIds.has(m.id));
+  if (!picked.length) return;
+  const text = picked.map((m) => m.text || (m.audio ? '[voice note]' : '')).join('\n\n');
+  try { await navigator.clipboard.writeText(text); showToast('Copied', ''); }
+  catch (err) { console.error(err); }
 }
 function clearMsgSelection() {
   if (!selectedMsgIds.size) return;
   selectedMsgIds.clear();
+  fsAnchorId = null;
   updateFsSelectBar();
   renderFsMessages();
 }
 function updateFsSelectBar() {
   const n = selectedMsgIds.size;
-  if (n) {
-    fsSelectCount.textContent = n + (n === 1 ? ' selected' : ' selected');
-    fsSelectBar.classList.remove('hidden');
-  } else {
-    fsSelectBar.classList.add('hidden');
-  }
+  fsSelectCount.textContent = n + ' selected';
+  fsSelectBar.classList.toggle('hidden', !n);
+  // While a selection is running every bubble shows its tick, so the next one
+  // does not have to be hunted for.
+  if (fsMessagesEl) fsMessagesEl.classList.toggle('has-selection', !!n);
 }
 function deleteSelectedMsgs() {
   if (!selectedMsgIds.size) return;
+  const n = selectedMsgIds.size;
   state.fastSave.messages = fsMessages().filter((m) => !selectedMsgIds.has(m.id));
   selectedMsgIds.clear();
+  fsAnchorId = null;
+  showToast(n === 1 ? 'Message deleted' : n + ' messages deleted', '');
   updateFsSelectBar();
   renderFsMessages();
   renderTabs();
   scheduleSave();
 }
+
+if (fsSelectAllBtn) fsSelectAllBtn.addEventListener('click', fsSelectAll);
+if (fsSelectCopyBtn) fsSelectCopyBtn.addEventListener('click', fsCopySelected);
+
+// Escape drops the selection, Ctrl+A takes everything on screen — only while
+// Fast Save is the visible view and the caret is not in a text field.
+document.addEventListener('keydown', (e) => {
+  if (!fsActive() || appDialogDepth) return;
+  const a = document.activeElement;
+  const inField = a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.isContentEditable);
+  // The composer keeps focus the whole time you are in Fast Save, so a plain
+  // "not while typing" guard means these shortcuts never fire at all. Ctrl+A
+  // still selects the text when there is text; with an empty box there is
+  // nothing else it could sensibly mean.
+  const composerEmpty = a === fsInputEl && !fsInputEl.value.trim();
+  if (inField && !composerEmpty) return;
+
+  if (e.key === 'Escape' && selectedMsgIds.size) {
+    e.preventDefault(); e.stopPropagation();
+    clearMsgSelection();
+  } else if ((e.ctrlKey || e.metaKey) && (e.key === 'a' || e.key === 'A') && fsMessages().length) {
+    e.preventDefault();
+    fsSelectAll();
+  }
+}, true);
 
 // ---------- Fast Save: edit a message in place ----------
 function startFsEdit(id) {
@@ -10729,34 +10826,116 @@ function renderThemeBrowser() {
   const rec = sectioned
     ? entries.filter(([k, t]) => t.recommended && !tbStarred.has(k))
     : [];
-  // Into a fragment, then attached in one go. Appending seventy-six cards
-  // straight into the live grid made the browser do insertion work seventy-six
-  // times over, and opening the pane blocked the main thread for 130ms — eight
-  // dropped frames, which is exactly long enough to feel like a stutter.
-  const frag = document.createDocumentFragment();
+  // A flat plan of what the grid should contain, in order: section headings
+  // and cards, mixed. Nothing is built from it yet.
+  const plan = [];
   if (starred.length || rec.length) {
     const rest = entries.filter(([k, t]) => !tbStarred.has(k) && !t.recommended);
-    let i = 0;
-    const put = (list) => list.forEach((e) => frag.appendChild(makeCard(e, i++)));
     if (starred.length) {
-      frag.appendChild(section(tr('tb.starred', 'Starred'), tr('tb.yours', 'yours')));
-      put(starred);
+      plan.push({ head: [tr('tb.starred', 'Starred'), tr('tb.yours', 'yours')] });
+      starred.forEach((e) => plan.push({ entry: e }));
     }
     if (rec.length) {
-      frag.appendChild(section(tr('tb.rec', 'Recommended'), tr('tb.recNote', 'worth trying first')));
-      put(rec);
+      plan.push({ head: [tr('tb.rec', 'Recommended'), tr('tb.recNote', 'worth trying first')] });
+      rec.forEach((e) => plan.push({ entry: e }));
     }
     if (rest.length) {
-      frag.appendChild(section(tr('tb.rest', 'Everything else'),
-        rest.length + ' ' + tr('tb.themes', 'themes')));
-      put(rest);
+      plan.push({ head: [tr('tb.rest', 'Everything else'),
+        rest.length + ' ' + tr('tb.themes', 'themes')] });
+      rest.forEach((e) => plan.push({ entry: e }));
     }
   } else {
-    entries.forEach((e, i) => frag.appendChild(makeCard(e, i)));
+    entries.forEach((e) => plan.push({ entry: e }));
   }
-  tbGrid.appendChild(frag);
+
+  tbBuild(plan, section, makeCard);
+}
+
+// ---------- building the grid ----------
+//
+// The cards used to be built all at once: seventy-six of them, about 2,400
+// nodes, before the pane could paint. That was the 130ms you could feel.
+//
+// Now the first screenful is built synchronously and the rest during idle
+// time. Three scroll-driven versions came first and all three were worse —
+// an observer that fired once because its sentinel never left the margin, a
+// pump that raced ahead and still stalled, and both doing their work in the
+// middle of a flick. What has to be fast is the open; the remainder only has
+// to be out of the way, and idle time is exactly "out of the way".
+const TB_FIRST = 18;   // enough to fill the grid twice over at any window size
+const TB_CHUNK = 6;    // per idle slice
+
+let tbPlan = [];
+let tbPlanAt = 0;
+let tbIdle = null;
+let tbMakeSection = null;
+let tbMakeCard = null;
+
+const tbRequestIdle = window.requestIdleCallback
+  ? (fn) => window.requestIdleCallback(fn, { timeout: 500 })
+  : (fn) => setTimeout(() => fn({ timeRemaining: () => 8 }), 16);
+const tbCancelIdle = window.cancelIdleCallback
+  ? (h) => window.cancelIdleCallback(h)
+  : (h) => clearTimeout(h);
+
+function tbStopBuilding() {
+  if (tbIdle != null) { tbCancelIdle(tbIdle); tbIdle = null; }
+  tbPlan = [];
+  tbPlanAt = 0;
+}
+
+function tbBuild(plan, section, makeCard) {
+  tbStopBuilding();
+  tbPlan = plan;
+  tbPlanAt = 0;
+  tbMakeSection = section;
+  tbMakeCard = makeCard;
+
+  tbAppend(TB_FIRST);
+  if (tbPlanAt < tbPlan.length) tbIdle = tbRequestIdle(tbIdleBuild);
+
   startMiniSketches();
   markPeekingCard();
+}
+
+// Build `n` more of the plan, in one insertion.
+function tbAppend(n) {
+  if (tbPlanAt >= tbPlan.length) return;
+  const frag = document.createDocumentFragment();
+  const end = Math.min(tbPlan.length, tbPlanAt + n);
+  for (; tbPlanAt < end; tbPlanAt++) {
+    const step = tbPlan[tbPlanAt];
+    if (step.head) {
+      frag.appendChild(tbMakeSection(step.head[0], step.head[1]));
+    } else {
+      const card = tbMakeCard(step.entry, tbPlanAt);
+      // Past the first screenful the staggered entrance is dropped for a
+      // plain fade: those cards arrive off screen, and a stagger nobody can
+      // see is only work.
+      if (tbPlanAt >= 14) card.classList.add('tb-card--late');
+      frag.appendChild(card);
+    }
+  }
+  tbGrid.appendChild(frag);
+}
+
+function tbIdleBuild(deadline) {
+  tbIdle = null;
+  // Keep going while this idle slice has room. timeRemaining() is the
+  // browser saying how much of the frame is still free; a chunk of six costs
+  // well under a millisecond, so this usually finishes the grid in one or
+  // two slices and never in a frame that had something else to do.
+  while (tbPlanAt < tbPlan.length &&
+         (deadline.timeRemaining() > 3 || deadline.didTimeout)) {
+    tbAppend(TB_CHUNK);
+  }
+  if (tbPlanAt < tbPlan.length) {
+    tbIdle = tbRequestIdle(tbIdleBuild);
+  } else {
+    // Everything is in: the sketches need to know about the new canvases.
+    startMiniSketches();
+    markPeekingCard();
+  }
 }
 
 // Entering the pane clears the "new themes" mark and starts fresh; leaving it
@@ -10779,6 +10958,7 @@ function openThemeBrowser() {
 // same as not having them.
 function closeThemeBrowser() {
   stopMiniSketches();
+  tbStopBuilding();
   if (window.api.restoreWindow) window.api.restoreWindow().catch(() => {});
 }
 

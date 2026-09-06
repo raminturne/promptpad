@@ -2915,7 +2915,13 @@ body {
 
 .fs-inputbar {
   display: flex;
+  /* Wrapping is free at any width where the row already fits, and it is the
+     difference between a cramped composer and a lost Save button: five 38px
+     buttons plus gaps need 242px, so at the 340px minimum window the row
+     wanted 259px, had 170, and pushed Send out of the bar to be clipped. */
+  flex-wrap: wrap;
   align-items: flex-end;
+  align-content: flex-end;
   gap: 7px;
   padding: 10px 12px;
   border-top: 1px solid var(--border);
@@ -2929,7 +2935,9 @@ body {
 .fs-inputbar > .fs-send,
 .fs-inputbar > .fs-voice-timer { flex: 0 0 auto; }
 .fs-input {
-  flex: 1;
+  /* A basis rather than 0, so the field asks for a usable width and the row
+     wraps around it instead of starving it to nothing. It still shrinks. */
+  flex: 1 1 96px;
   min-width: 0;
   resize: none;
   background: var(--bg);

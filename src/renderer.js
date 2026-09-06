@@ -12561,121 +12561,125 @@ const CURRENT_VERSION = document.getElementById('aboutVersion').textContent.repl
 const WHATS_NEW =
   'What\'s new in v' + CURRENT_VERSION + ' ✨\n' +
   '\n' +
-  'Two new things to put in a note, and a bug that had been quietly\n' +
-  'stopping you from typing.\n' +
+  'A tune-up. Nothing here is new to learn — it is the same app, faster on a\n' +
+  'slow machine, smoother everywhere, and with a handful of things that were\n' +
+  'quietly broken now fixed.\n' +
   '\n' +
   '── VOICE NOTES ────────────────────────\n' +
   '\n' +
-  '• Press Record and talk. The clip lands where the caret is — in the\n' +
-  '   middle of a sentence if that is where you were — not on a line of\n' +
-  '   its own.\n' +
-  '• Collapsed it is about the width of a word, so a note with three of\n' +
-  '   them in it still reads as a note. Hover one and the player slides\n' +
-  '   out of it.\n' +
-  '• Where you are in a clip stays yours. Moving the mouse away no longer\n' +
-  '   stops it, and pausing halfway no longer throws the place away. Only\n' +
-  '   reaching the end clears it.\n' +
+  '• Right-click a clip for a menu of its own: play it, record over it, save\n' +
+  '   the audio, delete it. Deleting one used to mean putting the caret next\n' +
+  '   to a token you cannot see.\n' +
+  '• Fast Save records too. The clip is saved the moment you stop — there is\n' +
+  '   no send to press afterwards and nothing to lose.\n' +
+  '• Clip lengths were reading "Infinity:NaN". A fresh recording carries no\n' +
+  '   length in its header, so the app now keeps the length of anything it\n' +
+  '   recorded itself.\n' +
   '\n' +
-  '── VIDEO ───────────────────────────────\n' +
+  '── FASTER ─────────────────────────────\n' +
   '\n' +
-  '• A video goes into a note the way a picture does, and everything that\n' +
-  '   already worked on pictures works on it: resize by the corner, right-\n' +
-  '   click to save, click the magnifier to blow it up.\n' +
-  '• The zoom view has a fullscreen button of its own.\n' +
+  '• The theme browser opens about seven times faster and scrolls without\n' +
+  '   dropping a frame. The first screenful is built at once and the rest\n' +
+  '   while the app has nothing else to do.\n' +
+  '• Theme thumbnails hold still and play only under the pointer. Seventy-six\n' +
+  '   scenes at once was the most expensive thing on screen at the moment you\n' +
+  '   cared least about it.\n' +
+  '• Themes no longer flicker while you drag the window edge. Resizing a\n' +
+  '   canvas clears it, and a drag fires continuously, so the picture spent\n' +
+  '   most of a resize black.\n' +
+  '• Idle costs nothing: with the pointer away from the grid, no animation\n' +
+  '   frames run at all.\n' +
   '\n' +
-  '── PROMPT LAB ────────────────────────\n' +
+  '── SMOOTHER ───────────────────────────\n' +
   '\n' +
-  '• Select more than one. Click, ctrl-click, shift for a range, Ctrl+A\n' +
-  '   for everything on screen, Escape to drop it.\n' +
-  '• Then move the whole selection to another category in one go, or\n' +
-  '   delete it. Filing a pile of prompts one at a time was the worst part\n' +
-  '   of having a lot of them.\n' +
+  '• Settings panes fade, buttons answer a press, rail buttons lift under the\n' +
+  '   pointer, menus grow from the corner they open at, and starring a theme\n' +
+  '   pops the star.\n' +
+  '• All of it animates only the two properties the compositor owns, so none\n' +
+  '   of it re-runs layout or paint. Motion off in Settings still turns every\n' +
+  '   bit of it off.\n' +
+  '\n' +
+  '── FAST SAVE ──────────────────────────\n' +
+  '\n' +
+  '• Select more than one message: a tick on the bubble, shift for a range,\n' +
+  '   Ctrl+A, Escape to drop it, and Copy beside Delete.\n' +
+  '• The recorder moved next to Send, where the other button that commits\n' +
+  '   something lives.\n' +
+  '• Bigger icons, and a gallery button that looks like a photograph rather\n' +
+  '   than a phone\'s grid of apps.\n' +
   '\n' +
   '── FIXED ──────────────────────────────\n' +
   '\n' +
-  '• Typing would sometimes stop working until you quit and reopened the\n' +
-  '   app. Deleting from the Prompt Lab put up a system dialog, and this\n' +
-  '   window sits on top of everything — a combination Windows handles\n' +
-  '   badly enough that the window often never got the keyboard back. It\n' +
-  '   still looked focused, because it is painted over everything else.\n' +
-  '   Every dialog in the app is now drawn inside the app.\n' +
-  '• Toolbar buttons you could not reach. The row scrolled sideways with\n' +
-  '   no scrollbar, so at the usual window width most of it sat somewhere\n' +
-  '   invisible. Whatever does not fit now moves into the ‹ menu, and\n' +
-  '   comes back when you widen the window.\n' +
-  '• …and that menu was being clipped away entirely, which is why it\n' +
-  '   looked like the arrow did nothing.\n' +
-  '• Zooming a video showed a dark screen and nothing else.\n' +
-  '• Black Card\'s sheen stopped dead at the right-hand edge instead of\n' +
-  '   sliding off it.\n' +
-  '• Snow Street \'97 was showing Barrel Fire\'s picture in the theme\n' +
-  '   browser. It has its own street now.\n' +
+  '• Closing Settings dropped the background blur in one jump, a moment after\n' +
+  '   the panel had already faded.\n' +
+  '• The Fast Save text box had a scrollbar in it before you had typed\n' +
+  '   anything, and grew four lines tall after saving a note.\n' +
+  '• In a narrow window the Save button was pushed out of the row and clipped\n' +
+  '   away — under about 430 pixels wide there was no way to reach it.\n' +
+  '• The grey hint inside that box was being cut mid-word. It is shorter now.\n' +
   '\n' +
-  '── SMALL ──────────────────────────────\n' +
+  'You can close this tab — it will not come back until the next update.\n' +
   '\n' +
-  '• The old Voice button is now labelled Speech to text, so it is not\n' +
-  '   confused with Record.\n' +
-  '• The ‹ menu opens with a bit of spring and its buttons arrive one\n' +
-  '   after another; the arrow turns into a close cross rather than\n' +
-  '   flipping upside down.\n' +
-  '\n' +
-  '────────────────────────────────────────\n' +
+  '────────────────────────────────────────' + '\n' +
   '\n' +
   'تازه‌های نسخه‌ی ' + CURRENT_VERSION + ' ✨\n' +
   '\n' +
-  'دو چیز تازه که می‌شود توی یادداشت گذاشت، و یک اشکال که بی‌سروصدا\n' +
-  'نمی‌گذاشت تایپ کنی.\n' +
+  'یک نسخه‌ی سرویس. چیز تازه‌ای برای یاد گرفتن ندارد — همان برنامه است،\n' +
+  'روی سیستم ضعیف سریع‌تر، همه‌جا نرم‌تر، و چند چیزی که بی‌سروصدا خراب\n' +
+  'بود درست شده.\n' +
   '\n' +
   '── یادداشت صوتی ────────────────\n' +
   '\n' +
-  '• Record را بزن و حرف بزن. کلیپ دقیقاً همان‌جایی می‌نشیند که\n' +
-  '   مکان‌نماست — وسط جمله، اگر آن‌جا بودی — نه در خطی جداگانه.\n' +
-  '• جمع که باشد اندازه‌ی یک کلمه است، پس یادداشتی با سه تا صدا هنوز\n' +
-  '   یادداشت است. موس را که ببری رویش، پخش‌کننده از درونش باز می‌شود.\n' +
-  '• جایی که در کلیپ هستی مال خودت است. موس را که برداری دیگر قطع\n' +
-  '   نمی‌شود، و اگر وسطش پوز کنی جایت گم نمی‌شود. فقط رسیدن به\n' +
-  '   آخر پاکش می‌کند.\n' +
+  '• روی کلیپ راست‌کلیک کن تا منوی خودش باز شود: پخش، ضبط دوباره روی\n' +
+  '   همان، ذخیره‌ی فایل صدا، و حذف. تا حالا پاک کردنش یعنی بردن\n' +
+  '   مکان‌نما کنار چیزی که دیده نمی‌شود.\n' +
+  '• داخل Fast Save هم می‌شود ضبط کرد. کلیپ همان لحظه‌ای که ضبط تمام\n' +
+  '   می‌شود ذخیره می‌شود؛ نه دکمه‌ی ارسالی می‌ماند و نه چیزی گم می‌شود.\n' +
+  '• طول کلیپ‌ها «Infinity:NaN» نشان داده می‌شد. فایل تازه‌ضبط‌شده طولش\n' +
+  '   را در سرصفحه ندارد، پس حالا برنامه طول هر چیزی را که خودش ضبط\n' +
+  '   کرده نگه می‌دارد.\n' +
   '\n' +
-  '── ویدیو ─────────────────────────\n' +
+  '── سریع‌تر ──────────────────────\n' +
   '\n' +
-  '• ویدیو هم‌مانند عکس داخل یادداشت می‌رود، و هر چه روی عکس کار\n' +
-  '   می‌کرد روی این هم کار می‌کند: تغییر اندازه از گوشه، راست‌کلیک\n' +
-  '   برای ذخیره، و ذره‌بین برای بزرگ کردن.\n' +
-  '• نمای بزرگ دکمه‌ی تمام‌صفحه‌ی خودش را دارد.\n' +
+  '• مرورگر تم‌ها حدود هفت برابر سریع‌تر باز می‌شود و موقع اسکرول هیچ\n' +
+  '   فریمی نمی‌افتد. صفحه‌ی اول همان لحظه ساخته می‌شود و بقیه وقتی\n' +
+  '   برنامه کار دیگری ندارد.\n' +
+  '• تامنیل تم‌ها ساکن‌اند و فقط زیر موس پخش می‌شوند. هفتاد و شش صحنه‌ی\n' +
+  '   هم‌زمان گران‌ترین چیز روی صفحه بود، آن هم دقیقاً وقتی کمترین\n' +
+  '   اهمیت را داشت.\n' +
+  '• تم‌ها موقع کشیدن لبه‌ی پنجره دیگر خاموش‌روشن نمی‌شوند. عوض کردن\n' +
+  '   اندازه‌ی بوم پاکش می‌کند و کشیدن پیوسته این کار را می‌کرد، پس\n' +
+  '   تصویر بیشترِ resize را سیاه می‌ماند.\n' +
+  '• در حالت بی‌کار هیچ فریم انیمیشنی اجرا نمی‌شود.\n' +
   '\n' +
-  '── آزمایشگاه پرامپت ──────────────\n' +
+  '── نرم‌تر ───────────────────────\n' +
   '\n' +
-  '• چندتایی انتخاب کن. کلیک، ctrl+کلیک، shift برای یک بازه، Ctrl+A\n' +
-  '   برای همه‌ی آنچه روی صفحه است، Escape برای رها کردن.\n' +
-  '• بعد کل انتخاب را یک‌جا به دسته‌ی دیگر منتقل کن یا پاکش کن.\n' +
-  '   دسته‌بندی یکی‌یکی بدترین قسمت داشتن پرامپت زیاد بود.\n' +
+  '• پنل‌های تنظیمات محو می‌شوند، دکمه‌ها به فشار جواب می‌دهند، دکمه‌های\n' +
+  '   ریل زیر موس بالا می‌آیند، منوها از همان گوشه‌ای که باز می‌شوند رشد\n' +
+  '   می‌کنند، و ستاره‌دار کردن تم، ستاره را می‌پراند.\n' +
+  '• همه‌اش فقط همان دو ویژگی‌ای را متحرک می‌کند که کامپوزیتور خودش\n' +
+  '   اداره می‌کند، پس هیچ‌کدام چیدمان یا رنگ‌آمیزی را دوباره اجرا\n' +
+  '   نمی‌کند. خاموش کردن Motion در تنظیمات هنوز همه‌شان را خاموش می‌کند.\n' +
+  '\n' +
+  '── ذخیره‌ی سریع ─────────────────\n' +
+  '\n' +
+  '• چند پیام را با هم انتخاب کن: تیک روی حباب، shift برای یک بازه،\n' +
+  '   Ctrl+A، Escape برای رها کردن، و Copy کنار Delete.\n' +
+  '• ضبط صدا رفت کنار دکمه‌ی ارسال، جایی که آن یکی دکمه‌ای که کاری را\n' +
+  '   قطعی می‌کند نشسته است.\n' +
+  '• آیکون‌ها بزرگ‌ترند، و دکمه‌ی گالری حالا شبیه یک عکس است، نه شبیه\n' +
+  '   شبکه‌ی برنامه‌های گوشی.\n' +
   '\n' +
   '── رفع اشکال ────────────────────\n' +
   '\n' +
-  '• گاهی تایپ کردن از کار می‌افتاد تا وقتی برنامه را می‌بستی و دوباره\n' +
-  '   باز می‌کردی. پاک کردن از آزمایشگاه یک پنجره‌ی سیستمی بالا می‌آورد،\n' +
-  '   و این پنجره روی همه‌چیز می‌نشیند — ترکیبی که ویندوز آن‌قدر بد\n' +
-  '   مدیریت می‌کند که اغلب کیبورد دیگر برنمی‌گشت. ظاهرش هم طبیعی\n' +
-  '   بود، چون پنجره روی بقیه کشیده می‌شود. حالا همه‌ی پنجره‌های\n' +
-  '   تأیید داخل خود برنامه کشیده می‌شوند.\n' +
-  '• دکمه‌های نوار ابزار که دست‌رس‌ناپذیر بودند. نوار بدون اسکرول‌بار\n' +
-  '   افقی اسکرول می‌شد، پس در عرض معمولی پنجره بیشترش جایی ناپیدا\n' +
-  '   می‌ماند. حالا هر چه جا نشود خودبه‌خود می‌رود داخل منوی ‹ و با\n' +
-  '   پهن‌تر کردن پنجره برمی‌گردد.\n' +
-  '• …و خود آن منو کاملاً بریده می‌شد، برای همین به نظر می‌رسید فلش\n' +
-  '   کار نمی‌کند.\n' +
-  '• ذره‌بین روی ویدیو فقط یک صفحه‌ی تاریک نشان می‌داد.\n' +
-  '• درخشش تم Black Card در لبه‌ی راست می‌مرد به‌جای این‌که از آن\n' +
-  '   بزند بیرون.\n' +
-  '• Snow Street \'97 در مرورگر تم‌ها تصویر Barrel Fire را نشان می‌داد.\n' +
-  '   حالا خیابان خودش را دارد.\n' +
-  '\n' +
-  '── ریزه‌کاری ────────────────────\n' +
-  '\n' +
-  '• دکمه‌ی Voice قدیمی حالا Speech to text نام دارد تا با Record\n' +
-  '   قاطی نشود.\n' +
-  '• منوی ‹ با کمی فنر باز می‌شود و دکمه‌هایش پشت سر هم می‌آیند؛\n' +
-  '   فلش هم به‌جای برعکس شدن، به ضربدر تبدیل می‌شود.\n' +
+  '• با بستن تنظیمات، بلور پس‌زمینه یک لحظه بعد از محو شدن پنجره یکهو\n' +
+  '   می‌پرید.\n' +
+  '• جعبه‌ی متن Fast Save پیش از آن‌که چیزی تایپ کنی اسکرول داشت، و بعد\n' +
+  '   از ذخیره‌ی یادداشت چهار خط بلند می‌شد.\n' +
+  '• در پنجره‌ی باریک، دکمه‌ی ذخیره از ردیف بیرون می‌افتاد و بریده\n' +
+  '   می‌شد — زیر حدود ۴۳۰ پیکسل اصلاً راهی به آن نبود.\n' +
+  '• متن راهنمای خاکستری داخل همان جعبه وسط کلمه بریده می‌شد. کوتاه‌ترش\n' +
+  '   کردیم.\n' +
   '\n' +
   'این تب را می‌توانی ببندی — تا آپدیت بعدی دیگر برنمی‌گردد.';
 

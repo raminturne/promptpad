@@ -4,9 +4,9 @@
 [![Downloads](https://img.shields.io/github/downloads/raminturne/promptpad/total?color=22c55e)](https://github.com/raminturne/promptpad/releases)
 [![License](https://img.shields.io/github/license/raminturne/promptpad?color=a855f7)](LICENSE)
 
-A compact, always-on-top desktop notepad for writing and organizing AI prompts. Built with Electron.
+**A desktop notepad built for writing AI prompts.** Not a text editor with a folder of prompts in it: tabs that keep one prompt each, reusable **blocks**, blanks you fill in at the moment you use them, and a **Prompt Lab** to keep the ones that worked. Built with Electron, in a window that stays on top of whatever you are working in.
 
-Minimal, fast, and right next to your work — with tabs, reusable **blocks**, slash commands, live placeholder fill, **PIN-locked notes** encrypted on disk, **voice notes** you drop mid-sentence, inline images and **video**, templates, find & replace, a Telegram-style Fast Save, a free built-in AI chat, one-click AI actions, speech-to-text, a handy edge-dock, todo checklists, a **Discover** gallery to share & reuse prompts, a global quick-capture hotkey — and **76 themes**, half of which are alive.
+Everything else is in there too — slash commands, **PIN-locked notes** encrypted on disk, **voice notes** you drop mid-sentence, inline images and **video**, templates, find & replace, a Telegram-style Fast Save, a free built-in AI chat, one-click AI actions, speech-to-text, a handy edge-dock, todo checklists, a **Discover** gallery to share & reuse prompts, a global quick-capture hotkey — and **76 themes**, half of which are alive.
 
 ## 📸 Screenshots
 

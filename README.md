@@ -1,3 +1,5 @@
+![PromptPad — a desktop notepad built for writing AI prompts](screenshots/banner.png)
+
 # PromptPad
 
 [![Latest Release](https://img.shields.io/github/v/release/raminturne/promptpad?label=latest%20release&color=2563eb)](https://github.com/raminturne/promptpad/releases/latest)
@@ -7,34 +9,6 @@
 **A desktop notepad built for writing AI prompts.** Not a text editor with a folder of prompts in it: tabs that keep one prompt each, reusable **blocks**, blanks you fill in at the moment you use them, and a **Prompt Lab** to keep the ones that worked. Built with Electron, in a window that stays on top of whatever you are working in.
 
 Everything else is in there too — slash commands, **PIN-locked notes** encrypted on disk, **voice notes** you drop mid-sentence, inline images and **video**, templates, find & replace, a Telegram-style Fast Save, a free built-in AI chat, one-click AI actions, speech-to-text, a handy edge-dock, todo checklists, a **Discover** gallery to share & reuse prompts, a global quick-capture hotkey — and **76 themes**, half of which are alive.
-
-## 📸 Screenshots
-
-Shown in the **Mono** theme. There are 76 in Settings, sorted by what drives them — Reactive, Nature, Machines, Nostalgia, Live, Sound, Playable, Luxury.
-
-| Workspace — tabs, colored groups, placeholders, live fill and a voice note | Fast Save — Telegram-style pinned quick notes |
-|:---:|:---:|
-| ![Workspace](screenshots/01-workspace.png) | ![Fast Save](screenshots/02-fast-save.png) |
-
-| AI Chat — free built-in chat, no API key | Markdown preview — code blocks with Copy / Improve actions |
-|:---:|:---:|
-| ![AI Chat](screenshots/03-ai-chat.png) | ![Markdown](screenshots/04-markdown.png) |
-
-| AI actions — Improve, Translate, Summarize, Fix grammar, change tone | Settings — startup, shortcuts, storage & more |
-|:---:|:---:|
-| ![AI actions](screenshots/05-ai-actions.png) | ![Settings](screenshots/06-settings.png) |
-
-| Themes — 76 of them, and every card is the app in miniature with the theme actually running on it |
-|:---:|
-| ![Themes](screenshots/08-themes.png) |
-
-| Discover — a shared prompt gallery: browse by category, publish with an image or music, ❤ like, and reuse any prompt in one click |
-|:---:|
-| ![Discover](screenshots/07-discover.jpg) |
-
-| The toolbar — drag buttons between the row and the menu; whatever does not fit moves there on its own |
-|:---:|
-| ![Toolbar](screenshots/09-toolbar.png) |
 
 ## ✨ Features
 

@@ -9914,12 +9914,18 @@
     start() {
       const bk = back();
       if (!bk) return;
-      const c = makeCanvas(bk, 'fx-nacre-canvas');
+      // Half scale: a quarter of the pixels to fill. Every frame strokes
+      // forty-odd bands up to 22px wide across the whole surface, and that
+      // is rasterisation, not arithmetic — it does not show up in a JS
+      // profile and it is the whole cost of this theme. Nacre has no hard
+      // edge anywhere in it, so the buffer can be soft.
+      const c = makeCanvas(bk, 'fx-nacre-canvas', 0.5);
       const ctx = c.ctx;
       const rand = (a, b) => a + Math.random() * (b - a);
 
       let bands = [];
       let originX = 0, originY = 0;
+      let nextFrame = 0;
 
       const build = () => {
         originX = c.w * 0.18;
@@ -9972,6 +9978,12 @@
       };
 
       const tick = (now) => {
+        // 15fps, like the rest of the scenes here. The viewing angle is on a
+        // nine- and twenty-one-second cycle, so sixty frames a second was
+        // drawing the same picture four times over.
+        if (now < nextFrame) { rafId = requestAnimationFrame(tick); return; }
+        nextFrame = now + 1000 / 15;
+
         // The viewing angle drifts, slowly. This is the whole animation:
         // nothing moves, the light does.
         const view = Math.sin(now / 9000) * 0.55 + Math.sin(now / 21000) * 0.35;

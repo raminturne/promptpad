@@ -9,18 +9,15 @@ Run from the repo root:  python tools/make-icons.py
 The mark is a pair of brackets with a caret between them — the placeholder
 syntax the app is built around.
 
-Two things this does that a plain resize does not:
+Two notes:
 
 * The source is 1148x1156, four pixels off square, so it is re-centred on a
   square canvas first. Scaling a not-quite-square source straight down
   squashes the brackets by a fraction of a percent: invisible at 256,
   obvious at 16.
 
-* 16, 24 and 32 are drawn on the pixel grid rather than resampled. Three
-  thin vertical strokes with a one-pixel gap either side is below what a
-  16-pixel grid can hold, and resampling turned the mark into a smudge —
-  in the taskbar, which is where most people will ever see it. From 48 up
-  the source is sharp enough to scale.
+* Windows gets all seven sizes in one .ico rather than one 256 it has to
+  resample at paint time, so the taskbar and the tray pick a real image.
 """
 import io
 import os
@@ -85,7 +82,15 @@ png('icon-1024.png', 1024)
 png('icon.png', 512)
 
 SIZES = [16, 24, 32, 48, 64, 128, 256]
-images = [hand(s) if s <= 32 else square.resize((s, s), Image.LANCZOS) for s in SIZES]
+# Off: every size is the artwork as supplied, only resized. Turning this on
+# swaps 16, 24 and 32 for versions drawn on the pixel grid — the mark has
+# three thin vertical strokes with a one-pixel gap either side, which is
+# below what a 16-pixel grid can hold, so resampled they merge into a
+# smudge in the taskbar. It is a real trade and it is not mine to make.
+HINT_SMALL = False
+
+images = [hand(s) if (HINT_SMALL and s <= 32) else square.resize((s, s), Image.LANCZOS)
+          for s in SIZES]
 
 # An .ico is a 6-byte header, a 16-byte directory entry per image, then the
 # image data. PNG payloads are what Windows has read since Vista, and the

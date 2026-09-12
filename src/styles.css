@@ -144,12 +144,17 @@ body {
               opacity .14s ease;
 }
 
+/* The app's own mark, masked rather than drawn, so the ten themes that
+   restyle it keep working: every one of them sets `background`, and that is
+   still what paints the shape. The mask is cut from the icon artwork, so
+   this is the same mark that is on the taskbar. */
 .brand-dot {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
+  width: 15px;
+  height: 15px;
   background: var(--accent);
-  box-shadow: 0 0 8px var(--accent-glow);
+  filter: drop-shadow(0 0 5px var(--accent-glow));
+  -webkit-mask: url("brand-mark.png") center / contain no-repeat;
+  mask: url("brand-mark.png") center / contain no-repeat;
   flex-shrink: 0;
 }
 
@@ -4734,8 +4739,8 @@ body:has(.app.fx-rain) { background: #000; }
    this one dot alone shows both "how loud" and "what colour" at a glance. */
 .app.fx-music .brand-dot {
   background: color-mix(in srgb, var(--accent) calc(var(--fx-music-level, 0) * 70% + 30%), #3a3f46);
-  box-shadow: 0 0 calc(var(--fx-music-level, 0) * 14px + 2px)
-    color-mix(in srgb, var(--accent) calc(var(--fx-music-level, 0) * 90% + 10%), transparent);
+  filter: drop-shadow(0 0 calc(var(--fx-music-level, 0) * 9px + 1px)
+    color-mix(in srgb, var(--accent) calc(var(--fx-music-level, 0) * 90% + 10%), transparent));
   transform: scale(calc(var(--fx-music-level, 0) * 0.3 + 0.9));
 }
 
@@ -4974,8 +4979,8 @@ body:has(.app.fx-pulse) { background: #10090b; }
 /* The brand dot is the monitor's beat lamp. */
 .app.fx-pulse .brand-dot {
   background: color-mix(in srgb, var(--accent) calc(var(--fx-pulse-level, 0) * 75% + 25%), #3a2228);
-  box-shadow: 0 0 calc(var(--fx-pulse-level, 0) * 12px + 1px)
-    color-mix(in srgb, var(--accent) calc(var(--fx-pulse-level, 0) * 85% + 15%), transparent);
+  filter: drop-shadow(0 0 calc(var(--fx-pulse-level, 0) * 8px + 1px)
+    color-mix(in srgb, var(--accent) calc(var(--fx-pulse-level, 0) * 85% + 15%), transparent));
   transform: scale(calc(var(--fx-pulse-level, 0) * 0.35 + 0.9));
 }
 .app.fx-pulse .tab.active {
@@ -5138,7 +5143,7 @@ body:has(.app.fx-tuxedo) { background: #0a0908; }
 }
 .app.fx-tuxedo .brand-dot {
   background: var(--accent);
-  box-shadow: 0 0 7px rgba(217, 180, 92, 0.65);
+  filter: drop-shadow(0 0 4px rgba(217, 180, 92, 0.65));
 }
 .app.fx-tuxedo .tab.active {
   background: rgba(217, 180, 92, 0.1);
@@ -5311,7 +5316,7 @@ body:has(.app.fx-velvet) { background: #180810; }
 .app.fx-velvet .brand-name { color: #f0dcc4; }
 .app.fx-velvet .brand-dot {
   background: var(--accent);
-  box-shadow: 0 0 8px rgba(212, 172, 96, 0.6);
+  filter: drop-shadow(0 0 5px rgba(212, 172, 96, 0.6));
 }
 .app.fx-velvet .add-btn,
 .app.fx-velvet .templates-btn,
@@ -5363,7 +5368,7 @@ body:has(.app.fx-nightvision) { background: #020806; }
 }
 .app.fx-nightvision .brand-dot {
   background: #22e6b8;
-  box-shadow: 0 0 8px rgba(34, 230, 184, 0.8);
+  filter: drop-shadow(0 0 5px rgba(34, 230, 184, 0.8));
 }
 .fx-nv-bracket {
   position: absolute;

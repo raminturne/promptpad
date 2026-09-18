@@ -4,6 +4,7 @@ let state = {
   activeId: null,
   seq: 1,
   templates: [], // { id, name, content }
+  tokens: [], // { id, name, token, created, updated? } — My Tokens, shared by every profile
   groups: [],    // { id, name, collapsed }
   phValues: {},  // { '[token]': ['recent', 'values'] } — MRU, max 8
   fastSave: { messages: [] }, // { id, ts, text } — chat-style quick notes
@@ -265,6 +266,15 @@ const templatesOverlay = document.getElementById('templatesOverlay');
 const templatesClose = document.getElementById('templatesClose');
 const templatesListEl = document.getElementById('templatesList');
 const templatesEmptyEl = document.getElementById('templatesEmpty');
+// my tokens
+const tokensBtn = document.getElementById('tokensBtn');
+const tokensOverlay = document.getElementById('tokensOverlay');
+const tokensClose = document.getElementById('tokensClose');
+const tokensForm = document.getElementById('tokensForm');
+const tokenNameInput = document.getElementById('tokenNameInput');
+const tokenValueInput = document.getElementById('tokenValueInput');
+const tokensListEl = document.getElementById('tokensList');
+const tokensEmptyEl = document.getElementById('tokensEmpty');
 // find & replace
 const findBarEl = document.getElementById('findBar');
 const findInputEl = document.getElementById('findInput');
@@ -345,6 +355,7 @@ const toggleCollabEl = document.getElementById('toggleCollab');
 const collabRowEl = document.getElementById('collabRow');
 // feature switches
 const toggleTemplatesEl = document.getElementById('toggleTemplates');
+const toggleTokensEl = document.getElementById('toggleTokens');
 const toggleAiChatEl = document.getElementById('toggleAiChat');
 const toggleProfilesEl = document.getElementById('toggleProfiles');
 const aiChatRowEl = document.getElementById('aiChatRow');
@@ -1530,6 +1541,9 @@ function renderTabs() {
   updateAiChatBtn();
   if (templatesBtn) {
     templatesBtn.classList.toggle('hidden', settings.templatesEnabled === false);
+  }
+  if (tokensBtn) {
+    tokensBtn.classList.toggle('hidden', settings.tokensEnabled === false);
   }
   if (discoverBtn) {
     const showDiscover = window.DISCOVER_CONFIGURED && settings.discoverEnabled;
@@ -4549,6 +4563,176 @@ templatesOverlay.addEventListener('click', (e) => {
   if (e.target === templatesOverlay) closeTemplates();
 });
 
+// ---------- My Tokens ----------
+// API keys and site tokens, one per model or site. They sit under Templates,
+// are shared by every profile (main keeps them in data.shared), and never
+// leave this computer. The value is masked in the list; Show and Copy are
+// explicit so a screen share never reveals one by accident.
+function tokenItems() {
+  if (!Array.isArray(state.tokens)) state.tokens = [];
+  return state.tokens;
+}
+
+function maskToken(v) {
+  const s = String(v || '');
+  if (s.length <= 8) return '•'.repeat(Math.max(s.length, 4));
+  return s.slice(0, 4) + '••••••••' + s.slice(-4);
+}
+
+function openTokens() {
+  if (settings.tokensEnabled === false) return;
+  tokenNameInput.value = '';
+  tokenValueInput.value = '';
+  renderTokensList();
+  tokensOverlay.classList.remove('hidden', 'closing');
+  tokenNameInput.focus();
+}
+
+function closeTokens() {
+  // Nothing typed into the form should outlive the panel.
+  tokenValueInput.value = '';
+  hideWithAnim(tokensOverlay, 'closing');
+}
+
+function renderTokensList() {
+  tokensListEl.innerHTML = '';
+  const items = tokenItems();
+  tokensEmptyEl.classList.toggle('hidden', items.length > 0);
+
+  items.forEach((tok) => {
+    const row = document.createElement('div');
+    row.className = 'template-row';
+
+    const nameEl = document.createElement('div');
+    nameEl.className = 'template-row-name';
+    nameEl.textContent = tok.name;
+    nameEl.setAttribute('dir', detectDir(tok.name));
+    nameEl.title = tr('tokens.renameTip', 'Double-click to rename');
+    nameEl.addEventListener('dblclick', () => startTokenRename(tok, nameEl));
+
+    const valueEl = document.createElement('div');
+    valueEl.className = 'token-row-value';
+    let shown = false;
+    valueEl.textContent = maskToken(tok.token);
+
+    const actions = document.createElement('div');
+    actions.className = 'template-row-actions';
+
+    const copyBtn = document.createElement('button');
+    copyBtn.className = 'template-use-btn';
+    copyBtn.textContent = tr('tokens.copy', 'Copy');
+    copyBtn.addEventListener('click', async () => {
+      try { await navigator.clipboard.writeText(tok.token); showToast('Token copied', ''); }
+      catch { showToast("Couldn't copy the token", ''); }
+    });
+
+    const showBtn = document.createElement('button');
+    showBtn.className = 'template-del-btn';
+    showBtn.textContent = tr('tokens.show', 'Show');
+    showBtn.addEventListener('click', () => {
+      shown = !shown;
+      valueEl.textContent = shown ? tok.token : maskToken(tok.token);
+      showBtn.textContent = shown ? tr('tokens.hide', 'Hide') : tr('tokens.show', 'Show');
+    });
+
+    const editBtn = document.createElement('button');
+    editBtn.className = 'template-del-btn';
+    editBtn.textContent = tr('tokens.edit', 'Edit');
+    editBtn.addEventListener('click', () => {
+      // Load it back into the form; saving under the same name replaces it.
+      tokenNameInput.value = tok.name;
+      tokenNameInput.setAttribute('dir', detectDir(tok.name));
+      tokenValueInput.value = tok.token;
+      tokenValueInput.focus();
+      tokenValueInput.select();
+    });
+
+    const delBtn = document.createElement('button');
+    delBtn.className = 'template-del-btn';
+    delBtn.textContent = tr('tokens.delete', 'Delete');
+    delBtn.addEventListener('click', () => deleteToken(tok));
+
+    actions.appendChild(copyBtn);
+    actions.appendChild(showBtn);
+    actions.appendChild(editBtn);
+    actions.appendChild(delBtn);
+
+    row.appendChild(nameEl);
+    row.appendChild(valueEl);
+    row.appendChild(actions);
+    tokensListEl.appendChild(row);
+  });
+}
+
+function startTokenRename(tok, nameEl) {
+  const input = document.createElement('input');
+  input.className = 'template-name-input';
+  input.value = tok.name;
+  input.setAttribute('dir', detectDir(tok.name));
+  nameEl.replaceWith(input);
+  input.focus();
+  input.select();
+  let done = false;
+  const commit = () => {
+    if (done) return;
+    done = true;
+    const v = input.value.trim();
+    if (v) tok.name = v;
+    renderTokensList();
+    scheduleSave();
+  };
+  input.addEventListener('blur', commit);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+    if (e.key === 'Escape') { e.stopPropagation(); input.value = tok.name; input.blur(); }
+  });
+}
+
+// One entry per name (case-insensitive): saving a name that already exists
+// replaces its token, which is how a rotated key gets updated.
+function saveTokenFromForm() {
+  const name = tokenNameInput.value.trim();
+  const token = tokenValueInput.value.trim();
+  if (!name) { tokenNameInput.focus(); return; }
+  if (!token) { tokenValueInput.focus(); return; }
+  const items = tokenItems();
+  const same = items.find((t) => t.name.toLowerCase() === name.toLowerCase());
+  if (same) {
+    same.name = name;
+    same.token = token;
+    same.updated = Date.now();
+    showToast('Token updated', name);
+  } else {
+    items.push({ id: uid(), name, token, created: Date.now() });
+    showToast('Token saved', name);
+  }
+  tokenNameInput.value = '';
+  tokenValueInput.value = '';
+  tokenNameInput.focus();
+  renderTokensList();
+  scheduleSave();
+}
+
+async function deleteToken(tok) {
+  const ok = await appConfirm(
+    tr('tokens.confirmDelete', 'Delete the saved token for') + ' ' + tok.name + '?',
+    { danger: true, confirmLabel: tr('tokens.delete', 'Delete') });
+  if (!ok) return;
+  state.tokens = tokenItems().filter((t) => t.id !== tok.id);
+  renderTokensList();
+  scheduleSave();
+}
+
+tokensBtn.addEventListener('click', openTokens);
+tokensClose.addEventListener('click', closeTokens);
+tokensOverlay.addEventListener('click', (e) => {
+  if (e.target === tokensOverlay) closeTokens();
+});
+tokensForm.addEventListener('submit', (e) => { e.preventDefault(); saveTokenFromForm(); });
+tokenNameInput.addEventListener('input', () => {
+  tokenNameInput.setAttribute('dir', detectDir(tokenNameInput.value));
+});
+
 // ---------- Tab history (snapshots) panel ----------
 let historyTabId = null;
 
@@ -4731,6 +4915,9 @@ async function loadState() {
     : [{ id: uid(), name: '', custom: false, content: '', dir: 'auto', align: 'auto', color: null }];
   state.seq = saved.seq || 1;
   state.templates = Array.isArray(saved.templates) ? saved.templates : [];
+  // Shared by every profile, so like the Lab it never falls back to [] — a
+  // profile switch must not look like the tokens were deleted.
+  state.tokens = Array.isArray(saved.tokens) ? saved.tokens : (state.tokens || []);
   state.groups = Array.isArray(saved.groups) ? saved.groups : [];
   state.phValues = (saved.phValues && typeof saved.phValues === 'object') ? saved.phValues : {};
   state.fastSave = (saved.fastSave && Array.isArray(saved.fastSave.messages))
@@ -11087,6 +11274,7 @@ function syncSettingsUI() {
   if (collabRowEl) collabRowEl.style.display = window.DISCOVER_CONFIGURED ? '' : 'none';
   if (toggleLabEl) toggleLabEl.checked = settings.promptLabEnabled !== false;
   if (toggleTemplatesEl) toggleTemplatesEl.checked = settings.templatesEnabled !== false;
+  if (toggleTokensEl) toggleTokensEl.checked = settings.tokensEnabled !== false;
   if (toggleAiChatEl) toggleAiChatEl.checked = settings.aiChatEnabled !== false;
   if (toggleProfilesEl) toggleProfilesEl.checked = settings.profilesEnabled !== false;
   if (toggleAiEl) toggleAiEl.checked = aiOn();
@@ -11464,6 +11652,15 @@ if (toggleLabEl) toggleLabEl.addEventListener('change', () => {
 if (toggleTemplatesEl) toggleTemplatesEl.addEventListener('change', () => {
   settings.templatesEnabled = toggleTemplatesEl.checked;
   if (!settings.templatesEnabled) closeTemplates();
+  renderTabs();
+  saveSettingsNow();
+});
+
+// Hiding My Tokens only hides the button; the saved tokens are kept.
+if (toggleTokensEl) toggleTokensEl.addEventListener('change', () => {
+  settings.tokensEnabled = toggleTokensEl.checked;
+  if (!settings.tokensEnabled && !tokensOverlay.classList.contains('hidden')) closeTokens();
+  markFeatureSeen('myTokens');
   renderTabs();
   saveSettingsNow();
 });
@@ -12667,11 +12864,14 @@ async function runUpdateCheck(silent = false) {
   }
 }
 
+let bannerFeature = null; // the one-time announcement the banner is showing, if any
+
 updateBannerCloseEl.addEventListener('click', () => {
   updateBannerEl.classList.add('hidden');
   // Dismissing counts as having seen it — otherwise the announcement returns
   // on every launch until it's clicked, which is what makes a banner nagging.
-  markFeatureSeen('proThemes');
+  if (bannerFeature) markFeatureSeen(bannerFeature);
+  bannerFeature = null;
 });
 
 // ---- In-app auto-update (electron-updater) with GitHub-API notify fallback ----
@@ -12730,6 +12930,7 @@ function maybeAnnounceProThemes(hadSaved) {
   if (!hadSaved) { markFeatureSeen('proThemes'); return; }
   if (settings.seenFeatures && settings.seenFeatures.proThemes) return;
   setTimeout(() => {
+    bannerFeature = 'proThemes';
     showUpdaterBanner(
       tr('theme.announce', 'New in this update: Pro themes — Glass, Matrix, Old TV, Music and more.'),
       tr('theme.announceCta', 'Take a look'),
@@ -12742,6 +12943,34 @@ function maybeAnnounceProThemes(hadSaved) {
       }
     );
   }, 1200); // let the window settle before anything slides in
+}
+
+// My Tokens adds a button to everyone's sidebar, wanted or not, so the
+// announcement says where it is and how to get rid of it. Once, and only for
+// people upgrading; it waits its turn if the Pro themes banner is still due.
+function maybeAnnounceTokens(hadSaved) {
+  if (!hadSaved) { markFeatureSeen('myTokens'); return; }
+  const seen = settings.seenFeatures || {};
+  if (seen.myTokens || !seen.proThemes) return;
+  setTimeout(() => {
+    bannerFeature = 'myTokens';
+    showUpdaterBanner(
+      tr('tokens.announce',
+        'New: My Tokens, under Templates — keep your API keys in one place. Don\'t need it? You can hide it in Settings.'),
+      tr('tokens.announceCta', 'Settings'),
+      () => {
+        markFeatureSeen('myTokens');
+        bannerFeature = null;
+        updateBannerEl.classList.add('hidden');
+        openSettings();
+        setTimeout(() => {
+          setSettingsPane('layout');
+          const row = document.getElementById('tokensRow');
+          if (row) row.scrollIntoView({ block: 'center' });
+        }, 80);
+      }
+    );
+  }, 1200);
 }
 
 // ---------- Support the app ----------
@@ -16227,6 +16456,7 @@ async function bootstrap() {
   const hadSaved = await loadState();
   maybeShowWhatsNew(hadSaved);
   maybeAnnounceProThemes(hadSaved);
+  maybeAnnounceTokens(hadSaved);
   maybeShowDonatePrompt(hadSaved);
   applyActiveView();
   renderProfileChip();
@@ -16310,6 +16540,7 @@ async function bootstrap() {
     if (!groupNameDialog.classList.contains('hidden')) { closeGroupDialog(); return; }
     if (!historyOverlay.classList.contains('hidden')) { closeHistory(); return; }
     if (!templatesOverlay.classList.contains('hidden')) { closeTemplates(); return; }
+    if (!tokensOverlay.classList.contains('hidden')) { closeTokens(); return; }
     if (!settingsOverlay.classList.contains('hidden')) { closeSettings(); return; }
   });
 

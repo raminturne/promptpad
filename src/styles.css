@@ -2102,6 +2102,39 @@ body {
   background: color-mix(in srgb, var(--danger) 10%, transparent);
 }
 
+/* ---- My Tokens (reuses the templates card and rows) ---- */
+.tokens-add {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.tokens-add .text-input { flex: 1 1 0; min-width: 0; padding: 6px 8px; }
+
+.tokens-add .template-use-btn { height: 30px; flex-shrink: 0; }
+.tokens-card .template-row { cursor: default; }
+.token-row-value {
+  font-family: var(--mono, ui-monospace, Consolas, monospace);
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  direction: ltr;
+  text-align: left;
+  user-select: text;
+}
+.tokens-foot {
+  padding: 7px 14px;
+  border-top: 1px solid var(--border);
+  font-size: 10.5px;
+  color: var(--muted);
+  text-align: center;
+  flex-shrink: 0;
+}
+
 /* =========================================================
    SAVE-AS-TEMPLATE MINI DIALOG
    ========================================================= */

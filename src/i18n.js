@@ -22,6 +22,26 @@
     'Prompt Lab': 'آزمایشگاه پرامپت',
     'Settings': 'تنظیمات',
     'settings': 'تنظیمات',
+    // ---- My Tokens ----
+    'my tokens': 'توکن‌های من',
+    'My Tokens': 'توکن‌های من',
+    'My Tokens — your saved API keys and tokens': 'توکن‌های من — کلیدهای API و توکن‌هایی که ذخیره کرده‌ای',
+    'Show the My Tokens button under Templates': 'نمایش دکمه‌ی توکن‌های من زیر قالب‌ها',
+    'Model or site': 'مدل یا سایت',
+    'Token': 'توکن',
+    'No tokens yet.': 'هنوز توکنی نداری.',
+    'Type a model or site, paste its token, then Save.': 'اسم مدل یا سایت را بنویس، توکنش را بچسبان و ذخیره کن.',
+    'Saved only on this computer.': 'فقط روی همین کامپیوتر ذخیره می‌شود',
+    'Show': 'نمایش',
+    'Hide': 'پنهان',
+    'Edit': 'ویرایش',
+    'Token copied': 'توکن کپی شد',
+    "Couldn't copy the token": 'کپی توکن نشد',
+    'Token saved': 'توکن ذخیره شد',
+    'Token updated': 'توکن به‌روز شد',
+    'Delete the saved token for': 'حذف توکن ذخیره‌شده‌ی',
+    'New: My Tokens, under Templates — keep your API keys in one place. Don\'t need it? You can hide it in Settings.':
+      'تازه: «توکن‌های من» زیر قالب‌ها — همه‌ی کلیدهای API یک‌جا. لازمش نداری؟ از تنظیمات مخفی‌اش کن.',
     // ---- profiles ----
     'Cancel': 'انصراف',
     'Create': 'ساختن',
@@ -546,6 +566,8 @@
     '.md-block-edit, .dc-card-title, .dc-card-prompt, .dc-mod-title, ' +
     '#profileChipName, .profile-menu-name, #profileDeleteText, ' +
     '.ctx-profile-list, .toast-name, ' +
+    // My Tokens: the names and values are the user's own
+    '.tokens-card .template-row-name, .token-row-value, ' +
     // shared notes: usernames and note titles, which must never be "translated"
     '.share-person-name, .share-note, .invite-text, .collab-people';
 

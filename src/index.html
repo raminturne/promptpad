@@ -142,6 +142,13 @@
           </svg>
           <span>templates</span>
         </button>
+        <button id="tokensBtn" class="templates-btn" title="My Tokens — your saved API keys and tokens">
+          <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+            <circle cx="8" cy="15" r="4" fill="none" stroke="currentColor" stroke-width="1.8"/>
+            <path d="M11 12l9-9M16.5 6.5l2.5 2.5M14 9l2 2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <span>my tokens</span>
+        </button>
         <button id="discoverBtn" class="templates-btn discover-btn hidden" title="Discover — shared prompt gallery">
           <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
             <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.8"/>
@@ -819,6 +826,16 @@
                 </div>
                 <label class="switch">
                   <input type="checkbox" id="toggleTemplates" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+              <div class="set-toggle-row" id="tokensRow">
+                <div class="set-toggle-text">
+                  <span>My Tokens</span>
+                  <small>Show the My Tokens button under Templates</small>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="toggleTokens" />
                   <span class="slider"></span>
                 </label>
               </div>
@@ -1555,6 +1572,31 @@
           No templates yet.<br>Right-click a tab → "Save as template…"
         </div>
         <div class="templates-body" id="templatesList"></div>
+      </div>
+    </div>
+
+    <!-- My Tokens: API keys and site tokens, kept on this computer -->
+    <div id="tokensOverlay" class="overlay hidden">
+      <div class="templates-card tokens-card">
+        <div class="templates-head">
+          <span class="templates-title">my tokens</span>
+          <button id="tokensClose" class="win-btn" title="Close">
+            <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+              <line x1="6" y1="6" x2="18" y2="18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+              <line x1="18" y1="6" x2="6" y2="18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+            </svg>
+          </button>
+        </div>
+        <form id="tokensForm" class="tokens-add" autocomplete="off">
+          <input id="tokenNameInput" class="text-input" type="text" placeholder="Model or site" spellcheck="false" dir="auto" />
+          <input id="tokenValueInput" class="text-input tokens-value-input" type="password" placeholder="Token" spellcheck="false" />
+          <button id="tokenSaveBtn" type="submit" class="template-use-btn">Save</button>
+        </form>
+        <div class="templates-empty hidden" id="tokensEmpty">
+          No tokens yet.<br>Type a model or site, paste its token, then Save.
+        </div>
+        <div class="templates-body" id="tokensList"></div>
+        <div class="tokens-foot">Saved only on this computer.</div>
       </div>
     </div>
     <!-- Insert link dialog -->

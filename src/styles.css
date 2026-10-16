@@ -227,6 +227,59 @@ body {
   gap: 8px;
 }
 
+/* The panel buttons (templates, passwords, tokens, Discover, Lab, Fast Save,
+   AI Chat) are one group so they can roll up together and give the note tabs
+   the space. Collapsing animates max-height, which needs a number: the script
+   measures the group and sets --rail-tools-h. */
+.rail-tools {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow: hidden;
+  max-height: var(--rail-tools-h, 1000px);
+  opacity: 1;
+  transition: max-height .26s cubic-bezier(.4, 0, .2, 1),
+              opacity .18s ease, transform .26s cubic-bezier(.4, 0, .2, 1);
+}
+.app.rail-tools-closed .rail-tools {
+  max-height: 0;
+  opacity: 0;
+  transform: translateY(-6px);
+  pointer-events: none;
+}
+/* A hairline the whole width of the rail: the only control that brings the
+   group back, so it stays put whether the group is open or shut. */
+.rail-fold {
+  -webkit-app-region: no-drag;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 14px;
+  margin: -2px 0;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  opacity: .5;
+  transition: opacity .14s, color .14s;
+}
+.rail-fold:hover { opacity: 1; color: var(--accent); }
+.rail-fold-line {
+  flex: 1;
+  height: 1px;
+  background: currentColor;
+  opacity: .55;
+}
+.rail-fold-chev {
+  flex-shrink: 0;
+  transition: transform .26s cubic-bezier(.4, 0, .2, 1);
+}
+.app.rail-tools-closed .rail-fold-chev { transform: rotate(180deg); }
+.app.no-anim .rail-tools,
+.app.no-anim .rail-fold-chev { transition: none; }
+
 .add-btn {
   -webkit-app-region: no-drag;
   display: flex;
@@ -478,6 +531,25 @@ body {
 }
 .rail-resizer:hover,
 .rail-resizer.active { background: var(--accent-glow); }
+/* Dragging worked from the first release; nobody could see that it did. The
+   grip is faint until the pointer is near the edge, then it is obvious. */
+.rail-resizer::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 2px;
+  height: 26px;
+  margin: -13px 0 0 -1px;
+  border-radius: 2px;
+  background: var(--border-strong);
+  opacity: .55;
+  transition: opacity .14s, background .14s, height .14s;
+  pointer-events: none;
+}
+.rail-resizer { position: relative; }
+.rail-resizer:hover::after,
+.rail-resizer.active::after { background: var(--accent); opacity: 1; height: 42px; }
 .app.resize-off .rail-resizer { display: none; }
 
 /* ---------- Hide tab rail ---------- */
@@ -2126,6 +2198,62 @@ body {
   text-align: left;
   user-select: text;
 }
+/* ---- Password manager (shares the tokens card) ---- */
+.pw-add {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.pw-add .text-input { padding: 6px 8px; }
+.pw-add-row { display: flex; gap: 6px; align-items: center; }
+.pw-add-row .text-input { flex: 1 1 0; min-width: 0; }
+.pw-add-row .template-use-btn { height: 30px; flex-shrink: 0; }
+.pw-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+  flex-shrink: 0;
+}
+.pw-note span { flex: 1; line-height: 1.5; }
+.pw-note .template-use-btn { height: 24px; flex-shrink: 0; }
+.pw-row-user {
+  font-size: 11.5px;
+  color: var(--muted-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  user-select: text;
+}
+.pw-row-pass {
+  font-family: var(--mono, ui-monospace, Consolas, monospace);
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 1px;
+  direction: ltr;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  user-select: text;
+}
+.pw-locked-badge {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 9.5px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--accent);
+  opacity: .85;
+}
+
 .tokens-foot {
   padding: 7px 14px;
   border-top: 1px solid var(--border);

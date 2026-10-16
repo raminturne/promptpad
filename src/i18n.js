@@ -22,6 +22,33 @@
     'Prompt Lab': 'آزمایشگاه پرامپت',
     'Settings': 'تنظیمات',
     'settings': 'تنظیمات',
+    // ---- Passwords / the rail fold ----
+    'passwords': 'گذرواژه‌ها',
+    'Passwords': 'گذرواژه‌ها',
+    'Passwords — logins kept on this computer': 'گذرواژه‌ها — ورودهایی که روی همین کامپیوتر می‌مانند',
+    'A password manager in the sidebar, kept on this computer': 'مدیریت گذرواژه در نوار کناری، روی همین کامپیوتر',
+    'Site or app': 'سایت یا برنامه',
+    'Email or username': 'ایمیل یا نام کاربری',
+    'Password': 'گذرواژه',
+    'No logins yet.': 'هنوز ورودی ثبت نشده.',
+    'Type a site, a username and a password, then Save.': 'سایت، نام کاربری و گذرواژه را بنویس و ذخیره کن.',
+    'These are stored in plain text. Set a PIN and they get encrypted.': 'این‌ها بدون رمزگذاری ذخیره می‌شوند. یک PIN بگذار تا رمزگذاری شوند.',
+    'Set a PIN': 'گذاشتن PIN',
+    'Some of these were saved before the PIN.': 'بعضی از این‌ها قبل از PIN ذخیره شده‌اند.',
+    'Encrypt them': 'رمزگذاری‌شان کن',
+    'Encrypted with your PIN, on this computer.': 'با PIN خودت رمزگذاری شده، روی همین کامپیوتر.',
+    'Click to copy the username': 'برای کپی نام کاربری کلیک کن',
+    'encrypted': 'رمزگذاری‌شده',
+    'Username copied': 'نام کاربری کپی شد',
+    'Password copied': 'گذرواژه کپی شد',
+    'Password saved': 'گذرواژه ذخیره شد',
+    'Password updated': 'گذرواژه به‌روز شد',
+    "Couldn't copy that": 'کپی نشد',
+    "Couldn't save that": 'ذخیره نشد',
+    'Delete the saved login for': 'حذف ورود ذخیره‌شده‌ی',
+    'One login encrypted': 'یک ورود رمزگذاری شد',
+    'Hide the panel buttons': 'جمع کردن دکمه‌های پنل',
+    'Show the panel buttons': 'نمایش دکمه‌های پنل',
     // ---- My Tokens ----
     'my tokens': 'توکن‌های من',
     'My Tokens': 'توکن‌های من',
@@ -40,8 +67,8 @@
     'Token saved': 'توکن ذخیره شد',
     'Token updated': 'توکن به‌روز شد',
     'Delete the saved token for': 'حذف توکن ذخیره‌شده‌ی',
-    'New: My Tokens, under Templates — keep your API keys in one place. Don\'t need it? You can hide it in Settings.':
-      'تازه: «توکن‌های من» زیر قالب‌ها — همه‌ی کلیدهای API یک‌جا. لازمش نداری؟ از تنظیمات مخفی‌اش کن.',
+    "New in the sidebar: My Tokens for API keys, and Passwords for logins. Don't need them? You can hide either one in Settings.":
+      'تازه در نوار کناری: «توکن‌های من» برای کلیدهای API و «گذرواژه‌ها» برای ورودها. لازمشان نداری؟ هرکدام را از تنظیمات مخفی کن.',
     // ---- profiles ----
     'Cancel': 'انصراف',
     'Create': 'ساختن',
@@ -568,6 +595,7 @@
     '.ctx-profile-list, .toast-name, ' +
     // My Tokens: the names and values are the user's own
     '.tokens-card .template-row-name, .token-row-value, ' +
+    '.pw-card .template-row-name, .pw-row-user, .pw-row-pass, ' +
     // shared notes: usernames and note titles, which must never be "translated"
     '.share-person-name, .share-note, .invite-text, .collab-people';
 

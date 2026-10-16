@@ -134,6 +134,7 @@
           </svg>
           <span>new</span>
         </button>
+        <div class="rail-tools" id="railTools">
         <button id="templatesBtn" class="templates-btn" title="Templates">
           <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
             <line x1="4" y1="7" x2="20" y2="7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
@@ -141,6 +142,13 @@
             <line x1="4" y1="17" x2="14" y2="17" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
           </svg>
           <span>templates</span>
+        </button>
+        <button id="passwordsBtn" class="templates-btn" title="Passwords — logins kept on this computer">
+          <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+            <rect x="4" y="10.5" width="16" height="10" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.8"/>
+            <path d="M8 10.5V7.5a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          </svg>
+          <span>passwords</span>
         </button>
         <button id="tokensBtn" class="templates-btn" title="My Tokens — your saved API keys and tokens">
           <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
@@ -164,6 +172,16 @@
         </button>
         <button id="fastSaveBtn" class="templates-btn discover-btn rail-tab-btn hidden" title="Fast Save"></button>
         <button id="aiChatBtn" class="templates-btn discover-btn rail-tab-btn hidden" title="AI Chat"></button>
+        </div>
+        <button id="railFold" class="rail-fold" type="button" aria-expanded="true"
+                title="Hide the panel buttons">
+          <span class="rail-fold-line"></span>
+          <svg class="rail-fold-chev" viewBox="0 0 24 24" width="11" height="11" aria-hidden="true">
+            <polyline points="6 15 12 9 18 15" fill="none" stroke="currentColor"
+                      stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <span class="rail-fold-line"></span>
+        </button>
         <div class="tab-list" id="tabList"></div>
       </nav>
 
@@ -826,6 +844,16 @@
                 </div>
                 <label class="switch">
                   <input type="checkbox" id="toggleTemplates" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+              <div class="set-toggle-row" id="passwordsRow">
+                <div class="set-toggle-text">
+                  <span>Passwords</span>
+                  <small>A password manager in the sidebar, kept on this computer</small>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="togglePasswords" />
                   <span class="slider"></span>
                 </label>
               </div>
@@ -1597,6 +1625,42 @@
         </div>
         <div class="templates-body" id="tokensList"></div>
         <div class="tokens-foot">Saved only on this computer.</div>
+      </div>
+    </div>
+
+    <!-- Password manager: logins, encrypted with the note PIN when there is one -->
+    <div id="passwordsOverlay" class="overlay hidden">
+      <div class="templates-card tokens-card pw-card">
+        <div class="templates-head">
+          <span class="templates-title">passwords</span>
+          <button id="passwordsClose" class="win-btn" title="Close">
+            <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+              <line x1="6" y1="6" x2="18" y2="18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+              <line x1="18" y1="6" x2="6" y2="18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+            </svg>
+          </button>
+        </div>
+        <form id="pwForm" class="pw-add" autocomplete="off">
+          <input id="pwSiteInput" class="text-input" type="text" placeholder="Site or app" spellcheck="false" dir="auto" />
+          <input id="pwUserInput" class="text-input" type="text" placeholder="Email or username" spellcheck="false" dir="auto" />
+          <div class="pw-add-row">
+            <input id="pwPassInput" class="text-input" type="password" placeholder="Password" spellcheck="false" />
+            <button id="pwSaveBtn" type="submit" class="template-use-btn">Save</button>
+          </div>
+        </form>
+        <div class="pw-note hidden" id="pwLockHint">
+          <span>These are stored in plain text. Set a PIN and they get encrypted.</span>
+          <button type="button" id="pwSetPin" class="template-use-btn">Set a PIN</button>
+        </div>
+        <div class="pw-note hidden" id="pwEncryptHint">
+          <span>Some of these were saved before the PIN.</span>
+          <button type="button" id="pwEncryptAll" class="template-use-btn">Encrypt them</button>
+        </div>
+        <div class="templates-empty hidden" id="pwEmpty">
+          No logins yet.<br>Type a site, a username and a password, then Save.
+        </div>
+        <div class="templates-body" id="pwList"></div>
+        <div class="tokens-foot" id="pwFoot">Saved only on this computer.</div>
       </div>
     </div>
     <!-- Insert link dialog -->

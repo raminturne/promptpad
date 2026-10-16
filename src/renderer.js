@@ -5,6 +5,7 @@ let state = {
   seq: 1,
   templates: [], // { id, name, content }
   tokens: [], // { id, name, token, created, updated? } — My Tokens, shared by every profile
+  passwords: [], // { id, site, user, pass | enc + len, created } — shared, encrypted when a PIN exists
   groups: [],    // { id, name, collapsed }
   phValues: {},  // { '[token]': ['recent', 'values'] } — MRU, max 8
   fastSave: { messages: [] }, // { id, ts, text } — chat-style quick notes
@@ -77,6 +78,9 @@ const DEFAULT_SETTINGS = {
   closeButtonEnabled: true,
   railResizable: true,
   railWidth: 166,
+  railToolsCollapsed: false,   // the panel buttons above the note tabs
+  passwordsEnabled: true,
+  tokensEnabled: true,
   launchAtStartup: false,
   autoCheckUpdates: true,
   windowOpacity: 100,
@@ -275,6 +279,24 @@ const tokenNameInput = document.getElementById('tokenNameInput');
 const tokenValueInput = document.getElementById('tokenValueInput');
 const tokensListEl = document.getElementById('tokensList');
 const tokensEmptyEl = document.getElementById('tokensEmpty');
+// the rail's collapsible group of panel buttons
+const railToolsEl = document.getElementById('railTools');
+const railFoldBtn = document.getElementById('railFold');
+// passwords
+const passwordsBtn = document.getElementById('passwordsBtn');
+const passwordsOverlay = document.getElementById('passwordsOverlay');
+const passwordsClose = document.getElementById('passwordsClose');
+const pwForm = document.getElementById('pwForm');
+const pwSiteInput = document.getElementById('pwSiteInput');
+const pwUserInput = document.getElementById('pwUserInput');
+const pwPassInput = document.getElementById('pwPassInput');
+const pwListEl = document.getElementById('pwList');
+const pwEmptyEl = document.getElementById('pwEmpty');
+const pwLockHintEl = document.getElementById('pwLockHint');
+const pwEncryptHintEl = document.getElementById('pwEncryptHint');
+const pwSetPinBtn = document.getElementById('pwSetPin');
+const pwEncryptAllBtn = document.getElementById('pwEncryptAll');
+const pwFootEl = document.getElementById('pwFoot');
 // find & replace
 const findBarEl = document.getElementById('findBar');
 const findInputEl = document.getElementById('findInput');
@@ -356,6 +378,7 @@ const collabRowEl = document.getElementById('collabRow');
 // feature switches
 const toggleTemplatesEl = document.getElementById('toggleTemplates');
 const toggleTokensEl = document.getElementById('toggleTokens');
+const togglePasswordsEl = document.getElementById('togglePasswords');
 const toggleAiChatEl = document.getElementById('toggleAiChat');
 const toggleProfilesEl = document.getElementById('toggleProfiles');
 const aiChatRowEl = document.getElementById('aiChatRow');
@@ -1545,6 +1568,9 @@ function renderTabs() {
   if (tokensBtn) {
     tokensBtn.classList.toggle('hidden', settings.tokensEnabled === false);
   }
+  if (passwordsBtn) {
+    passwordsBtn.classList.toggle('hidden', settings.passwordsEnabled === false);
+  }
   if (discoverBtn) {
     const showDiscover = window.DISCOVER_CONFIGURED && settings.discoverEnabled;
     discoverBtn.classList.toggle('hidden', !showDiscover);
@@ -1554,6 +1580,8 @@ function renderTabs() {
     promptLabBtn.classList.toggle('hidden', settings.promptLabEnabled === false);
     promptLabBtn.classList.toggle('active', labActive());
   }
+
+  syncRailTools();
 
   if (state.tabs.length === 0) {
     const hint = document.createElement('div');
@@ -4729,6 +4757,290 @@ tokensOverlay.addEventListener('click', (e) => {
   if (e.target === tokensOverlay) closeTokens();
 });
 tokensForm.addEventListener('submit', (e) => { e.preventDefault(); saveTokenFromForm(); });
+
+// ---------- The panel buttons, folded away ----------
+// templates / passwords / tokens / Discover / Lab / Fast Save / AI Chat sit in
+// one group above the note tabs. On a short window they eat most of the rail,
+// so the hairline under them rolls the whole group up and gives the tabs the
+// room back. The line stays behind, because it is the only way back.
+function syncRailTools() {
+  if (!railToolsEl || !railFoldBtn) return;
+  const closed = !!settings.railToolsCollapsed;
+  appEl.classList.toggle('rail-tools-closed', closed);
+  // max-height animates only against a number, so measure the group itself.
+  if (!closed) railToolsEl.style.setProperty('--rail-tools-h', railToolsEl.scrollHeight + 'px');
+  railFoldBtn.setAttribute('aria-expanded', closed ? 'false' : 'true');
+  railFoldBtn.title = closed
+    ? tr('rail.showTools', 'Show the panel buttons')
+    : tr('rail.hideTools', 'Hide the panel buttons');
+}
+
+function toggleRailTools() {
+  // Measure before collapsing: once max-height is 0 the opening animation has
+  // nothing to animate towards.
+  if (!settings.railToolsCollapsed && railToolsEl) {
+    railToolsEl.style.setProperty('--rail-tools-h', railToolsEl.scrollHeight + 'px');
+  }
+  settings.railToolsCollapsed = !settings.railToolsCollapsed;
+  syncRailTools();
+  saveSettingsNow();
+}
+
+if (railFoldBtn) railFoldBtn.addEventListener('click', toggleRailTools);
+
+// ---------- Passwords ----------
+// A login per site. When a note PIN exists the password is encrypted with the
+// same vault key the locked notes use — so it is only readable while the vault
+// is open — and without a PIN it is stored as it is, which the panel says out
+// loud rather than implying otherwise.
+function pwItems() {
+  if (!Array.isArray(state.passwords)) state.passwords = [];
+  return state.passwords;
+}
+
+function pwMask(entry) {
+  const n = entry.enc ? (entry.len || 10) : String(entry.pass || '').length;
+  return '•'.repeat(Math.min(Math.max(n, 6), 16));
+}
+
+// Plaintext for one entry, asking for the PIN when it is encrypted. Returns
+// null when the user walks away from the prompt.
+async function pwReveal(entry) {
+  if (!entry.enc) return entry.pass || '';
+  if (!(await ensureVaultOpen())) return null;
+  try { return await aesDecrypt(vaultKey, entry.enc); }
+  catch (e) { console.error('password decrypt failed', e); return null; }
+}
+
+function openPasswords() {
+  if (settings.passwordsEnabled === false) return;
+  pwSiteInput.value = '';
+  pwUserInput.value = '';
+  pwPassInput.value = '';
+  renderPwList();
+  passwordsOverlay.classList.remove('hidden', 'closing');
+  pwSiteInput.focus();
+}
+
+function closePasswords() {
+  pwPassInput.value = '';
+  hideWithAnim(passwordsOverlay, 'closing');
+}
+
+function pwOpen() { return passwordsOverlay && !passwordsOverlay.classList.contains('hidden'); }
+
+function renderPwList() {
+  pwListEl.innerHTML = '';
+  const items = pwItems();
+  pwEmptyEl.classList.toggle('hidden', items.length > 0);
+  // The two hints are mutually exclusive: either there is no PIN at all, or
+  // there is one and something was saved before it.
+  const hasVault = vaultExists();
+  const plain = items.filter((x) => !x.enc).length;
+  pwLockHintEl.classList.toggle('hidden', hasVault);
+  pwEncryptHintEl.classList.toggle('hidden', !hasVault || plain === 0);
+  pwFootEl.textContent = hasVault
+    ? tr('pw.footLocked', 'Encrypted with your PIN, on this computer.')
+    : tr('pw.foot', 'Saved only on this computer.');
+
+  items.forEach((entry) => {
+    const row = document.createElement('div');
+    row.className = 'template-row';
+
+    const nameEl = document.createElement('div');
+    nameEl.className = 'template-row-name';
+    nameEl.textContent = entry.site;
+    nameEl.setAttribute('dir', detectDir(entry.site));
+    nameEl.title = tr('pw.renameTip', 'Double-click to rename');
+    nameEl.addEventListener('dblclick', () => startPwRename(entry, nameEl));
+    if (entry.enc) {
+      const badge = document.createElement('span');
+      badge.className = 'pw-locked-badge';
+      badge.textContent = tr('pw.encrypted', 'encrypted');
+      nameEl.appendChild(badge);
+    }
+
+    const userEl = document.createElement('div');
+    userEl.className = 'pw-row-user';
+    userEl.textContent = entry.user || '—';
+    userEl.setAttribute('dir', detectDir(entry.user || ''));
+    userEl.title = tr('pw.copyUser', 'Click to copy the username');
+    userEl.addEventListener('click', async () => {
+      if (!entry.user) return;
+      try { await navigator.clipboard.writeText(entry.user); showToast('Username copied', ''); }
+      catch (e) { showToast("Couldn't copy that", ''); }
+    });
+
+    const passEl = document.createElement('div');
+    passEl.className = 'pw-row-pass';
+    passEl.textContent = pwMask(entry);
+    let shown = false;
+
+    const actions = document.createElement('div');
+    actions.className = 'template-row-actions';
+
+    const copyBtn = document.createElement('button');
+    copyBtn.className = 'template-use-btn';
+    copyBtn.textContent = tr('pw.copy', 'Copy');
+    copyBtn.addEventListener('click', async () => {
+      const v = await pwReveal(entry);
+      if (v === null) return;
+      try { await navigator.clipboard.writeText(v); showToast('Password copied', entry.site); }
+      catch (e) { showToast("Couldn't copy that", ''); }
+    });
+
+    const showBtn = document.createElement('button');
+    showBtn.className = 'template-del-btn';
+    showBtn.textContent = tr('pw.show', 'Show');
+    showBtn.addEventListener('click', async () => {
+      if (shown) {
+        shown = false;
+        passEl.textContent = pwMask(entry);
+        showBtn.textContent = tr('pw.show', 'Show');
+        return;
+      }
+      const v = await pwReveal(entry);
+      if (v === null) return;
+      shown = true;
+      passEl.textContent = v;
+      showBtn.textContent = tr('pw.hide', 'Hide');
+    });
+
+    const editBtn = document.createElement('button');
+    editBtn.className = 'template-del-btn';
+    editBtn.textContent = tr('pw.edit', 'Edit');
+    editBtn.addEventListener('click', async () => {
+      const v = await pwReveal(entry);
+      if (v === null) return;
+      pwSiteInput.value = entry.site;
+      pwSiteInput.setAttribute('dir', detectDir(entry.site));
+      pwUserInput.value = entry.user || '';
+      pwPassInput.value = v;
+      pwPassInput.focus();
+      pwPassInput.select();
+    });
+
+    const delBtn = document.createElement('button');
+    delBtn.className = 'template-del-btn';
+    delBtn.textContent = tr('pw.delete', 'Delete');
+    delBtn.addEventListener('click', () => deletePassword(entry));
+
+    actions.appendChild(copyBtn);
+    actions.appendChild(showBtn);
+    actions.appendChild(editBtn);
+    actions.appendChild(delBtn);
+
+    row.appendChild(nameEl);
+    row.appendChild(userEl);
+    row.appendChild(passEl);
+    row.appendChild(actions);
+    pwListEl.appendChild(row);
+  });
+}
+
+function startPwRename(entry, nameEl) {
+  const input = document.createElement('input');
+  input.className = 'template-name-input';
+  input.value = entry.site;
+  input.setAttribute('dir', detectDir(entry.site));
+  nameEl.replaceWith(input);
+  input.focus();
+  input.select();
+  let done = false;
+  const commit = () => {
+    if (done) return;
+    done = true;
+    const v = input.value.trim();
+    if (v) entry.site = v;
+    renderPwList();
+    scheduleSave();
+  };
+  input.addEventListener('blur', commit);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+    if (e.key === 'Escape') { e.stopPropagation(); input.value = entry.site; input.blur(); }
+  });
+}
+
+// One entry per site + username, so re-saving a login you already have is how
+// a changed password gets updated rather than how a duplicate appears.
+async function savePasswordFromForm() {
+  const site = pwSiteInput.value.trim();
+  const user = pwUserInput.value.trim();
+  const pass = pwPassInput.value;
+  if (!site) { pwSiteInput.focus(); return; }
+  if (!pass) { pwPassInput.focus(); return; }
+
+  let enc = null;
+  if (vaultExists()) {
+    if (!(await ensureVaultOpen())) return;
+    try { enc = await aesEncrypt(vaultKey, pass); }
+    catch (e) { console.error(e); showToast("Couldn't save that", ''); return; }
+  }
+
+  const items = pwItems();
+  const same = items.find((x) => x.site.toLowerCase() === site.toLowerCase() &&
+    (x.user || '').toLowerCase() === user.toLowerCase());
+  const target = same || { id: uid(), created: Date.now() };
+  target.site = site;
+  target.user = user;
+  if (enc) { target.enc = enc; target.len = pass.length; delete target.pass; }
+  else { target.pass = pass; delete target.enc; delete target.len; }
+  if (same) target.updated = Date.now();
+  else items.push(target);
+
+  pwSiteInput.value = '';
+  pwUserInput.value = '';
+  pwPassInput.value = '';
+  pwSiteInput.focus();
+  showToast(same ? 'Password updated' : 'Password saved', site);
+  renderPwList();
+  scheduleSave();
+}
+
+async function deletePassword(entry) {
+  const ok = await appConfirm(
+    tr('pw.confirmDelete', 'Delete the saved login for') + ' ' + entry.site + '?',
+    { danger: true, confirmLabel: tr('pw.delete', 'Delete') });
+  if (!ok) return;
+  state.passwords = pwItems().filter((x) => x.id !== entry.id);
+  renderPwList();
+  scheduleSave();
+}
+
+// Everything saved before the PIN existed, moved behind it in one go.
+async function encryptAllPasswords() {
+  if (!vaultExists() || !(await ensureVaultOpen())) return;
+  let n = 0;
+  for (const entry of pwItems()) {
+    if (entry.enc || !entry.pass) continue;
+    try {
+      entry.enc = await aesEncrypt(vaultKey, entry.pass);
+      entry.len = entry.pass.length;
+      delete entry.pass;
+      n++;
+    } catch (e) { console.error('encrypt failed', e); }
+  }
+  if (n) showToast(n === 1 ? 'One login encrypted' : n + ' logins encrypted', '');
+  renderPwList();
+  scheduleSave();
+}
+
+if (passwordsBtn) passwordsBtn.addEventListener('click', openPasswords);
+if (passwordsClose) passwordsClose.addEventListener('click', closePasswords);
+if (passwordsOverlay) passwordsOverlay.addEventListener('click', (e) => {
+  if (e.target === passwordsOverlay) closePasswords();
+});
+if (pwForm) pwForm.addEventListener('submit', (e) => { e.preventDefault(); savePasswordFromForm(); });
+if (pwSiteInput) pwSiteInput.addEventListener('input', () => {
+  pwSiteInput.setAttribute('dir', detectDir(pwSiteInput.value));
+});
+if (pwSetPinBtn) pwSetPinBtn.addEventListener('click', async () => {
+  const made = await openPinDialog('setup');
+  if (made) { syncLockUI(); await encryptAllPasswords(); }
+  renderPwList();
+});
+if (pwEncryptAllBtn) pwEncryptAllBtn.addEventListener('click', encryptAllPasswords);
 tokenNameInput.addEventListener('input', () => {
   tokenNameInput.setAttribute('dir', detectDir(tokenNameInput.value));
 });
@@ -4918,6 +5230,7 @@ async function loadState() {
   // Shared by every profile, so like the Lab it never falls back to [] — a
   // profile switch must not look like the tokens were deleted.
   state.tokens = Array.isArray(saved.tokens) ? saved.tokens : (state.tokens || []);
+  state.passwords = Array.isArray(saved.passwords) ? saved.passwords : (state.passwords || []);
   state.groups = Array.isArray(saved.groups) ? saved.groups : [];
   state.phValues = (saved.phValues && typeof saved.phValues === 'object') ? saved.phValues : {};
   state.fastSave = (saved.fastSave && Array.isArray(saved.fastSave.messages))
@@ -8091,6 +8404,8 @@ async function closeVault() {
     }
   }
   vaultKey = null;
+  // Anything revealed in the password panel goes back behind the dots.
+  if (pwOpen()) renderPwList();
   const t = activeTab();
   if (t && t.locked) setEditorText('');
   applyLockView();
@@ -9942,6 +10257,7 @@ function applySettings() {
   appEl.classList.toggle('pins-off', !settings.pinningEnabled);
   appEl.classList.toggle('close-off', !settings.closeButtonEnabled);
   appEl.classList.toggle('resize-off', !settings.railResizable);
+  syncRailTools();
   appEl.classList.toggle('md-img-fullsize', !!settings.mdImageFullSize);
   document.documentElement.style.setProperty(
     '--rail-width', (settings.railWidth || 166) + 'px');
@@ -11275,6 +11591,7 @@ function syncSettingsUI() {
   if (toggleLabEl) toggleLabEl.checked = settings.promptLabEnabled !== false;
   if (toggleTemplatesEl) toggleTemplatesEl.checked = settings.templatesEnabled !== false;
   if (toggleTokensEl) toggleTokensEl.checked = settings.tokensEnabled !== false;
+  if (togglePasswordsEl) togglePasswordsEl.checked = settings.passwordsEnabled !== false;
   if (toggleAiChatEl) toggleAiChatEl.checked = settings.aiChatEnabled !== false;
   if (toggleProfilesEl) toggleProfilesEl.checked = settings.profilesEnabled !== false;
   if (toggleAiEl) toggleAiEl.checked = aiOn();
@@ -11652,6 +11969,15 @@ if (toggleLabEl) toggleLabEl.addEventListener('change', () => {
 if (toggleTemplatesEl) toggleTemplatesEl.addEventListener('change', () => {
   settings.templatesEnabled = toggleTemplatesEl.checked;
   if (!settings.templatesEnabled) closeTemplates();
+  renderTabs();
+  saveSettingsNow();
+});
+
+// Hiding Passwords only hides the button; the saved logins are kept.
+if (togglePasswordsEl) togglePasswordsEl.addEventListener('change', () => {
+  settings.passwordsEnabled = togglePasswordsEl.checked;
+  if (!settings.passwordsEnabled && pwOpen()) closePasswords();
+  markFeatureSeen('myTokens');
   renderTabs();
   saveSettingsNow();
 });
@@ -12956,7 +13282,7 @@ function maybeAnnounceTokens(hadSaved) {
     bannerFeature = 'myTokens';
     showUpdaterBanner(
       tr('tokens.announce',
-        'New: My Tokens, under Templates — keep your API keys in one place. Don\'t need it? You can hide it in Settings.'),
+        'New in the sidebar: My Tokens for API keys, and Passwords for logins. Don\'t need them? You can hide either one in Settings.'),
       tr('tokens.announceCta', 'Settings'),
       () => {
         markFeatureSeen('myTokens');
@@ -16541,6 +16867,7 @@ async function bootstrap() {
     if (!historyOverlay.classList.contains('hidden')) { closeHistory(); return; }
     if (!templatesOverlay.classList.contains('hidden')) { closeTemplates(); return; }
     if (!tokensOverlay.classList.contains('hidden')) { closeTokens(); return; }
+    if (pwOpen()) { closePasswords(); return; }
     if (!settingsOverlay.classList.contains('hidden')) { closeSettings(); return; }
   });
 

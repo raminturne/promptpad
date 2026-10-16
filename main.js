@@ -80,7 +80,7 @@ function newProfileId() {
 // Shared keys are stored once in data.shared; a copy is mirrored into
 // data.notes so an exported file stays readable by an older build.
 function stripShared(ws) {
-  const { promptLab, lastVersion, tokens, ...rest } = ws || {};
+  const { promptLab, lastVersion, tokens, passwords, ...rest } = ws || {};
   return rest;
 }
 function withShared(data, ws) {
@@ -88,6 +88,7 @@ function withShared(data, ws) {
     ...(ws || emptyWorkspace()),
     promptLab: (data.shared && data.shared.promptLab) || [],
     tokens: (data.shared && data.shared.tokens) || [],
+    passwords: (data.shared && data.shared.passwords) || [],
     // Read-only for the renderer: it migrates this into settings.lastVersion
     // once and never writes it back.
     lastVersion: (data.shared && data.shared.lastVersion) || null
@@ -516,14 +517,19 @@ if (!app.requestSingleInstanceLock()) {
       data.shared = data.shared || {};
       data.shared.promptLab = notes.promptLab;
     }
-    // My Tokens, shared the same way and under the same guard.
+    // My Tokens and the saved logins, shared the same way and under the same
+    // guard.
     if (Array.isArray(notes && notes.tokens)) {
       data.shared = data.shared || {};
       data.shared.tokens = notes.tokens;
     }
+    if (Array.isArray(notes && notes.passwords)) {
+      data.shared = data.shared || {};
+      data.shared.passwords = notes.passwords;
+    }
     // The mirror inside notes keeps exported files readable by older builds.
     // Tokens are not mirrored: one copy of a secret is enough.
-    const { tokens: _tokens, ...ws } = notes || {};
+    const { tokens: _tokens, passwords: _passwords, ...ws } = notes || {};
     data.notes = { ...ws, promptLab: (data.shared && data.shared.promptLab) || [] };
     return writeData(data);
   });

@@ -13137,22 +13137,39 @@ const CURRENT_VERSION = document.getElementById('aboutVersion').textContent.repl
 const WHATS_NEW =
   'What\'s new in v' + CURRENT_VERSION + ' ✨\n' +
   '\n' +
-  'A small one.\n' +
+  'Two new panels in the sidebar, and a sidebar that gets out of the way.\n' +
   '\n' +
-  '── NEW ICON ───────────────────────────\n' +
+  '── PASSWORDS ──────────────────────────\n' +
   '\n' +
-  '• PromptPad has its own mark now: a pair of brackets with a caret between\n' +
-  '   them — the same brackets you write blanks with. You will see it on the\n' +
-  '   taskbar, in the tray and on the installer.\n' +
-  '• If a pinned taskbar shortcut still shows the old icon, unpin it and pin\n' +
-  '   it again. Windows keeps its own copy of the picture.\n' +
+  '• A login per site: the site, the email or username, and the password.\n' +
+  '   Search finds one by site or username; copy, show, edit and delete are\n' +
+  '   on every row.\n' +
+  '• If you have set a PIN for locked notes, every password is encrypted\n' +
+  '   with the same key and is only readable while the vault is open. No\n' +
+  '   PIN? The panel says so, and offers to set one — which encrypts\n' +
+  '   everything you had already saved.\n' +
   '\n' +
-  '── FIXED ──────────────────────────────\n' +
+  '── MY TOKENS ──────────────────────────\n' +
   '\n' +
-  '• The Nacre theme could bring a slow machine to its knees. It was the only\n' +
-  '   theme still redrawing sixty times a second at full resolution; it now\n' +
-  '   runs like the others, and on a test machine went from half speed to a\n' +
-  '   steady full frame rate with no dropped frames.\n' +
+  '• API keys in one place instead of scattered across notes, masked in the\n' +
+  '   list, with copy and show on each row. Saving a name you already have\n' +
+  '   replaces its key, so a rotated key is one save away.\n' +
+  '• Both panels can be hidden from Settings, Layout, Sidebar.\n' +
+  '\n' +
+  '── THE SIDEBAR FOLDS ──────────────────\n' +
+  '\n' +
+  '• A thin line sits under templates, passwords, my tokens and the rest.\n' +
+  '   Click it and the whole group rolls up so your tabs take the space;\n' +
+  '   click it again and they come back. It remembers.\n' +
+  '• The rail has always been resizable; the handle between the tabs and\n' +
+  '   the editor now shows a grip, so you can see that it is.\n' +
+  '\n' +
+  '── WHAT\'S NEW, WITH PICTURES ──────────\n' +
+  '\n' +
+  '• An update now opens a short illustrated card for the things worth\n' +
+  '   finding — including a moving one for the fold, because a control that\n' +
+  '   folds cannot be explained by a still picture. Settings, About,\n' +
+  '   What\'s new reopens it whenever you like.\n' +
   '\n' +
   'You can close this tab — it will not come back until the next update.\n' +
   '\n' +
@@ -13160,21 +13177,38 @@ const WHATS_NEW =
   '\n' +
   'تازه‌های نسخه‌ی ' + CURRENT_VERSION + ' ✨\n' +
   '\n' +
-  'یک به‌روزرسانی کوچک.\n' +
+  'دو پنل تازه در نوار کناری، و نواری که کنار می‌رود.\n' +
   '\n' +
-  '── آیکون تازه ─────────────────────\n' +
+  '── گذرواژه‌ها ──────────────────\n' +
   '\n' +
-  '• پرامپت‌پد حالا نشانه‌ی خودش را دارد: دو کروشه با مکان‌نما وسطشان — همان\n' +
-  '   کروشه‌هایی که جای خالی را با آن‌ها می‌نویسی. روی taskbar، توی tray و روی\n' +
-  '   فایل نصب می‌بینی‌اش.\n' +
-  '• اگر میان‌بر پین‌شده روی taskbar هنوز آیکون قدیمی را نشان می‌دهد، آنپینش کن\n' +
-  '   و دوباره پین کن. ویندوز یک کپی از تصویر را نگه می‌دارد.\n' +
+  '• برای هر سایت یک ورود: سایت، ایمیل یا نام کاربری، و گذرواژه. جست‌وجو\n' +
+  '   روی سایت و نام کاربری کار می‌کند، و هر ردیف دکمه‌های کپی، نمایش،\n' +
+  '   ویرایش و حذف دارد.\n' +
+  '• اگر برای قفل یادداشت‌ها PIN گذاشته باشی، همه‌ی گذرواژه‌ها با همان\n' +
+  '   کلید رمز می‌شوند و فقط وقتی والت باز است خوانده می‌شوند. PIN نداری؟\n' +
+  '   پنل همین را می‌گوید و پیشنهاد می‌دهد یکی بگذاری — و هرچه از قبل\n' +
+  '   ذخیره کرده بودی رمزگذاری می‌شود.\n' +
   '\n' +
-  '── رفع اشکال ────────────────────\n' +
+  '── توکن‌های من ────────────────\n' +
   '\n' +
-  '• تم Nacre روی سیستم‌های ضعیف همه‌چیز را کند می‌کرد. تنها تمی بود که هنوز\n' +
-  '   شصت بار در ثانیه و با رزولوشن کامل می‌کشید؛ حالا مثل بقیه کار می‌کند، و\n' +
-  '   روی سیستم تست از نصف سرعت رسید به نرخ فریم کامل، بدون افت.\n' +
+  '• کلیدهای API یک‌جا، به‌جای پخش‌بودن توی یادداشت‌ها؛ در لیست پوشیده\n' +
+  '   نشان داده می‌شوند و هر ردیف کپی و نمایش دارد. اسمی را که از قبل\n' +
+  '   داری دوباره ذخیره کنی، کلیدش عوض می‌شود.\n' +
+  '• هر دو پنل را می‌شود از Settings ← Layout ← Sidebar مخفی کرد.\n' +
+  '\n' +
+  '── نوار کناری جمع می‌شود ────\n' +
+  '\n' +
+  '• زیر templates و passwords و my tokens یک خط نازک هست. رویش کلیک کنی\n' +
+  '   کل گروه جمع می‌شود و تب‌ها جایشان را می‌گیرند؛ دوباره کلیک کنی\n' +
+  '   برمی‌گردند. یادش هم می‌ماند.\n' +
+  '• عرض نوار تب‌ها همیشه قابل تغییر بوده؛ حالا دستگیره‌اش دیده می‌شود.\n' +
+  '\n' +
+  '── تازه‌ها، با عکس ──────────\n' +
+  '\n' +
+  '• بعد از هر آپدیت یک پنجره‌ی کوتاه با عکس باز می‌شود و چیزهایی را که\n' +
+  '   به چشم نمی‌آیند نشان می‌دهد — از جمله یک تصویر متحرک برای همان خط\n' +
+  '   جمع‌شونده. هر وقت خواستی از Settings ← About ← What\'s new دوباره\n' +
+  '   بازش کن.\n' +
   '\n' +
   'این تب را می‌توانی ببندی — تا آپدیت بعدی دیگر برنمی‌گردد.';
 

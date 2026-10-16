@@ -2198,6 +2198,31 @@ body {
   text-align: left;
   user-select: text;
 }
+/* A filter for the saved rows. It matches names and usernames only — the
+   secret itself is never searched, so nothing has to be decrypted to type
+   in here. */
+.panel-search {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+  flex-shrink: 0;
+}
+.panel-search-input {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: none;
+  outline: none;
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 12px;
+  padding: 2px 0;
+}
+.panel-search-input::placeholder { color: var(--muted); }
+
 /* ---- Password manager (shares the tokens card) ---- */
 .pw-add {
   display: flex;
@@ -6338,6 +6363,63 @@ html.no-anim *::after {
    =========================================================
    Wider than the other overlays because the screenshots are the point: a
    picture of the tab rail squeezed into 340px teaches nothing. */
+/* What's new: a short illustrated list, one card per thing worth finding. */
+.wn-card {
+  width: 100%;
+  max-width: 560px;
+  max-height: min(88vh, 660px);
+  display: flex;
+  flex-direction: column;
+  background: var(--sidebar);
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, .5);
+  overflow: hidden;
+  animation: pop 0.18s cubic-bezier(0.2, 0.8, 0.3, 1);
+}
+.wn-version {
+  margin-inline-start: auto;
+  margin-inline-end: 10px;
+  font-size: 11.5px;
+  color: var(--accent);
+  letter-spacing: 1px;
+}
+.wn-body { overflow-y: auto; padding: 4px 0 2px; }
+.wn-body::-webkit-scrollbar { width: 8px; }
+.wn-body::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 8px; }
+.wn-item { padding: 14px 18px 18px; border-bottom: 1px solid var(--border); }
+.wn-item:last-child { border-bottom: none; }
+.wn-item h4 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 10px;
+}
+.wn-item p {
+  font-size: 12.5px;
+  line-height: 1.75;
+  color: var(--muted-2);
+  margin-top: 10px;
+}
+.wn-shot {
+  display: block;
+  width: 100%;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+}
+.wn-shot.is-tall { width: auto; max-width: 62%; margin: 0 auto; }
+.wn-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.wn-foot .template-use-btn,
+.wn-foot .template-del-btn { height: 28px; }
+
 .guide-card {
   width: 100%;
   max-width: 760px;

@@ -22,6 +22,14 @@
     'Prompt Lab': 'آزمایشگاه پرامپت',
     'Settings': 'تنظیمات',
     'settings': 'تنظیمات',
+    // ---- What's new popup / panel search ----
+    "what's new": 'تازه‌ها',
+    "What's new": 'تازه‌ها',
+    'Read the full notes': 'متن کامل',
+    'Got it': 'باشه',
+    'Search tokens…': 'جست‌وجوی توکن‌ها…',
+    'Search logins…': 'جست‌وجوی ورودها…',
+    'Nothing matches that.': 'چیزی با این پیدا نشد.',
     // ---- Passwords / the rail fold ----
     'passwords': 'گذرواژه‌ها',
     'Passwords': 'گذرواژه‌ها',

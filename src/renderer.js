@@ -279,6 +279,8 @@ const tokenNameInput = document.getElementById('tokenNameInput');
 const tokenValueInput = document.getElementById('tokenValueInput');
 const tokensListEl = document.getElementById('tokensList');
 const tokensEmptyEl = document.getElementById('tokensEmpty');
+const tokensSearchEl = document.getElementById('tokensSearch');
+const tokensSearchWrap = document.getElementById('tokensSearchWrap');
 // the rail's collapsible group of panel buttons
 const railToolsEl = document.getElementById('railTools');
 const railFoldBtn = document.getElementById('railFold');
@@ -292,6 +294,8 @@ const pwUserInput = document.getElementById('pwUserInput');
 const pwPassInput = document.getElementById('pwPassInput');
 const pwListEl = document.getElementById('pwList');
 const pwEmptyEl = document.getElementById('pwEmpty');
+const pwSearchEl = document.getElementById('pwSearch');
+const pwSearchWrap = document.getElementById('pwSearchWrap');
 const pwLockHintEl = document.getElementById('pwLockHint');
 const pwEncryptHintEl = document.getElementById('pwEncryptHint');
 const pwSetPinBtn = document.getElementById('pwSetPin');
@@ -4607,8 +4611,25 @@ function maskToken(v) {
   return s.slice(0, 4) + '••••••••' + s.slice(-4);
 }
 
+// An empty panel says one of two things: there is nothing saved yet, or the
+// filter matched nothing. Both lines sit in the markup so the translation pass
+// treats them like any other text.
+function showEmptyKind(el, noMatch) {
+  if (!el) return;
+  const d = el.querySelector('.empty-default');
+  const n = el.querySelector('.empty-nomatch');
+  if (d) d.classList.toggle('hidden', noMatch);
+  if (n) n.classList.toggle('hidden', !noMatch);
+}
+
+// What is typed in the panel's search box. Reset every time it opens, so a
+// filter left behind can never look like an empty list.
+let tokenFilter = '';
+
 function openTokens() {
   if (settings.tokensEnabled === false) return;
+  tokenFilter = '';
+  if (tokensSearchEl) tokensSearchEl.value = '';
   tokenNameInput.value = '';
   tokenValueInput.value = '';
   renderTokensList();
@@ -4624,8 +4645,12 @@ function closeTokens() {
 
 function renderTokensList() {
   tokensListEl.innerHTML = '';
-  const items = tokenItems();
+  const all = tokenItems();
+  const q = tokenFilter.trim().toLowerCase();
+  const items = q ? all.filter((t) => t.name.toLowerCase().includes(q)) : all;
+  if (tokensSearchWrap) tokensSearchWrap.classList.toggle('hidden', all.length < 2);
   tokensEmptyEl.classList.toggle('hidden', items.length > 0);
+  showEmptyKind(tokensEmptyEl, all.length > 0 && !items.length);
 
   items.forEach((tok) => {
     const row = document.createElement('div');
@@ -4812,8 +4837,12 @@ async function pwReveal(entry) {
   catch (e) { console.error('password decrypt failed', e); return null; }
 }
 
+let pwFilter = '';
+
 function openPasswords() {
   if (settings.passwordsEnabled === false) return;
+  pwFilter = '';
+  if (pwSearchEl) pwSearchEl.value = '';
   pwSiteInput.value = '';
   pwUserInput.value = '';
   pwPassInput.value = '';
@@ -4831,12 +4860,20 @@ function pwOpen() { return passwordsOverlay && !passwordsOverlay.classList.conta
 
 function renderPwList() {
   pwListEl.innerHTML = '';
-  const items = pwItems();
+  const all = pwItems();
+  const q = pwFilter.trim().toLowerCase();
+  // Site and username only: the password is never read to answer a search.
+  const items = q
+    ? all.filter((p) => (p.site || '').toLowerCase().includes(q) ||
+                        (p.user || '').toLowerCase().includes(q))
+    : all;
+  if (pwSearchWrap) pwSearchWrap.classList.toggle('hidden', all.length < 2);
   pwEmptyEl.classList.toggle('hidden', items.length > 0);
+  showEmptyKind(pwEmptyEl, all.length > 0 && !items.length);
   // The two hints are mutually exclusive: either there is no PIN at all, or
   // there is one and something was saved before it.
   const hasVault = vaultExists();
-  const plain = items.filter((x) => !x.enc).length;
+  const plain = all.filter((x) => !x.enc).length;
   pwLockHintEl.classList.toggle('hidden', hasVault);
   pwEncryptHintEl.classList.toggle('hidden', !hasVault || plain === 0);
   pwFootEl.textContent = hasVault
@@ -5041,6 +5078,22 @@ if (pwSetPinBtn) pwSetPinBtn.addEventListener('click', async () => {
   renderPwList();
 });
 if (pwEncryptAllBtn) pwEncryptAllBtn.addEventListener('click', encryptAllPasswords);
+if (pwSearchEl) pwSearchEl.addEventListener('input', () => {
+  pwFilter = pwSearchEl.value;
+  renderPwList();
+});
+if (tokensSearchEl) tokensSearchEl.addEventListener('input', () => {
+  tokenFilter = tokensSearchEl.value;
+  renderTokensList();
+});
+// Escape clears the filter before it closes the panel.
+[[pwSearchEl, () => { pwFilter = ''; renderPwList(); }],
+ [tokensSearchEl, () => { tokenFilter = ''; renderTokensList(); }]].forEach(([el, clear]) => {
+  if (!el) return;
+  el.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && el.value) { e.stopPropagation(); el.value = ''; clear(); }
+  });
+});
 tokenNameInput.addEventListener('input', () => {
   tokenNameInput.setAttribute('dir', detectDir(tokenNameInput.value));
 });
@@ -13144,9 +13197,102 @@ function maybeShowWhatsNew(hadSaved) {
     updateCounts();
     updatePlaceholderPanel();
     applyEditorAlign();
+    // The pictures land a beat after the window settles, the same way every
+    // other one-time thing in here does.
+    if (settings.whatsNewSeen !== CURRENT_VERSION) {
+      setTimeout(openWhatsNewPopup, 900);
+    }
+  } else {
+    // A fresh install has nothing to be new about.
+    settings.whatsNewSeen = CURRENT_VERSION;
   }
   scheduleSave();
 }
+
+
+// ---------- What's new, with pictures ----------
+// The release notes tab carries everything; this carries the two or three
+// things nobody would find on their own, each next to a picture of itself.
+// Shown once per version, and reachable afterwards from Settings -> About.
+const whatsNewOverlay = document.getElementById('whatsNewOverlay');
+const wnBody = document.getElementById('wnBody');
+const wnVersionEl = document.getElementById('wnVersion');
+const wnClose = document.getElementById('wnClose');
+const wnNotesBtn = document.getElementById('wnNotes');
+const wnDoneBtn = document.getElementById('wnDone');
+
+function whatsNewCards() {
+  const w = window.PP_WHATS_NEW;
+  return (w && Array.isArray(w.cards)) ? w.cards : [];
+}
+
+function renderWhatsNew() {
+  const lang = settings.language === 'fa' ? 'fa' : 'en';
+  wnBody.innerHTML = '';
+  wnBody.setAttribute('dir', lang === 'fa' ? 'rtl' : 'ltr');
+  wnVersionEl.textContent = 'v' + CURRENT_VERSION;
+  whatsNewCards().forEach((c) => {
+    const item = document.createElement('div');
+    item.className = 'wn-item';
+
+    const h = document.createElement('h4');
+    h.textContent = c.title[lang] || c.title.en;
+    item.appendChild(h);
+
+    if (c.img) {
+      const img = document.createElement('img');
+      img.className = 'wn-shot';
+      img.src = 'guide-images/' + c.img;
+      img.alt = c.title.en;
+      // A picture that failed to load leaves a broken box in the middle of the
+      // card; dropping it keeps the words standing on their own.
+      img.addEventListener('error', () => img.remove());
+      img.addEventListener('load', () => {
+        if (img.naturalHeight > img.naturalWidth) img.classList.add('is-tall');
+      });
+      item.appendChild(img);
+    }
+
+    const p = document.createElement('p');
+    p.textContent = c.body[lang] || c.body.en;
+    item.appendChild(p);
+
+    wnBody.appendChild(item);
+  });
+}
+
+function openWhatsNewPopup() {
+  if (!whatsNewCards().length) return;
+  renderWhatsNew();
+  whatsNewOverlay.classList.remove('hidden', 'closing');
+  wnBody.scrollTop = 0;
+}
+
+function closeWhatsNewPopup() {
+  settings.whatsNewSeen = CURRENT_VERSION;
+  saveSettingsNow();
+  hideWithAnim(whatsNewOverlay, 'closing');
+}
+
+function whatsNewOpen() {
+  return whatsNewOverlay && !whatsNewOverlay.classList.contains('hidden');
+}
+
+if (wnClose) wnClose.addEventListener('click', closeWhatsNewPopup);
+if (wnDoneBtn) wnDoneBtn.addEventListener('click', closeWhatsNewPopup);
+if (whatsNewOverlay) whatsNewOverlay.addEventListener('click', (e) => {
+  if (e.target === whatsNewOverlay) closeWhatsNewPopup();
+});
+if (wnNotesBtn) wnNotesBtn.addEventListener('click', () => {
+  closeWhatsNewPopup();
+  const tab = state.tabs.find((t) => t.content === WHATS_NEW);
+  if (tab) switchTab(tab.id);
+});
+const openWhatsNewBtn = document.getElementById('openWhatsNewBtn');
+if (openWhatsNewBtn) openWhatsNewBtn.addEventListener('click', () => {
+  closeSettings();
+  openWhatsNewPopup();
+});
 
 function showUpdateBanner(tag, url) {
   updateBannerTextEl.textContent = 'New version available: v' + tag.replace('v', '');
@@ -13321,6 +13467,10 @@ function maybeShowDonatePrompt(hadSaved) {
   settings.donateSeenVersion = CURRENT_VERSION;
   saveSettingsNow();
   setTimeout(() => {
+    // An update that opens the what's-new popup has already asked for the
+    // user's attention; asking for money over the top of it is too much for
+    // one launch, so this one waits for the next.
+    if (whatsNewOpen()) return;
     // the update banner owns the shelf above the status bar; sit above it
     donateBannerEl.classList.toggle('stacked', !updateBannerEl.classList.contains('hidden'));
     donateBannerEl.classList.remove('hidden');
@@ -16831,6 +16981,7 @@ async function bootstrap() {
   // close overlays with Escape (priority: lightbox > ctx menu > find bar > dialogs > overlays)
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
+    if (whatsNewOpen()) { closeWhatsNewPopup(); return; }
     if (!guideOverlay.classList.contains('hidden')) { closeGuide(); return; }
     if (!cmdPalette.classList.contains('hidden')) { closeCommandPalette(); return; }
     if (shLeaveDialogOpen()) { shCloseLeaveDialog(); return; }

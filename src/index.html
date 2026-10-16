@@ -1276,6 +1276,7 @@
               <h3 class="set-label">Guide</h3>
               <p class="set-hint">Everything PromptPad can do, with pictures — in English and Persian.</p>
               <button type="button" id="openGuideBtn" class="mini-dialog-save custom-action-add">Open the guide</button>
+              <button type="button" id="openWhatsNewBtn" class="mini-dialog-save custom-action-add">What's new</button>
             </section>
             <section class="set-group">
               <h3 class="set-label">About</h3>
@@ -1563,6 +1564,27 @@
     <!-- Guide: what the app can do, in English and Persian, with a picture per
          topic. Its own overlay rather than a settings pane, because the
          screenshots need more width than the settings card has. -->
+    <!-- The illustrated what's-new, shown once after an update -->
+    <div id="whatsNewOverlay" class="overlay hidden">
+      <div class="wn-card">
+        <div class="guide-head">
+          <span class="guide-title">what's new</span>
+          <span class="wn-version" id="wnVersion"></span>
+          <button id="wnClose" class="win-btn" title="Close">
+            <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+              <line x1="6" y1="6" x2="18" y2="18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+              <line x1="18" y1="6" x2="6" y2="18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+            </svg>
+          </button>
+        </div>
+        <div class="wn-body" id="wnBody"></div>
+        <div class="wn-foot">
+          <button type="button" id="wnNotes" class="template-del-btn">Read the full notes</button>
+          <button type="button" id="wnDone" class="template-use-btn">Got it</button>
+        </div>
+      </div>
+    </div>
+
     <div id="guideOverlay" class="overlay hidden">
       <div class="guide-card">
         <div class="guide-head">
@@ -1620,8 +1642,16 @@
           <input id="tokenValueInput" class="text-input tokens-value-input" type="password" placeholder="Token" spellcheck="false" />
           <button id="tokenSaveBtn" type="submit" class="template-use-btn">Save</button>
         </form>
+        <div class="panel-search hidden" id="tokensSearchWrap">
+          <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
+            <circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" stroke-width="1.8"/>
+            <line x1="16" y1="16" x2="21" y2="21" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          </svg>
+          <input id="tokensSearch" class="panel-search-input" type="text" placeholder="Search tokens…" spellcheck="false" dir="auto" />
+        </div>
         <div class="templates-empty hidden" id="tokensEmpty">
-          No tokens yet.<br>Type a model or site, paste its token, then Save.
+          <span class="empty-default">No tokens yet.<br>Type a model or site, paste its token, then Save.</span>
+          <span class="empty-nomatch hidden">Nothing matches that.</span>
         </div>
         <div class="templates-body" id="tokensList"></div>
         <div class="tokens-foot">Saved only on this computer.</div>
@@ -1656,8 +1686,16 @@
           <span>Some of these were saved before the PIN.</span>
           <button type="button" id="pwEncryptAll" class="template-use-btn">Encrypt them</button>
         </div>
+        <div class="panel-search hidden" id="pwSearchWrap">
+          <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
+            <circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" stroke-width="1.8"/>
+            <line x1="16" y1="16" x2="21" y2="21" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          </svg>
+          <input id="pwSearch" class="panel-search-input" type="text" placeholder="Search logins…" spellcheck="false" dir="auto" />
+        </div>
         <div class="templates-empty hidden" id="pwEmpty">
-          No logins yet.<br>Type a site, a username and a password, then Save.
+          <span class="empty-default">No logins yet.<br>Type a site, a username and a password, then Save.</span>
+          <span class="empty-nomatch hidden">Nothing matches that.</span>
         </div>
         <div class="templates-body" id="pwList"></div>
         <div class="tokens-foot" id="pwFoot">Saved only on this computer.</div>
@@ -2056,6 +2094,7 @@
   <script src="fx.js"></script>
   <script src="i18n.js"></script>
   <script src="guide.js"></script>
+  <script src="whatsnew.js"></script>
   <!-- Card sketches for the theme browser: one small animated signature per
        theme, so a card shows what the theme does rather than only its colours. -->
   <script src="theme-sketch.js"></script>

@@ -13188,6 +13188,12 @@ const WHATS_NEW =
   '\n' +
   '── FIXED ──────────────────────────────\n' +
   '\n' +
+  '• A list marker no longer eats the space after it. On a Persian line\n' +
+  '   the marker sits in a left-to-right island so that "1." does not come\n' +
+  '   out as ".1"; the space was inside that island, which pushed it to the\n' +
+  '   far edge and glued the bullet to the first word.\n' +
+  '• The placeholder text in an empty note is drawn where the caret\n' +
+  '   actually is, whatever padding the theme asks for.\n' +
   '• The window pins its zoom level. Chromium remembers a zoom per origin\n' +
   '   between runs, so one stray Ctrl+= used to come back as a permanently\n' +
   '   scaled interface. The font zoom over the editor is unaffected.\n' +
@@ -13219,6 +13225,11 @@ const WHATS_NEW =
   '\n' +
   '── رفع اشکال ────────────────────\n' +
   '\n' +
+  '• نشانه‌ی لیست دیگر فاصله‌ی بعد از خودش را نمی‌خورد. روی خط فارسی این\n' +
+  '   نشانه داخل یک جزیره‌ی چپ‌به‌راست می‌نشیند تا «۱.» وارونه نشود؛ فاصله هم\n' +
+  '   داخل همان جزیره بود و می‌رفت لبه‌ی خط، پس خط تیره به کلمه می‌چسبید.\n' +
+  '• متن راهنمای یادداشت خالی همان‌جایی کشیده می‌شود که مکان‌نما هست،\n' +
+  '   هر فاصله‌ای که تم خواسته باشد.\n' +
   '• زوم پنجره قفل شد. کروم سطح زوم را برای هر origin بین اجراها نگه می‌دارد،\n' +
   '   و یک Ctrl+= اتفاقی باعث می‌شد رابط برای همیشه بزرگ بماند. زوم فونت روی\n' +
   '   ویرایشگر دست‌نخورده است.\n' +

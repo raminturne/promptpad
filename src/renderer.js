@@ -13163,39 +13163,30 @@ const CURRENT_VERSION = document.getElementById('aboutVersion').textContent.repl
 const WHATS_NEW =
   'What\'s new in v' + CURRENT_VERSION + ' ✨\n' +
   '\n' +
-  'Two new panels in the sidebar, and a sidebar that gets out of the way.\n' +
+  'PromptPad has a face of its own.\n' +
   '\n' +
-  '── PASSWORDS ──────────────────────────\n' +
+  '── A NEW LOOK ─────────────────────────\n' +
   '\n' +
-  '• A login per site: the site, the email or username, and the password.\n' +
-  '   Search finds one by site or username; copy, show, edit and delete are\n' +
-  '   on every row.\n' +
-  '• If you have set a PIN for locked notes, every password is encrypted\n' +
-  '   with the same key and is only readable while the vault is open. No\n' +
-  '   PIN? The panel says so, and offers to set one — which encrypts\n' +
-  '   everything you had already saved.\n' +
+  '• Quieter colours, a sans typeface, flat controls and hairline rules, in a\n' +
+  '   light and a dark pair called Next and Next Light.\n' +
+  '• Nothing moved. Every button is where it was and does what it did — this\n' +
+  '   is a theme, not a rebuild.\n' +
+  '• Want the old look back? Settings, Theme, Forest. One click, and all 76\n' +
+  '   other themes are still there beside it. Anyone who had already picked a\n' +
+  '   theme keeps it.\n' +
+  '• A day/night switch sits in the title bar while you are on Next: one\n' +
+  '   click between the light and the dark pair.\n' +
+  '• New app icon, from the new mark, on the taskbar, in the tray and on the\n' +
+  '   installer. If a pinned shortcut still shows the old one, unpin it and\n' +
+  '   pin it again — Windows keeps its own copy.\n' +
   '\n' +
-  '── MY TOKENS ──────────────────────────\n' +
+  '── FIXED ──────────────────────────────\n' +
   '\n' +
-  '• API keys in one place instead of scattered across notes, masked in the\n' +
-  '   list, with copy and show on each row. Saving a name you already have\n' +
-  '   replaces its key, so a rotated key is one save away.\n' +
-  '• Both panels can be hidden from Settings, Layout, Sidebar.\n' +
-  '\n' +
-  '── THE SIDEBAR FOLDS ──────────────────\n' +
-  '\n' +
-  '• A thin line sits under templates, passwords, my tokens and the rest.\n' +
-  '   Click it and the whole group rolls up so your tabs take the space;\n' +
-  '   click it again and they come back. It remembers.\n' +
-  '• The rail has always been resizable; the handle between the tabs and\n' +
-  '   the editor now shows a grip, so you can see that it is.\n' +
-  '\n' +
-  '── WHAT\'S NEW, WITH PICTURES ──────────\n' +
-  '\n' +
-  '• An update now opens a short illustrated card for the things worth\n' +
-  '   finding — including a moving one for the fold, because a control that\n' +
-  '   folds cannot be explained by a still picture. Settings, About,\n' +
-  '   What\'s new reopens it whenever you like.\n' +
+  '• The window pins its zoom level. Chromium remembers a zoom per origin\n' +
+  '   between runs, so one stray Ctrl+= used to come back as a permanently\n' +
+  '   scaled interface. The font zoom over the editor is unaffected.\n' +
+  '• A button whose tooltip changes with its state no longer has the old one\n' +
+  '   put back by the translation pass.\n' +
   '\n' +
   'You can close this tab — it will not come back until the next update.\n' +
   '\n' +
@@ -13203,38 +13194,30 @@ const WHATS_NEW =
   '\n' +
   'تازه‌های نسخه‌ی ' + CURRENT_VERSION + ' ✨\n' +
   '\n' +
-  'دو پنل تازه در نوار کناری، و نواری که کنار می‌رود.\n' +
+  'پرامپت‌پد حالا ظاهر خودش را دارد.\n' +
   '\n' +
-  '── گذرواژه‌ها ──────────────────\n' +
+  '── ظاهر تازه ──────────────────────\n' +
   '\n' +
-  '• برای هر سایت یک ورود: سایت، ایمیل یا نام کاربری، و گذرواژه. جست‌وجو\n' +
-  '   روی سایت و نام کاربری کار می‌کند، و هر ردیف دکمه‌های کپی، نمایش،\n' +
-  '   ویرایش و حذف دارد.\n' +
-  '• اگر برای قفل یادداشت‌ها PIN گذاشته باشی، همه‌ی گذرواژه‌ها با همان\n' +
-  '   کلید رمز می‌شوند و فقط وقتی والت باز است خوانده می‌شوند. PIN نداری؟\n' +
-  '   پنل همین را می‌گوید و پیشنهاد می‌دهد یکی بگذاری — و هرچه از قبل\n' +
-  '   ذخیره کرده بودی رمزگذاری می‌شود.\n' +
+  '• رنگ‌های آرام‌تر، فونت سنس‌سریف، دکمه‌های تخت و خط‌های مویی — در دو حالت\n' +
+  '   تیره و روشن، به اسم Next و Next Light.\n' +
+  '• هیچ چیزی جابه‌جا نشده. هر دکمه همان‌جاست و همان کار را می‌کند؛ این یک\n' +
+  '   تم است، نه بازنویسی.\n' +
+  '• ظاهر قبلی را می‌خواهی؟ Settings ← Theme ← Forest. یک کلیک، و ۷۶ تم دیگر\n' +
+  '   هم سر جایشان هستند. هر کسی که قبلاً خودش تمی انتخاب کرده بود، همان را\n' +
+  '   نگه می‌دارد.\n' +
+  '• تا وقتی روی Next هستی، یک کلید روز/شب در نوار عنوان می‌نشیند: با یک\n' +
+  '   کلیک بین حالت روشن و تیره.\n' +
+  '• آیکون تازه‌ی برنامه، از روی نشانه‌ی جدید: روی taskbar، توی tray و روی\n' +
+  '   فایل نصب. اگر میان‌بر پین‌شده هنوز آیکون قدیمی را نشان می‌دهد، آنپینش\n' +
+  '   کن و دوباره پین کن.\n' +
   '\n' +
-  '── توکن‌های من ────────────────\n' +
+  '── رفع اشکال ────────────────────\n' +
   '\n' +
-  '• کلیدهای API یک‌جا، به‌جای پخش‌بودن توی یادداشت‌ها؛ در لیست پوشیده\n' +
-  '   نشان داده می‌شوند و هر ردیف کپی و نمایش دارد. اسمی را که از قبل\n' +
-  '   داری دوباره ذخیره کنی، کلیدش عوض می‌شود.\n' +
-  '• هر دو پنل را می‌شود از Settings ← Layout ← Sidebar مخفی کرد.\n' +
-  '\n' +
-  '── نوار کناری جمع می‌شود ────\n' +
-  '\n' +
-  '• زیر templates و passwords و my tokens یک خط نازک هست. رویش کلیک کنی\n' +
-  '   کل گروه جمع می‌شود و تب‌ها جایشان را می‌گیرند؛ دوباره کلیک کنی\n' +
-  '   برمی‌گردند. یادش هم می‌ماند.\n' +
-  '• عرض نوار تب‌ها همیشه قابل تغییر بوده؛ حالا دستگیره‌اش دیده می‌شود.\n' +
-  '\n' +
-  '── تازه‌ها، با عکس ──────────\n' +
-  '\n' +
-  '• بعد از هر آپدیت یک پنجره‌ی کوتاه با عکس باز می‌شود و چیزهایی را که\n' +
-  '   به چشم نمی‌آیند نشان می‌دهد — از جمله یک تصویر متحرک برای همان خط\n' +
-  '   جمع‌شونده. هر وقت خواستی از Settings ← About ← What\'s new دوباره\n' +
-  '   بازش کن.\n' +
+  '• زوم پنجره قفل شد. کروم سطح زوم را برای هر origin بین اجراها نگه می‌دارد،\n' +
+  '   و یک Ctrl+= اتفاقی باعث می‌شد رابط برای همیشه بزرگ بماند. زوم فونت روی\n' +
+  '   ویرایشگر دست‌نخورده است.\n' +
+  '• عنوان دکمه‌ای که با حالتش عوض می‌شود، دیگر توسط پاس ترجمه به حالت قبل\n' +
+  '   برنمی‌گردد.\n' +
   '\n' +
   'این تب را می‌توانی ببندی — تا آپدیت بعدی دیگر برنمی‌گردد.';
 

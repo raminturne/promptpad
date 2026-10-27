@@ -10,11 +10,11 @@
 ## Download
 
 <!-- downloads:start -->
-[![Windows Installer v4.2.0](https://img.shields.io/badge/Windows-Installer%20v4.2.0-0b65c2?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/raminturne/promptpad/releases/download/v4.2.0/PromptPad-Setup-4.2.0.exe)
-[![macOS Apple Silicon v4.2.0](https://img.shields.io/badge/macOS-Apple%20Silicon%20v4.2.0-1b1b1f?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/raminturne/promptpad/releases/download/v4.2.0/PromptPad-4.2.0-arm64.dmg)
-[![macOS Intel v4.2.0](https://img.shields.io/badge/macOS-Intel%20v4.2.0-3a3a40?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/raminturne/promptpad/releases/download/v4.2.0/PromptPad-4.2.0.dmg)
-[![Linux .deb v4.2.0](https://img.shields.io/badge/Linux-.deb%20v4.2.0-e05a1b?style=for-the-badge&logo=linux&logoColor=white)](https://github.com/raminturne/promptpad/releases/download/v4.2.0/promptpad_4.2.0_amd64.deb)
-[![Linux .AppImage v4.2.0](https://img.shields.io/badge/Linux-.AppImage%20v4.2.0-5a5a60?style=for-the-badge&logo=linux&logoColor=white)](https://github.com/raminturne/promptpad/releases/download/v4.2.0/PromptPad-4.2.0.AppImage)
+[![Windows Installer v4.3.0](https://img.shields.io/badge/Windows-Installer%20v4.3.0-0b65c2?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/raminturne/promptpad/releases/download/v4.3.0/PromptPad-Setup-4.3.0.exe)
+[![macOS Apple Silicon v4.3.0](https://img.shields.io/badge/macOS-Apple%20Silicon%20v4.3.0-1b1b1f?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/raminturne/promptpad/releases/download/v4.3.0/PromptPad-4.3.0-arm64.dmg)
+[![macOS Intel v4.3.0](https://img.shields.io/badge/macOS-Intel%20v4.3.0-3a3a40?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/raminturne/promptpad/releases/download/v4.3.0/PromptPad-4.3.0.dmg)
+[![Linux .deb v4.3.0](https://img.shields.io/badge/Linux-.deb%20v4.3.0-e05a1b?style=for-the-badge&logo=linux&logoColor=white)](https://github.com/raminturne/promptpad/releases/download/v4.3.0/promptpad_4.3.0_amd64.deb)
+[![Linux .AppImage v4.3.0](https://img.shields.io/badge/Linux-.AppImage%20v4.3.0-5a5a60?style=for-the-badge&logo=linux&logoColor=white)](https://github.com/raminturne/promptpad/releases/download/v4.3.0/PromptPad-4.3.0.AppImage)
 <!-- downloads:end -->
 
 Windows may warn that the publisher is unknown — the builds are not code-signed. **More info → Run anyway**. On macOS, open it with right-click → **Open** the first time. Already have PromptPad? It updates itself.

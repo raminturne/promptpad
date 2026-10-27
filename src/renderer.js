@@ -926,9 +926,15 @@ function highlightLine(el) {
     // Merge all decoration ranges; on overlap the earliest start wins
     // (e.g. "[img]" inside an image token, "[ ]" inside a todo prefix).
     const ranges = [];
-    if (todoM) ranges.push({ start: 0, end: todoM[0].length, cls: 'todo-mark' });
+    // The space after a marker stays *outside* the isolate. Inside it, an LTR
+    // isolate sitting in an RTL line puts that space on the far side of the
+    // marker: the bullet ends up glued to the Persian word, with the gap
+    // stranded against the edge of the line. Outside, the space is neutral,
+    // takes the line's own direction, and lands where it was typed.
+    const markEnd = (m) => m[0].replace(/\s+$/, '').length;
+    if (todoM) ranges.push({ start: 0, end: markEnd(todoM), cls: 'todo-mark' });
     if (blockM) {
-      ranges.push({ start: blockM[1].length, end: blockM[0].length, cls: 'md-blockmark' });
+      ranges.push({ start: blockM[1].length, end: markEnd(blockM), cls: 'md-blockmark' });
     }
     for (const m of imgMatches) {
       ranges.push({ start: m.index, end: m.index + m[0].length, cls: 'img-token',

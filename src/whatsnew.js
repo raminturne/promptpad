@@ -7,8 +7,23 @@
 // cannot be explained by a still.
 (function () {
   window.PP_WHATS_NEW = {
-    version: '4.2.0',
+    version: '4.3.0',
     cards: [
+      {
+        id: 'look',
+        img: 'new-look.png',
+        title: { en: 'A new look', fa: 'ظاهر تازه' },
+        body: {
+          en: 'PromptPad has a face of its own: a quieter palette, a sans typeface and '
+            + 'flat controls, in light and dark. Nothing moved — every button is where it '
+            + 'was and does what it did. Prefer the old look? '
+            + 'Settings → Theme → Forest brings it straight back, along with the other 76.',
+          fa: 'پرامپت‌پد ظاهر تازه‌ای دارد: پالت آرام‌تر، فونت سنس‌سریف و دکمه‌های تخت، '
+            + 'در دو حالت روشن و تیره. هیچ چیزی جابه‌جا نشده — هر دکمه همان‌جاست و همان کار را می‌کند. '
+            + 'ظاهر قبلی را بیشتر دوست داری؟ از Settings ← Theme ← Forest یک‌کلیکه برمی‌گردد، '
+            + 'کنار ۷۶ تم دیگر.'
+        }
+      },
       {
         id: 'fold',
         img: 'new-fold.gif',
@@ -25,27 +40,16 @@
       {
         id: 'passwords',
         img: 'new-passwords.png',
-        title: { en: 'Passwords', fa: 'گذرواژه‌ها' },
+        title: { en: 'Passwords and My Tokens', fa: 'گذرواژه‌ها و توکن‌های من' },
         body: {
-          en: 'A login per site: the site, the email or username, the password. '
-            + 'If you have set a PIN for locked notes, every password is encrypted with the '
-            + 'same key and only readable while the vault is open. Search filters by site and '
-            + 'username — never by the password itself.',
-          fa: 'برای هر سایت یک ورود: سایت، ایمیل یا نام کاربری، و گذرواژه. '
+          en: 'A login per site, and your API keys in one place. If you have set a PIN for '
+            + 'locked notes, every password is encrypted with the same key and only readable '
+            + 'while the vault is open. Search filters by site and username — never by the '
+            + 'password itself. Hide either panel in Settings → Layout → Sidebar.',
+          fa: 'برای هر سایت یک ورود، و کلیدهای API یک‌جا. '
             + 'اگر برای قفل یادداشت‌ها PIN گذاشته باشی، همه‌ی گذرواژه‌ها با همان کلید رمز می‌شوند '
             + 'و فقط وقتی والت باز است خوانده می‌شوند. جست‌وجو روی سایت و نام کاربری کار می‌کند، '
-            + 'نه روی خودِ گذرواژه.'
-        }
-      },
-      {
-        id: 'tokens',
-        img: 'new-tokens.png',
-        title: { en: 'My Tokens', fa: 'توکن‌های من' },
-        body: {
-          en: 'API keys in one place instead of scattered across notes. Saving a name you '
-            + 'already have replaces its key, so a rotated key is one save away.',
-          fa: 'کلیدهای API یک‌جا، به‌جای پخش‌بودن توی یادداشت‌ها. '
-            + 'اگر اسمی را که از قبل داری دوباره ذخیره کنی، کلیدش عوض می‌شود — پس کلید تازه فقط یک ذخیره فاصله دارد.'
+            + 'نه روی خودِ گذرواژه. هرکدام از دو پنل را از Settings ← Layout ← Sidebar مخفی کن.'
         }
       }
     ]

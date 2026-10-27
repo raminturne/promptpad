@@ -11,6 +11,7 @@
   const FA = {
     // ---- title bar / rail ----
     'promptpad': 'پرامپت‌پد',
+    'PromptPad': 'پرامپت‌پد',
     'new': 'جدید',
     'templates': 'قالب‌ها',
     'discover': 'کشف',

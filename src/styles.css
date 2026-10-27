@@ -4468,6 +4468,222 @@ body {
 .dc-mod-meta { font-size: 10px; color: var(--muted); }
 .dc-mod-acts { display: flex; gap: 4px; flex-shrink: 0; }
 
+/* =========================================================
+   NEXT — the 2026 face of the app
+   =========================================================
+   A theme that restyles the whole chrome rather than recolouring it: a sans
+   typeface, flat controls, hairline rules, and an accent that is almost the
+   text colour. Nothing in here moves a control or changes what one does —
+   every rule is appearance, so the app behaves the same in Next as it does in
+   Forest, and Settings -> Theme switches back to the old look in one click.
+   ========================================================= */
+.app.fx-next {
+  --radius: 6px;
+  --border: color-mix(in srgb, var(--text) 12%, transparent);
+  --border-strong: color-mix(in srgb, var(--text) 19%, transparent);
+  --muted: color-mix(in srgb, var(--text) 55%, transparent);
+  --muted-2: color-mix(in srgb, var(--text) 72%, transparent);
+  /* The accent is near-white (near-black in the light pair), so its washes are
+     neutral greys rather than a tint — which is what makes the design read as
+     one colour. */
+  --accent-soft: color-mix(in srgb, var(--text) 11%, transparent);
+  --accent-glow: color-mix(in srgb, var(--text) 22%, transparent);
+  --tab-pad-y: 9px;
+  --tab-font: 12.5px;
+  letter-spacing: 0;
+}
+
+/* ---- title bar ---- */
+.app.fx-next .titlebar {
+  height: 44px;
+  padding: 0 8px 0 12px;
+}
+/* The mark replaces the dot: same element, same ten themes that restyle it,
+   but here it carries the artwork. */
+.app.fx-next .brand-dot {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: url("logo-next.svg") center / contain no-repeat;
+  box-shadow: none;
+}
+.app.fx-next .brand-name {
+  text-transform: none;
+  letter-spacing: -0.3px;
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+.app.fx-next .profile-chip { border-radius: 6px; }
+.app.fx-next .win-btn { border-radius: 6px; }
+.app.fx-next .win-btn.active { color: var(--text); background: var(--elevated-hi); }
+.app.fx-next .win-btn.active svg path { fill: none; }
+
+/* ---- the rail ---- */
+.app.fx-next .rail { padding: 10px; gap: 4px; }
+.app.fx-next .add-btn {
+  border: 1px solid var(--border-strong);
+  border-style: solid;
+  height: 36px;
+  padding: 0 12px;
+  font-size: 12.5px;
+  letter-spacing: 0;
+  color: var(--muted-2);
+  margin-bottom: 6px;
+}
+.app.fx-next .add-btn:hover {
+  border-color: var(--border-strong);
+  background: var(--elevated-hi);
+  color: var(--text);
+}
+.app.fx-next .templates-btn {
+  height: 34px;
+  padding: 0 10px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12.5px;
+  letter-spacing: 0;
+  text-transform: none;
+  border-radius: 6px;
+}
+.app.fx-next .templates-btn:hover {
+  background: var(--elevated);
+  color: var(--text);
+  border-color: transparent;
+}
+.app.fx-next .templates-btn.active {
+  background: var(--elevated-hi);
+  color: var(--text);
+}
+.app.fx-next .rail-fold { opacity: .4; }
+.app.fx-next .rail-fold:hover { opacity: .9; color: var(--text); }
+
+.app.fx-next .tab {
+  border-radius: 6px;
+  padding: var(--tab-pad-y) 9px var(--tab-pad-y) 10px;
+  letter-spacing: 0;
+}
+.app.fx-next .tab.active { background: var(--elevated-hi); }
+/* The coloured edge is the user's own mark on a tab, so it stays — just
+   quieter, the way everything else in this theme is. */
+.app.fx-next .tab::before { width: 2px; border-radius: 2px; }
+.app.fx-next .tab-group-header {
+  letter-spacing: .4px;
+  text-transform: none;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+/* ---- editor ---- */
+.app.fx-next .editor-area {
+  line-height: 1.85;
+  padding: 26px 30px;
+}
+.app.fx-next .editor-area .ln { padding: 1px 0; }
+
+/* ---- the fill bar, as the mockup's Variables panel ---- */
+.app.fx-next .placeholder-bar.pos-right {
+  background: var(--bg);
+  padding: 20px 16px;
+}
+.app.fx-next .placeholder-bar.pos-right .placeholder-field label {
+  font-size: 11.5px;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--muted);
+}
+.app.fx-next .placeholder-count {
+  letter-spacing: .3px;
+  text-transform: none;
+  font-size: 12px;
+  color: var(--muted-2);
+}
+.app.fx-next .placeholder-field input,
+.app.fx-next .placeholder-field select,
+.app.fx-next .text-input,
+.app.fx-next .mini-dialog input,
+.app.fx-next .panel-search-input {
+  background: var(--elevated);
+  border-radius: 6px;
+  font-size: 12.5px;
+}
+.app.fx-next .placeholder-field input::placeholder,
+.app.fx-next .text-input::placeholder { color: var(--muted); }
+
+/* ---- the bar along the bottom ---- */
+.app.fx-next .statusbar { height: 40px; padding: 0 14px 0 18px; }
+.app.fx-next .counts { font-size: 11px; letter-spacing: 0; color: var(--muted); }
+.app.fx-next .copy-btn {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  height: 28px;
+  padding: 0 11px;
+  font-size: 12px;
+  letter-spacing: 0;
+  border-radius: 6px;
+}
+.app.fx-next .copy-btn:hover {
+  background: var(--elevated-hi);
+  color: var(--text);
+  border-color: transparent;
+}
+.app.fx-next .copy-btn:active { transform: translateY(1px) scale(1); }
+
+/* ---- panels, cards and dialogs ---- */
+.app.fx-next .templates-card,
+.app.fx-next .guide-card,
+.app.fx-next .wn-card,
+.app.fx-next .settings-card,
+.app.fx-next .mini-dialog {
+  border-radius: 10px;
+  border-color: var(--border-strong);
+  box-shadow: 0 16px 44px rgba(0, 0, 0, .30);
+}
+.app.fx-next .templates-title,
+.app.fx-next .guide-title {
+  letter-spacing: .5px;
+  text-transform: none;
+  font-size: 13px;
+  color: var(--text);
+  font-weight: 600;
+}
+.app.fx-next .template-use-btn {
+  background: var(--accent);
+  color: var(--bg);
+  border-color: transparent;
+  border-radius: 6px;
+  letter-spacing: 0;
+}
+.app.fx-next .template-use-btn:hover { opacity: .88; background: var(--accent); color: var(--bg); }
+.app.fx-next .template-del-btn {
+  border-color: var(--border-strong);
+  border-radius: 6px;
+  letter-spacing: 0;
+  color: var(--muted-2);
+}
+.app.fx-next .template-del-btn:hover { background: var(--elevated-hi); color: var(--text); }
+
+/* ---- settings ---- */
+.app.fx-next .set-tab {
+  letter-spacing: 0;
+  text-transform: none;
+  border-radius: 6px;
+}
+.app.fx-next .set-label {
+  letter-spacing: .3px;
+  text-transform: none;
+  font-size: 12.5px;
+  color: var(--muted-2);
+}
+.app.fx-next .seg-btn { border-radius: 6px; letter-spacing: 0; }
+.app.fx-next .kbd,
+.app.fx-next kbd { border-radius: 4px; }
+
+.app.fx-next .tab.active:not(.has-color)::before { transform: translateY(-50%) scaleY(0); }
+.app.fx-next .tab.has-color::before { width: 2px; border-radius: 0 2px 2px 0; }
+
 /* ---------- Persian / RTL ---------- */
 /* Setting dir="rtl" on <html> already flips flex order, text alignment and all
    logical properties. These rules only fix the places that still use physical

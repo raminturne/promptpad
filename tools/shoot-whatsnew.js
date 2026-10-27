@@ -11,7 +11,12 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 
-const OUT = path.join(__dirname, '..', 'src', 'guide-images');
+// --hd makes a big, sharp copy for posting somewhere, at twice the scale and
+// without the two stills; the app's own picture stays small on purpose.
+const HD = process.argv.includes('--hd');
+const OUT = HD
+  ? (process.env.HD_OUT || path.join(__dirname))
+  : path.join(__dirname, '..', 'src', 'guide-images');
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-whatsnew-'));
 const store = { notes: {}, settings: {} };
 const stub = (ch, fn) => ipcMain.handle(ch, fn);
@@ -33,8 +38,11 @@ app.whenReady().then(async () => {
   stub('restore-window', () => false);
 
   const win = new BrowserWindow({
-    width: 720, height: 470, show: true, backgroundColor: '#000',
-    webPreferences: { preload: path.join(__dirname, '..', 'preload.js'), contextIsolation: true }
+    width: HD ? 1180 : 720, height: HD ? 720 : 470, show: true, backgroundColor: '#000',
+    webPreferences: {
+      preload: path.join(__dirname, '..', 'preload.js'), contextIsolation: true,
+      zoomFactor: 1
+    }
   });
   await win.loadFile(path.join(__dirname, '..', 'src', 'index.html'));
 
@@ -53,7 +61,7 @@ app.whenReady().then(async () => {
 
   // A workspace with enough tabs that the rail has something to show.
   console.log('workspace: ' + await run(S(
-    'settings.theme = "midnight"; settings.animations = false;',
+    'settings.theme = "next"; settings.animations = false;',
     'settings.railToolsCollapsed = false; settings.fastSaveEnabled = true;',
     'settings.aiChatEnabled = true; settings.promptLabEnabled = true;',
     'applySettings();',
@@ -75,9 +83,16 @@ app.whenReady().then(async () => {
   // the tabs can be seen taking the space the buttons give up.
   const rect = await run(S(
     'const r = document.getElementById("rail").getBoundingClientRect();',
-    'return { x: 0, y: 0, w: Math.round(r.width) + 150, h: 420 };'
+    'return { x: 0, y: 0, w: Math.round(r.width) + ' + (HD ? 330 : 150) + ', h: ' + (HD ? 690 : 420) + ' };'
   ));
   const clip = { x: rect.x, y: rect.y, width: rect.w, height: rect.h };
+
+  const shot = async (name, box) => {
+    await nap(300);
+    const img = await win.webContents.capturePage(box);
+    fs.writeFileSync(path.join(OUT, name), img.toPNG());
+    console.log(name + ': ' + (fs.statSync(path.join(OUT, name)).size / 1024).toFixed(0) + ' KB');
+  };
 
   const H = await run('return railToolsEl.scrollHeight;');
   const steps = 16;
@@ -110,9 +125,9 @@ app.whenReady().then(async () => {
   console.log('fold frames: ' + frames.length);
 
   // 24 fps, halved in size: the card shows it at about 320px wide.
-  const gif = path.join(OUT, 'new-fold.gif');
+  const gif = path.join(OUT, HD ? 'fold-hd.gif' : 'new-fold.gif');
   const pal = path.join(TMP, 'pal.png');
-  const fil = 'fps=24,scale=' + Math.round(rect.w * 0.8) + ':-1:flags=lanczos';
+  const fil = 'fps=24,scale=' + Math.round(rect.w * (HD ? 1 : 0.8)) + ':-1:flags=lanczos';
   let r = spawnSync('ffmpeg', ['-y', '-loglevel', 'error', '-framerate', '24',
     '-i', path.join(TMP, 'f%03d.png'), '-vf', fil + ',palettegen=max_colors=96', pal]);
   if (r.status === 0) {
@@ -121,13 +136,41 @@ app.whenReady().then(async () => {
       '-lavfi', fil + ' [x]; [x][1:v] paletteuse=dither=bayer:bayer_scale=3', '-loop', '0', gif]);
   }
   console.log('gif: ' + (r.status === 0 ? (fs.statSync(gif).size / 1024).toFixed(0) + ' KB' : 'ffmpeg failed'));
+  if (HD) {
+    const mp4 = path.join(OUT, 'fold-hd.mp4');
+    const even = 'scale=trunc(iw/2)*2:trunc(ih/2)*2';
+    const v = spawnSync('ffmpeg', ['-y', '-loglevel', 'error', '-framerate', '24',
+      '-i', path.join(TMP, 'f%03d.png'), '-vf', even + ',fps=30', '-c:v', 'libx264',
+      '-crf', '18', '-preset', 'slow', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', mp4]);
+    console.log('mp4: ' + (v.status === 0 ? (fs.statSync(mp4).size / 1024).toFixed(0) + ' KB' : 'ffmpeg failed'));
+  }
 
-  const shot = async (name, box) => {
-    await nap(300);
-    const img = await win.webContents.capturePage(box);
-    fs.writeFileSync(path.join(OUT, name), img.toPNG());
-    console.log(name + ': ' + (fs.statSync(path.join(OUT, name)).size / 1024).toFixed(0) + ' KB');
-  };
+  if (HD) { app.quit(); return; }
+
+  // ---- the new face, whole-window ----------------------------------------
+  // Wider than the rest: this card is the whole app, so it needs the rail, a
+  // note with something in it, and the fill bar all in one frame.
+  win.setContentSize(1000, 640);
+  await nap(400);
+  console.log('look: ' + await run(S(
+    'settings.theme = "next"; settings.placeholderBarPosition = "right";',
+    'const t = state.tabs[0];',
+    't.name = "Landing page copy";',
+    't.content = "Write a landing page for [product]." + String.fromCharCode(10) +',
+    '  String.fromCharCode(10) + "Audience: [audience]" + String.fromCharCode(10) +',
+    '  "Tone: warm, clear, confident." + String.fromCharCode(10) + String.fromCharCode(10) +',
+    '  "## Structure" + String.fromCharCode(10) + String.fromCharCode(10) +',
+    '  "1. One line that says what it is" + String.fromCharCode(10) +',
+    '  "2. Three short paragraphs" + String.fromCharCode(10) + "3. A clear next step";',
+    'state.activeId = t.id; applySettings(); showEditorView();',
+    'setEditorText(t.content); editorLines().forEach(highlightLine);',
+    'updatePlaceholderPanel(); renderTabs(); updateCounts();',
+    'return settings.theme;'
+  )));
+  await nap(800);
+  await shot('new-look.png');
+  win.setContentSize(720, 470);
+  await nap(400);
 
   // ---- 2. the password manager -------------------------------------------
   console.log('passwords: ' + await run(S(

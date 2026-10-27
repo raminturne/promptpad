@@ -70,7 +70,7 @@ const THEMES = window.PP_THEMES;
 const FONTS = window.PP_FONTS;
 
 const DEFAULT_SETTINGS = {
-  theme: 'forest',
+  theme: 'next',
   font: 'cascadia',
   fontSize: 13.5,
   tabPosition: 'left',
@@ -10943,6 +10943,7 @@ function markPeekingCard() {
 function chooseTheme(key) {
   const prev = THEMES[settings.theme];
   settings.theme = key;
+  settings.themeChosen = true;
   rememberTheme(key);
   markThemeSeen(key);
   applySettings();
@@ -16898,7 +16899,17 @@ async function bootstrap() {
   // theme they chose, including if they chose Forest.
   const firstRun = !savedSettings || !Object.keys(savedSettings).length;
   settings = { ...DEFAULT_SETTINGS, ...(savedSettings || {}) };
-  if (firstRun) settings.theme = 'mono';
+  if (firstRun) settings.theme = 'next';
+  // 4.3 makes Next the app's face. Someone who has picked a theme — ever —
+  // keeps it; this only moves the people still sitting on a default they were
+  // handed, and it happens once. The what's-new card says where the old look
+  // went, and Settings -> Theme is one click either way.
+  if (!firstRun && !settings.themeChosen) {
+    if (settings.theme === 'forest' || settings.theme === 'mono') {
+      if (!(settings.recentThemes || []).length) settings.theme = 'next';
+    }
+    settings.themeChosen = true;
+  }
   // Themes that have been withdrawn. Anyone sitting on one of these keys would
   // otherwise silently fall back to the default on their next launch.
   const GONE = {

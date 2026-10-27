@@ -11,6 +11,26 @@
     dracula:  { label: 'Dracula',  type: 'dark', bg: '#282a36', text: '#f8f8f2', sidebar: '#21222c', elevated: '#313341', elevatedHi: '#414354', accent: '#bd93f9', danger: '#ff5555' },
     mono:     { label: 'Mono',     type: 'dark', bg: '#0a0a0a', text: '#f0f0f0', sidebar: '#050505', elevated: '#141414', elevatedHi: '#1e1e1e', accent: '#888888', danger: '#cc3333' },
 
+    // === Next ===
+    // The 2026 face of the app: near-monochrome, a sans typeface, flat
+    // controls and a quiet accent that is almost the text colour itself.
+    // `fx-next` reshapes the chrome to match; everything it touches is
+    // appearance, so every feature behaves exactly as it does elsewhere.
+    next: {
+      label: 'Next', type: 'dark', cssClass: 'fx-next', recommended: true,
+      font: '"Segoe UI Variable Text", "Segoe UI", Inter, -apple-system, BlinkMacSystemFont, ' +
+        '"Helvetica Neue", Arial, "Vazirmatn", "Vazir", Tahoma, sans-serif',
+      bg: '#202120', text: '#eeeeea', sidebar: '#191a19', elevated: '#252625',
+      elevatedHi: '#30312f', accent: '#e9eae5', danger: '#e8a5a1', winBg: '#202120'
+    },
+    nextlight: {
+      label: 'Next Light', type: 'light', cssClass: 'fx-next theme-light', recommended: true,
+      font: '"Segoe UI Variable Text", "Segoe UI", Inter, -apple-system, BlinkMacSystemFont, ' +
+        '"Helvetica Neue", Arial, "Vazirmatn", "Vazir", Tahoma, sans-serif',
+      bg: '#fafaf8', text: '#242622', sidebar: '#f0f1ed', elevated: '#ffffff',
+      elevatedHi: '#e8eae4', accent: '#30372d', danger: '#b3423b', winBg: '#fafaf8'
+    },
+
     // === Light (7) ===
     paper:    { label: 'Paper',    type: 'light', cssClass: 'theme-light', bg: '#f7f7f5', text: '#1a1a1a', sidebar: '#eeecea', elevated: '#ffffff', elevatedHi: '#e8e6e4', accent: '#5472d4', danger: '#d94040' },
     sky:      { label: 'Sky',      type: 'light', cssClass: 'theme-light', bg: '#e8f0fb', text: '#1a2540', sidebar: '#dce8f8', elevated: '#f2f7ff', elevatedHi: '#ccddf5', accent: '#2563eb', danger: '#dc2626' },

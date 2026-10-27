@@ -280,6 +280,15 @@ function createWindow(BrowserWindow) {
 
   mainWindow.loadFile(path.join(__dirname, 'src', 'index.html'));
 
+  // Chromium keeps a zoom level per origin and remembers it between runs, so
+  // anything that ever zoomed this file:// origin — a stray Ctrl+= , a driver
+  // script — would come back as a UI scaled to something nobody asked for.
+  // The app has its own font zoom (Ctrl+wheel over the editor); the browser's
+  // belongs to nobody, so it is pinned.
+  mainWindow.webContents.on('did-finish-load', () => {
+    try { mainWindow.webContents.setZoomFactor(1); } catch (e) {}
+  });
+
   mainWindow.on('close', (e) => {
     if (closeToTray && !quitting) {
       e.preventDefault();

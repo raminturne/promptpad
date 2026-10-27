@@ -801,7 +801,9 @@ body {
   font-family: var(--font);
   font-size: var(--editor-font-size, 13.5px);
   line-height: 1.65;
-  padding: 16px 18px;
+  --ed-pad-y: 16px;
+  --ed-pad-x: 18px;
+  padding: var(--ed-pad-y) var(--ed-pad-x);
   user-select: text;
   cursor: text;
   caret-color: var(--accent);
@@ -869,8 +871,9 @@ body {
 .editor-area.is-empty::before {
   content: attr(data-placeholder);
   position: absolute;
-  left: 18px;
-  top: 16px;
+  left: var(--ed-pad-x);
+  top: var(--ed-pad-y);
+  line-height: inherit;
   color: var(--muted);
   pointer-events: none;
 }
@@ -4578,7 +4581,8 @@ body {
 /* ---- editor ---- */
 .app.fx-next .editor-area {
   line-height: 1.85;
-  padding: 26px 30px;
+  --ed-pad-y: 26px;
+  --ed-pad-x: 30px;
 }
 .app.fx-next .editor-area .ln { padding: 1px 0; }
 
@@ -4743,7 +4747,7 @@ body {
 .app.rtl .tab-group-del,
 .app.rtl .dc-sort { margin-left: 0; margin-inline-start: auto; }
 .app.rtl .rail-resizer { margin-left: 0; margin-inline-start: -3px; }
-.app.rtl .editor-area.is-empty::before { left: auto; right: 18px; }
+.app.rtl .editor-area.is-empty::before { left: auto; right: var(--ed-pad-x); }
 .app.rtl .toolbar-overflow-panel { left: auto; right: 0; }
 .app.rtl .placeholder-bar.pos-right,
 .app.rtl .placeholder-bar.pos-right.collapsed .placeholder-head {

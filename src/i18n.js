@@ -23,6 +23,8 @@
     'Prompt Lab': 'آزمایشگاه پرامپت',
     'Settings': 'تنظیمات',
     'settings': 'تنظیمات',
+    'Switch to the light theme': 'رفتن به تم روشن',
+    'Switch to the dark theme': 'رفتن به تم تیره',
     // ---- What's new popup / panel search ----
     "what's new": 'تازه‌ها',
     "What's new": 'تازه‌ها',

@@ -17,14 +17,14 @@
     // `fx-next` reshapes the chrome to match; everything it touches is
     // appearance, so every feature behaves exactly as it does elsewhere.
     next: {
-      label: 'Next', type: 'dark', cssClass: 'fx-next', recommended: true,
+      label: 'Next', type: 'dark', cssClass: 'fx-next', recommended: true, pair: 'nextlight',
       font: '"Segoe UI Variable Text", "Segoe UI", Inter, -apple-system, BlinkMacSystemFont, ' +
         '"Helvetica Neue", Arial, "Vazirmatn", "Vazir", Tahoma, sans-serif',
       bg: '#202120', text: '#eeeeea', sidebar: '#191a19', elevated: '#252625',
       elevatedHi: '#30312f', accent: '#e9eae5', danger: '#e8a5a1', winBg: '#202120'
     },
     nextlight: {
-      label: 'Next Light', type: 'light', cssClass: 'fx-next theme-light', recommended: true,
+      label: 'Next Light', type: 'light', cssClass: 'fx-next theme-light', recommended: true, pair: 'next',
       font: '"Segoe UI Variable Text", "Segoe UI", Inter, -apple-system, BlinkMacSystemFont, ' +
         '"Helvetica Neue", Arial, "Vazirmatn", "Vazir", Tahoma, sans-serif',
       bg: '#fafaf8', text: '#242622', sidebar: '#f0f1ed', elevated: '#ffffff',

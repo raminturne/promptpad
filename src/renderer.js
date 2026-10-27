@@ -326,6 +326,7 @@ const historyEmptyEl = document.getElementById('historyEmpty');
 const checkUpdateBtn = document.getElementById('checkUpdateBtn');
 const checkUpdateLabel = document.getElementById('checkUpdateLabel');
 const toggleAutoUpdateEl = document.getElementById('toggleAutoUpdate');
+const themeSwitchBtn = document.getElementById('themeSwitchBtn');
 const updateBannerEl = document.getElementById('updateBanner');
 const updateBannerTextEl = document.getElementById('updateBannerText');
 const updateBannerLinkEl = document.getElementById('updateBannerLink');
@@ -10252,7 +10253,28 @@ function applyTheme(name) {
   }
   // The native window can't take the rgba backgrounds the effect themes use.
   window.api.setBgColor(t.winBg || t.bg);
+  syncThemeSwitch(t);
 }
+
+// A theme may name its opposite number (Next <-> Next Light); when it does,
+// the title bar gets a day/night switch, and when it does not, there is
+// nothing to switch to and the button is not there at all.
+function syncThemeSwitch(t) {
+  if (!themeSwitchBtn) return;
+  const pair = t && t.pair && THEMES[t.pair] ? t.pair : null;
+  themeSwitchBtn.classList.toggle('hidden', !pair);
+  if (!pair) return;
+  const toLight = (THEMES[pair].type === 'light');
+  themeSwitchBtn.title = toLight
+    ? tr('theme.toLight', 'Switch to the light theme')
+    : tr('theme.toDark', 'Switch to the dark theme');
+  themeSwitchBtn.classList.toggle('is-light', !toLight);
+}
+
+if (themeSwitchBtn) themeSwitchBtn.addEventListener('click', () => {
+  const t = THEMES[settings.theme];
+  if (t && t.pair && THEMES[t.pair]) chooseTheme(t.pair);
+});
 
 function applyFont(id) {
   // A theme may ship a typeface — Nostalgia does, where a smooth font over
@@ -10329,6 +10351,9 @@ function applySettings() {
   applyNewBadges();
   applyHandySettingsVisibility();
   applyLanguage();
+  // After the language pass: it restores every title it has memorised, which
+  // would otherwise undo the one this button rewrites per state.
+  syncThemeSwitch(THEMES[settings.theme]);
 }
 
 // ---------- Language / RTL ----------
